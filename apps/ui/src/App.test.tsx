@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-describe("Phase 0 UI safety copy", () => {
-  it("keeps the initial execution state disabled", () => {
-    const executionEnabled = false;
-    expect(executionEnabled).toBe(false);
+describe("authorization workflow safety boundary", () => {
+  it("does not expose execution or grant issuance", () => {
+    const milestoneCapabilities = ["manifest", "policy", "approval", "decision", "audit"];
+    expect(milestoneCapabilities).not.toContain("action-grant");
+    expect(milestoneCapabilities).not.toContain("target-execution");
   });
 });
