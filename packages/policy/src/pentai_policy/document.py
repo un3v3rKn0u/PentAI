@@ -5,6 +5,8 @@ import json
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import cache
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -66,10 +68,25 @@ class ManifestValidation:
 _SCHEMAS = Path(__file__).resolve().parents[4] / "schemas" / "v1"
 
 
+@cache
+def _contract_validator(schema_name: str) -> Draft202012Validator:
+    source_schema = _SCHEMAS / schema_name
+    if source_schema.is_file():
+        schema_text = source_schema.read_text(encoding="utf-8")
+    else:
+        schema_text = (
+            resources.files("pentai_policy")
+            .joinpath("schemas", schema_name)
+            .read_text(encoding="utf-8")
+        )
+    return Draft202012Validator(json.loads(schema_text), format_checker=FormatChecker())
+
+
 def contract_issues(document: object, schema_name: str) -> tuple[ValidationIssue, ...]:
-    schema = json.loads((_SCHEMAS / schema_name).read_text(encoding="utf-8"))
-    validator = Draft202012Validator(schema, format_checker=FormatChecker())
-    errors = sorted(validator.iter_errors(document), key=lambda item: str(item.absolute_path))
+    errors = sorted(
+        _contract_validator(schema_name).iter_errors(document),
+        key=lambda item: str(item.absolute_path),
+    )
     return tuple(
         ValidationIssue(
             "CONTRACT_INVALID",
