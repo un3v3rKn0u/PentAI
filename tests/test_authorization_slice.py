@@ -1,53 +1,57 @@
 from __future__ import annotations
 
+import copy
 import json
 import sqlite3
 import tempfile
 import unittest
-import uuid
-from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
-from pentai_core.authorization import AuthorizationError, AuthorizationService
-from pentai_policy import compile_manifest, source_content_hash, validate_manifest
+from pentai_core.authorization import AuthorizationService, DomainError
+from pentai_core.migrate import migrate
+from pentai_policy import canonicalize_url, content_hash, evaluate
 
-NOW = datetime(2026, 8, 6, 12, 0, tzinfo=UTC)
+
+def timestamp(offset: timedelta) -> str:
+    return (datetime.now(UTC) + offset).isoformat().replace("+00:00", "Z")
 
 
-def valid_manifest(source_id: str, source_hash: str, engagement_id: str) -> dict[str, object]:
+def manifest_for(engagement: dict[str, object], source: dict[str, object]) -> dict[str, object]:
     return {
         "schema_version": "2.0.0",
         "engagement": {
-            "id": engagement_id,
-            "organization": "Example Research Program",
-            "program_name": "Synthetic Web Scope",
-            "program_type": "vdp",
+            "id": engagement["id"],
+            "organization": "Example Research",
+            "program_name": "Synthetic Authorization Program",
+            "program_type": "pentest",
             "status": "draft",
-            "effective_from": "2026-08-01T00:00:00Z",
-            "expires_at": "2027-08-01T00:00:00Z",
+            "effective_from": engagement["effective_from"],
+            "expires_at": engagement["expires_at"],
             "timezone": "UTC",
         },
         "sources": [
             {
-                "source_id": source_id,
-                "reference": "synthetic authorization.txt",
-                "authority": "contract",
-                "retrieved_at": "2026-08-01T00:00:00Z",
-                "content_hash": source_hash,
+                "source_id": source["id"],
+                "reference": source["reference"],
+                "authority": source["authority"],
+                "retrieved_at": source["retrieved_at"],
+                "content_hash": source["content_hash"],
             }
         ],
         "scope": {
             "assets": [
                 {
-                    "asset_id": str(uuid.uuid4()),
+                    "asset_id": str(uuid4()),
                     "effect": "allow",
-                    "type": "url",
-                    "canonical_value": "https://api.example.test/api",
+                    "type": "domain",
+                    "canonical_value": "EXAMPLE.test.",
                     "allowed_paths": ["/api"],
                     "denied_paths": ["/api/admin"],
                     "allowed_ports": [443],
-                    "source_reference": source_id,
+                    "ownership_verified": True,
+                    "source_reference": source["id"],
                 }
             ],
             "discovered_assets_default": "deny",
@@ -61,27 +65,28 @@ def valid_manifest(source_id: str, source_hash: str, engagement_id: str) -> dict
             "allowed_http_methods": ["GET"],
         },
         "operational_limits": {
-            "requests_per_second": 2,
+            "requests_per_second": 1,
             "per_host_requests_per_second": 1,
-            "burst_limit": 2,
+            "burst_limit": 1,
             "concurrent_connections": 1,
             "maximum_runtime_minutes": 30,
-            "maximum_total_requests": 100,
-            "maximum_response_bytes": 1048576,
+            "maximum_total_requests": 50,
+            "maximum_request_body_bytes": 0,
+            "maximum_response_bytes": 100000,
             "stop_conditions": ["authorization changes"],
         },
         "network": {
             "route_mode": "local_gateway",
-            "route_profile_id": "simulation-only",
+            "route_profile_id": "synthetic-route",
             "registered_source_ipv4": [],
             "registered_source_ipv6": [],
             "ipv6_mode": "disabled",
-            "dns_mode": "approved_resolver",
+            "dns_mode": "tunnel_resolver",
             "pause_on_identity_change": True,
         },
         "data_handling": {
             "real_user_data": "avoid_and_stop",
-            "retention_days": 30,
+            "retention_days": 7,
             "approved_storage": "local_encrypted",
             "remote_ai_max_classification": "none",
         },
@@ -92,9 +97,9 @@ def valid_manifest(source_id: str, source_hash: str, engagement_id: str) -> dict
         },
         "agent_controls": {
             "autonomy": "supervised_testing",
-            "maximum_test_depth": 0,
+            "maximum_test_depth": 1,
             "maximum_runtime_minutes": 30,
-            "human_approval_required_for": [],
+            "human_approval_required_for": ["policy_activation"],
         },
         "approvals": {
             "scope_reviewer": "reviewer",
@@ -106,18 +111,18 @@ def valid_manifest(source_id: str, source_hash: str, engagement_id: str) -> dict
     }
 
 
-def intent(policy_hash: str, url: str = "https://api.example.test/api/items") -> dict[str, object]:
-    from pentai_policy.canonicalize import canonicalize_url
-
-    target = canonicalize_url(url)
+def intent_for(
+    engagement_id: str, policy_hash: str, url: str = "https://example.test/api/items"
+) -> dict[str, object]:
+    created = timestamp(timedelta())
     return {
         "schema_version": "1.0.0",
-        "intent_id": str(uuid.uuid4()),
-        "assessment_id": str(uuid.uuid4()),
+        "intent_id": str(uuid4()),
+        "assessment_id": engagement_id,
         "policy_hash": policy_hash,
-        "actor": {"actor_type": "human", "actor_id": "local-reviewer"},
+        "actor": {"actor_type": "human", "actor_id": "researcher"},
         "capability": "network.http.get",
-        "target": target,
+        "target": canonicalize_url(url),
         "http": {
             "method": "GET",
             "headers_digest": "0" * 64,
@@ -126,9 +131,9 @@ def intent(policy_hash: str, url: str = "https://api.example.test/api/items") ->
         },
         "parameters_digest": "1" * 64,
         "impact": "benign",
-        "created_at": "2026-08-06T12:00:00Z",
-        "expires_at": "2026-08-06T12:05:00Z",
-        "idempotency_key": str(uuid.uuid4()),
+        "created_at": created,
+        "expires_at": timestamp(timedelta(minutes=5)),
+        "idempotency_key": "synthetic-intent-0001",
     }
 
 
@@ -136,160 +141,255 @@ class AuthorizationSliceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.database = Path(self.temporary.name) / "pentai.db"
+        migrate(self.database)
         self.service = AuthorizationService(self.database)
         self.program = self.service.create_program("Synthetic program")
-        content = "Synthetic authorization for example.test only."
+        self.engagement = self.service.create_engagement(
+            self.program["id"],
+            effective_from=timestamp(timedelta(hours=-1)),
+            expires_at=timestamp(timedelta(hours=2)),
+            timezone="UTC",
+        )
         self.source = self.service.import_source(
-            self.program["id"], reference="authorization.txt", authority="contract", content=content
+            self.program["id"],
+            authority="contract",
+            reference="synthetic://authorization",
+            content="Synthetic authorization: example.test /api GET only.",
         )
-        self.manifest = valid_manifest(
-            self.source["id"], source_content_hash(content), str(uuid.uuid4())
-        )
-        self.version = self.service.create_engagement(self.program["id"], self.manifest)
-        self.policy = self.service.compile(self.version["id"])
+        self.manifest = manifest_for(self.engagement, self.source)
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    def activate(self) -> None:
-        self.service.approve(
-            self.policy["policy_id"],
-            approver_id="human-reviewer",
-            expires_at="2027-01-01T00:00:00Z",
-        )
-        self.service.activate(self.policy["policy_id"], actor_id="human-reviewer")
+    def activate(self) -> tuple[dict[str, object], dict[str, object]]:
+        version = self.service.save_manifest(self.engagement["id"], self.manifest)
+        self.assertTrue(version["valid"], version["issues"])
+        bundle = self.service.compile_policy(version["id"])
+        self.service.approve_policy(bundle["id"], approver_id="human-reviewer")
+        self.service.activate_policy(bundle["id"], actor_id="human-reviewer")
+        return version, bundle
 
-    def test_exact_approved_active_request_is_allowed_and_repeatable(self) -> None:
-        self.activate()
-        request = intent(self.policy["content_hash"])
-        first = self.service.evaluate_intent(self.policy["policy_id"], request, now=NOW)
-        second = self.service.evaluate_intent(self.policy["policy_id"], request, now=NOW)
+    def test_exact_request_is_allowed_and_deterministic(self) -> None:
+        _, bundle = self.activate()
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        first = self.service.evaluate_intent(self.engagement["id"], intent)
+        second = self.service.evaluate_intent(self.engagement["id"], intent)
         self.assertEqual(first, second)
         self.assertEqual(first["outcome"], "allow")
         self.assertEqual(first["reason_codes"], ["EXPLICIT_ALLOW"])
 
-    def test_ambiguous_altered_expired_and_out_of_scope_requests_deny(self) -> None:
-        self.activate()
-        ambiguous = intent(self.policy["content_hash"])
-        ambiguous["target"]["path"] = "/different"
+    def test_ambiguous_altered_expired_and_out_of_scope_deny(self) -> None:
+        _, bundle = self.activate()
+        policy = bundle["policy"]
+
+        ambiguous = intent_for(self.engagement["id"], bundle["content_hash"])
+        ambiguous["target"] = {
+            **ambiguous["target"],
+            "canonical_url": "https://example.test/api/%2e%2e/admin",
+        }
         self.assertEqual(
-            self.service.evaluate_intent(self.policy["policy_id"], ambiguous, now=NOW)[
-                "reason_codes"
-            ],
+            evaluate(ambiguous, policy, active=True)["reason_codes"],
             ["TARGET_AMBIGUOUS"],
         )
-        altered = intent("f" * 64)
+
+        altered = intent_for(self.engagement["id"], "f" * 64)
         self.assertEqual(
-            self.service.evaluate_intent(self.policy["policy_id"], altered, now=NOW)[
-                "reason_codes"
-            ],
+            evaluate(altered, policy, active=True)["reason_codes"],
             ["POLICY_HASH_MISMATCH"],
         )
-        expired = self.service.evaluate_intent(
-            self.policy["policy_id"],
-            intent(self.policy["content_hash"]),
-            now=datetime(2028, 1, 1, tzinfo=UTC),
-        )
-        self.assertEqual(expired["reason_codes"], ["POLICY_EXPIRED"])
-        outside = self.service.evaluate_intent(
-            self.policy["policy_id"],
-            intent(self.policy["content_hash"], "https://outside.example.test/api"),
-            now=NOW,
-        )
-        self.assertEqual(outside["reason_codes"], ["TARGET_OUT_OF_SCOPE"])
 
-    def test_explicit_deny_and_path_boundaries(self) -> None:
-        self.activate()
-        denied = self.service.evaluate_intent(
-            self.policy["policy_id"],
-            intent(self.policy["content_hash"], "https://api.example.test/api/admin/users"),
-            now=NOW,
+        expired = copy.deepcopy(policy)
+        expired["validity"]["not_after"] = timestamp(timedelta(minutes=-1))
+        expired["content_hash"] = content_hash(
+            {key: value for key, value in expired.items() if key != "content_hash"}
         )
-        self.assertEqual(denied["reason_codes"], ["EXPLICIT_DENY"])
-        lookalike = self.service.evaluate_intent(
-            self.policy["policy_id"],
-            intent(self.policy["content_hash"], "https://api.example.test/apiv2"),
-            now=NOW,
+        expired_intent = intent_for(self.engagement["id"], expired["content_hash"])
+        self.assertEqual(
+            evaluate(expired_intent, expired, active=True)["reason_codes"],
+            ["POLICY_EXPIRED"],
         )
-        self.assertEqual(lookalike["reason_codes"], ["TARGET_OUT_OF_SCOPE"])
 
-    def test_activation_requires_exact_current_human_approval(self) -> None:
-        with self.assertRaisesRegex(AuthorizationError, "approval"):
-            self.service.activate(self.policy["policy_id"], actor_id="human-reviewer")
-        with self.assertRaisesRegex(AuthorizationError, "future"):
-            self.service.approve(
-                self.policy["policy_id"],
-                approver_id="human-reviewer",
-                expires_at="2020-01-01T00:00:00Z",
-            )
+        outside = intent_for(
+            self.engagement["id"], bundle["content_hash"], "https://outside.test/api"
+        )
+        self.assertEqual(
+            self.service.evaluate_intent(self.engagement["id"], outside)["reason_codes"],
+            ["TARGET_OUT_OF_SCOPE"],
+        )
 
-    def test_editing_creates_new_version_without_inheriting_approval(self) -> None:
-        self.service.approve(
-            self.policy["policy_id"],
+    def test_invalid_expired_cross_assessment_and_method_mismatch_intents_deny(self) -> None:
+        _, bundle = self.activate()
+
+        expired = intent_for(self.engagement["id"], bundle["content_hash"])
+        expired["created_at"] = timestamp(timedelta(minutes=-10))
+        expired["expires_at"] = timestamp(timedelta(minutes=-5))
+        self.assertEqual(
+            self.service.evaluate_intent(self.engagement["id"], expired)["reason_codes"],
+            ["TESTING_WINDOW_CLOSED"],
+        )
+
+        cross_assessment = intent_for(str(uuid4()), bundle["content_hash"])
+        self.assertEqual(
+            self.service.evaluate_intent(
+                self.engagement["id"], cross_assessment
+            )["reason_codes"],
+            ["DEFAULT_DENY"],
+        )
+
+        wrong_method = intent_for(self.engagement["id"], bundle["content_hash"])
+        wrong_method["http"]["method"] = "HEAD"
+        self.assertEqual(
+            self.service.evaluate_intent(self.engagement["id"], wrong_method)["reason_codes"],
+            ["METHOD_DENIED"],
+        )
+
+        malformed = intent_for(self.engagement["id"], bundle["content_hash"])
+        malformed["unexpected"] = True
+        self.assertEqual(
+            self.service.evaluate_intent(self.engagement["id"], malformed)["reason_codes"],
+            ["DEFAULT_DENY"],
+        )
+
+    def test_deny_precedence_and_path_boundaries(self) -> None:
+        _, bundle = self.activate()
+        denied = intent_for(
+            self.engagement["id"],
+            bundle["content_hash"],
+            "https://example.test/api/admin/users",
+        )
+        lookalike = intent_for(
+            self.engagement["id"],
+            bundle["content_hash"],
+            "https://example.test/apiv2",
+        )
+        self.assertEqual(
+            self.service.evaluate_intent(self.engagement["id"], denied)["reason_codes"],
+            ["EXPLICIT_DENY"],
+        )
+        self.assertEqual(
+            self.service.evaluate_intent(self.engagement["id"], lookalike)["reason_codes"],
+            ["PATH_DENIED"],
+        )
+
+    def test_activation_requires_exact_human_approval(self) -> None:
+        version = self.service.save_manifest(self.engagement["id"], self.manifest)
+        bundle = self.service.compile_policy(version["id"])
+        with self.assertRaisesRegex(DomainError, "exact human policy approval"):
+            self.service.activate_policy(bundle["id"], actor_id="researcher")
+
+    def test_edit_creates_version_and_does_not_inherit_approval(self) -> None:
+        first = self.service.save_manifest(self.engagement["id"], self.manifest)
+        first_bundle = self.service.compile_policy(first["id"])
+        self.service.approve_policy(first_bundle["id"], approver_id="human-reviewer")
+
+        edited = copy.deepcopy(self.manifest)
+        edited["operational_limits"]["maximum_total_requests"] = 25
+        second = self.service.save_manifest(self.engagement["id"], edited)
+        self.assertNotEqual(first["id"], second["id"])
+        self.assertEqual(second["supersedes_id"], first["id"])
+        second_bundle = self.service.compile_policy(second["id"])
+        with self.assertRaises(DomainError) as raised:
+            self.service.activate_policy(second_bundle["id"], actor_id="human-reviewer")
+        self.assertEqual(raised.exception.code, "APPROVAL_MISSING")
+
+    def test_unresolved_manifest_is_rejected_and_audited(self) -> None:
+        self.manifest["unresolved_questions"] = ["Does wildcard include the apex?"]
+        version = self.service.save_manifest(self.engagement["id"], self.manifest)
+        self.assertFalse(version["valid"])
+        self.assertIn("AUTHORIZATION_AMBIGUOUS", {item["code"] for item in version["issues"]})
+        with self.assertRaises(DomainError):
+            self.service.compile_policy(version["id"])
+        self.assertIn("policy.rejected", [event["action"] for event in self.service.audit_events()])
+
+    def test_manifest_contract_and_engagement_binding_are_enforced(self) -> None:
+        malformed = copy.deepcopy(self.manifest)
+        malformed["scope"]["assets"][0]["effect"] = "unexpected"
+        version = self.service.save_manifest(self.engagement["id"], malformed)
+        self.assertFalse(version["valid"])
+        self.assertIn("CONTRACT_INVALID", {item["code"] for item in version["issues"]})
+
+        mismatched = copy.deepcopy(self.manifest)
+        mismatched["engagement"]["id"] = str(uuid4())
+        with self.assertRaises(DomainError) as raised:
+            self.service.save_manifest(self.engagement["id"], mismatched)
+        self.assertEqual(raised.exception.code, "ENGAGEMENT_MISMATCH")
+
+    def test_approved_replacement_policy_atomically_retires_the_active_policy(self) -> None:
+        _, first_bundle = self.activate()
+        edited = copy.deepcopy(self.manifest)
+        edited["operational_limits"]["maximum_total_requests"] = 25
+        version = self.service.save_manifest(self.engagement["id"], edited)
+        second_bundle = self.service.compile_policy(version["id"])
+        self.service.approve_policy(second_bundle["id"], approver_id="human-reviewer")
+
+        self.service.activate_policy(second_bundle["id"], actor_id="human-reviewer")
+
+        with sqlite3.connect(self.database) as connection:
+            first = connection.execute(
+                "SELECT revoked_at FROM policy_bundles WHERE id = ?",
+                (first_bundle["id"],),
+            ).fetchone()
+            active = connection.execute(
+                "SELECT active_policy_id, revocation_epoch FROM engagements WHERE id = ?",
+                (self.engagement["id"],),
+            ).fetchone()
+        self.assertIsNotNone(first[0])
+        self.assertEqual(active[0], second_bundle["id"])
+        self.assertEqual(active[1], 1)
+
+    def test_audit_chain_covers_lifecycle_and_detects_tampering(self) -> None:
+        _, bundle = self.activate()
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        self.service.evaluate_intent(self.engagement["id"], intent)
+        rejected_version = self.service.save_manifest(self.engagement["id"], self.manifest)
+        rejected_bundle = self.service.compile_policy(rejected_version["id"])
+        self.service.approve_policy(
+            rejected_bundle["id"],
             approver_id="human-reviewer",
-            expires_at="2027-01-01T00:00:00Z",
+            decision="rejected",
+            reason="review declined",
         )
-        edited = deepcopy(self.manifest)
-        edited["scope"]["assets"][0]["allowed_paths"] = ["/api/v2"]
-        version = self.service.save_manifest(self.manifest["engagement"]["id"], edited)
-        policy = self.service.compile(version["id"])
-        self.assertNotEqual(policy["manifest_hash"], self.policy["manifest_hash"])
-        with self.assertRaisesRegex(AuthorizationError, "approval"):
-            self.service.activate(policy["policy_id"], actor_id="human-reviewer")
-
-    def test_audit_chain_covers_events_and_detects_tampering(self) -> None:
-        self.activate()
-        self.service.evaluate_intent(
-            self.policy["policy_id"], intent(self.policy["content_hash"]), now=NOW
+        self.service.revoke_policy(
+            bundle["id"], actor_id="human-reviewer", reason="synthetic test complete"
         )
-        self.service.revoke(self.policy["policy_id"], actor_id="human-reviewer")
-        actions = [event["action"] for event in self.service.audit_events()]
+        actions = {event["action"] for event in self.service.audit_events()}
         self.assertTrue(
-            {"approval", "activation", "policy_evaluation", "revocation"} <= set(actions)
+            {
+                "policy.approval",
+                "policy.activation",
+                "policy.rejection",
+                "policy.revocation",
+                "policy.evaluation",
+            }
+            <= actions
         )
         self.assertTrue(self.service.verify_audit_chain()["valid"])
         with sqlite3.connect(self.database) as connection:
+            event = connection.execute(
+                "SELECT event_id FROM audit_events ORDER BY sequence LIMIT 1"
+            ).fetchone()
             connection.execute(
-                "UPDATE audit_events SET data_json = ? WHERE sequence = 1", ('{"tampered":true}',)
+                "UPDATE audit_events SET data_json = ? WHERE event_id = ?",
+                (json.dumps({"tampered": True}), event[0]),
             )
-        self.assertFalse(self.service.verify_audit_chain()["valid"])
+        verification = self.service.verify_audit_chain()
+        self.assertFalse(verification["valid"])
+        self.assertEqual(verification["failed_sequence"], 1)
 
-    def test_rejection_is_audited(self) -> None:
-        self.service.approve(
-            self.policy["policy_id"],
-            approver_id="human-reviewer",
-            expires_at="2027-01-01T00:00:00Z",
-            decision="rejected",
-        )
-        self.assertEqual(self.service.audit_events()[-1]["action"], "rejection")
+    def test_activated_policy_and_approved_manifest_are_database_immutable(self) -> None:
+        version, bundle = self.activate()
+        with sqlite3.connect(self.database) as connection:
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "UPDATE policy_bundles SET content_hash = ? WHERE id = ?",
+                    ("f" * 64, bundle["id"]),
+                )
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "UPDATE manifest_versions SET content_hash = ? WHERE id = ?",
+                    ("e" * 64, version["id"]),
+                )
 
-    def test_manifest_validation_and_compilation_are_deterministic(self) -> None:
-        first = validate_manifest(self.manifest)
-        reordered = json.loads(json.dumps(self.manifest))
-        reordered["techniques"]["allowed_capabilities"] = list(
-            reversed(reordered["techniques"]["allowed_capabilities"])
-        )
-        second = validate_manifest(reordered)
-        self.assertEqual(first["content_hash"], second["content_hash"])
-        self.assertEqual(compile_manifest(self.manifest), compile_manifest(reordered))
-        unresolved = deepcopy(self.manifest)
-        unresolved["unresolved_questions"] = ["Does the wildcard include the apex?"]
-        self.assertFalse(validate_manifest(unresolved)["valid"])
-        unknown = deepcopy(self.manifest)
-        unknown["assumptions"] = ["Never infer authorization"]
-        result = validate_manifest(unknown)
-        self.assertFalse(result["valid"])
-        self.assertIn("UNKNOWN_FIELD", [issue["code"] for issue in result["issues"]])
 
-    def test_recompilation_is_idempotent_and_new_manifest_supersedes_old_approval(self) -> None:
-        self.assertEqual(self.service.compile(self.version["id"]), self.policy)
-        self.service.approve(
-            self.policy["policy_id"],
-            approver_id="human-reviewer",
-            expires_at="2027-01-01T00:00:00Z",
-        )
-        edited = deepcopy(self.manifest)
-        edited["scope"]["assets"][0]["allowed_paths"] = ["/api/v2"]
-        self.service.save_manifest(self.manifest["engagement"]["id"], edited)
-        with self.assertRaisesRegex(AuthorizationError, "approval"):
-            self.service.activate(self.policy["policy_id"], actor_id="human-reviewer")
+if __name__ == "__main__":
+    unittest.main()

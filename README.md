@@ -2,7 +2,10 @@
 
 PentAI is a local-first desktop assistant for supervised, authorized HTTP/HTTPS security assessments.
 
-This repository is the Phase 0 scaffold. The current executable surface is intentionally small: desktop shell, local API health/state endpoints, SQLite migrations, versioned security contracts, deterministic canonicalization, and a policy test corpus. Target-facing network execution is not implemented yet.
+This repository includes the first local-only authorization vertical slice: program and
+source intake, provenance hashing, Manifest v2 validation/versioning, deterministic
+Policy IR v1 compilation, exact human approval, immutable activation, ActionIntent
+simulation, and tamper-evident audit. Target-facing network execution is not implemented.
 
 ## Safety boundary
 
@@ -16,6 +19,7 @@ See:
 - `docs/security/security_invariants.md`
 - `docs/contracts/`
 - `schemas/v1/`
+- `docs/security/authorization_vertical_slice.md`
 
 ## Repository layout
 
@@ -72,5 +76,6 @@ pytest
 - No AI agent runtime yet.
 - No external tools or plugins.
 - No report submission.
+- No ActionGrant issuance; the policy workbench is a decision simulator only.
 
 These are deliberate Phase 0 constraints.

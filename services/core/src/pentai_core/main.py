@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from pentai_core import __version__
-from pentai_core.authorization import AuthorizationError, AuthorizationService
+from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.config import settings
+from pentai_core.migrate import migrate
 
 
 class HealthResponse(BaseModel):
@@ -26,11 +27,72 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:1420", "tauri://localhost"],
-    allow_methods=["GET", "POST"],
-    allow_headers=["content-type"],
+    allow_origins=[
+        "http://127.0.0.1:1420",
+        "http://localhost:1420",
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-authorization = AuthorizationService(settings.database_path)
+
+
+class ProgramRequest(BaseModel):
+    name: str
+    platform: str | None = None
+
+
+class EngagementRequest(BaseModel):
+    program_id: str
+    effective_from: str
+    expires_at: str
+    timezone: str
+
+
+class SourceRequest(BaseModel):
+    program_id: str
+    authority: str
+    reference: str
+    content: str
+    effective_at: str | None = None
+
+
+class ManifestRequest(BaseModel):
+    engagement_id: str
+    document: dict[str, Any]
+
+
+class ApprovalRequest(BaseModel):
+    approver_id: str
+    decision: str = "approved"
+    expires_at: str | None = None
+    reason: str | None = None
+
+
+class ActivationRequest(BaseModel):
+    actor_id: str
+
+
+class EvaluationRequest(BaseModel):
+    engagement_id: str
+    intent: dict[str, Any]
+
+
+def service() -> AuthorizationService:
+    migrate(settings.database_path)
+    return AuthorizationService(settings.database_path)
+
+
+def call(operation: Any) -> Any:
+    try:
+        return operation()
+    except DomainError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
 
 
 @app.get("/api/v1/health", response_model=HealthResponse)
@@ -53,79 +115,72 @@ def safety_state() -> dict[str, object]:
     }
 
 
-def _run(operation: Callable[[], object]) -> object:
-    try:
-        return operation()
-    except AuthorizationError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
 @app.post("/api/v1/programs")
-def create_program(body: dict[str, object]) -> object:
-    platform = body.get("platform")
-    return _run(
-        lambda: authorization.create_program(
-            str(body.get("name", "")), str(platform) if platform is not None else None
+def create_program(request: ProgramRequest) -> dict[str, Any]:
+    return call(lambda: service().create_program(request.name, request.platform))
+
+
+@app.post("/api/v1/engagements")
+def create_engagement(request: EngagementRequest) -> dict[str, Any]:
+    return call(
+        lambda: service().create_engagement(
+            request.program_id,
+            effective_from=request.effective_from,
+            expires_at=request.expires_at,
+            timezone=request.timezone,
         )
     )
 
 
-@app.post("/api/v1/programs/{program_id}/sources")
-def import_source(program_id: str, body: dict[str, object]) -> object:
-    return _run(
-        lambda: authorization.import_source(
-            program_id,
-            reference=str(body.get("reference", "")),
-            authority=str(body.get("authority", "")),
-            content=str(body.get("content", "")),
+@app.post("/api/v1/sources")
+def import_source(request: SourceRequest) -> dict[str, Any]:
+    return call(
+        lambda: service().import_source(
+            request.program_id,
+            authority=request.authority,
+            reference=request.reference,
+            content=request.content,
+            effective_at=request.effective_at,
         )
     )
 
 
-@app.post("/api/v1/programs/{program_id}/engagements")
-def create_engagement(program_id: str, body: dict[str, object]) -> object:
-    return _run(lambda: authorization.create_engagement(program_id, body))
-
-
-@app.post("/api/v1/engagements/{engagement_id}/manifests")
-def save_manifest(engagement_id: str, body: dict[str, object]) -> object:
-    return _run(lambda: authorization.save_manifest(engagement_id, body))
+@app.post("/api/v1/manifests")
+def save_manifest(request: ManifestRequest) -> dict[str, Any]:
+    return call(lambda: service().save_manifest(request.engagement_id, request.document))
 
 
 @app.post("/api/v1/manifests/{manifest_id}/compile")
-def compile_policy(manifest_id: str) -> object:
-    return _run(lambda: authorization.compile(manifest_id))
+def compile_policy(manifest_id: str) -> dict[str, Any]:
+    return call(lambda: service().compile_policy(manifest_id))
 
 
 @app.post("/api/v1/policies/{policy_id}/approval")
-def approve_policy(policy_id: str, body: dict[str, object]) -> object:
-    return _run(
-        lambda: authorization.approve(
+def approve_policy(policy_id: str, request: ApprovalRequest) -> dict[str, Any]:
+    return call(
+        lambda: service().approve_policy(
             policy_id,
-            approver_id=str(body.get("approver_id", "")),
-            expires_at=str(body.get("expires_at", "")),
-            decision=str(body.get("decision", "approved")),
+            approver_id=request.approver_id,
+            decision=request.decision,
+            expires_at=request.expires_at,
+            reason=request.reason,
         )
     )
 
 
 @app.post("/api/v1/policies/{policy_id}/activate")
-def activate_policy(policy_id: str, body: dict[str, object]) -> object:
-    return _run(lambda: authorization.activate(policy_id, actor_id=str(body.get("actor_id", ""))))
+def activate_policy(policy_id: str, request: ActivationRequest) -> dict[str, Any]:
+    return call(lambda: service().activate_policy(policy_id, actor_id=request.actor_id))
 
 
-@app.post("/api/v1/policies/{policy_id}/revoke")
-def revoke_policy(policy_id: str, body: dict[str, object]) -> object:
-    return _run(lambda: authorization.revoke(policy_id, actor_id=str(body.get("actor_id", ""))))
-
-
-@app.post("/api/v1/policies/{policy_id}/evaluate")
-def evaluate_intent(policy_id: str, body: dict[str, object]) -> object:
-    return _run(lambda: authorization.evaluate_intent(policy_id, body))
+@app.post("/api/v1/policy-decisions")
+def evaluate_policy(request: EvaluationRequest) -> dict[str, Any]:
+    return call(lambda: service().evaluate_intent(request.engagement_id, request.intent))
 
 
 @app.get("/api/v1/audit")
-def audit_events() -> object:
+def audit_events() -> dict[str, Any]:
+    authorization = service()
     return {
         "events": authorization.audit_events(),
         "verification": authorization.verify_audit_chain(),

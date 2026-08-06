@@ -1,151 +1,185 @@
 from __future__ import annotations
 
-import ipaddress
-import uuid
-from copy import deepcopy
 from datetime import UTC, datetime
-from typing import Any, cast
+from ipaddress import ip_address, ip_network
+from typing import Any
+from uuid import UUID, uuid5
 
 from pentai_policy.canonicalize import CanonicalizationError, canonicalize_url
-from pentai_policy.documents import content_hash
+from pentai_policy.document import content_hash, contract_issues, parse_time
 
-_NAMESPACE = uuid.UUID("84f739ae-6b6c-4bb8-ac4c-b2ae71b485ed")
+EVALUATOR_VERSION = "1.0.0"
+_NAMESPACE = UUID("9b879065-2de4-4fd7-b03c-5fe2bccdfcca")
+_RUNTIME_CHECKS = [
+    "policy_status",
+    "clock",
+    "route_identity",
+    "source_ip",
+    "dns",
+    "destination_ip",
+    "sni_host",
+    "port",
+    "redirect",
+    "rate",
+    "response_size",
+]
 
 
-def path_matches(prefix: str, path: str) -> bool:
-    return prefix == "/" or path == prefix or path.startswith(prefix.rstrip("/") + "/")
+def _path_matches(prefix: str, path: str) -> bool:
+    prefix = prefix.rstrip("/") or "/"
+    return prefix == "/" or path == prefix or path.startswith(prefix + "/")
 
 
-def _matches(rule: dict[str, Any], target: dict[str, Any]) -> bool:
-    matcher, host, kind = rule["matcher"], target["host"], rule["asset_type"]
-    if "path" in matcher and not path_matches(matcher["path"], target["path"]):
+def _asset_matches(rule: dict[str, Any], target: dict[str, Any]) -> bool:
+    matcher = rule["matcher"]
+    kind = rule["asset_type"]
+    host = target["host"]
+    path_prefix = matcher.get("path_prefix")
+    if path_prefix is not None and not _path_matches(path_prefix, target["path"]):
         return False
-    if kind == "domain":
-        return bool(host["kind"] == "domain" and host["value"] == matcher["host"])
-    if kind == "wildcard_domain":
-        return bool(
-            host["kind"] == "domain"
-            and (
-                host["value"].endswith("." + matcher["base_domain"])
-                or (matcher["include_apex"] and host["value"] == matcher["base_domain"])
-            )
-        )
     if kind == "url":
-        return all(
-            target[key] == matcher[key] for key in ("scheme", "host", "port")
-        ) and path_matches(matcher["path"], target["path"])
+        return (
+            matcher["scheme"] == target["scheme"]
+            and matcher["host"] == host
+            and matcher["port"] == target["port"]
+            and _path_matches(matcher["path"], target["path"])
+        )
+    if kind == "domain":
+        return host == {"kind": "domain", "value": matcher["value"]}
+    if kind == "wildcard_domain":
+        if host["kind"] != "domain":
+            return False
+        value = host["value"]
+        base = matcher["value"]
+        return (matcher.get("include_apex") and value == base) or value.endswith("." + base)
     if kind in {"ipv4", "ipv6"}:
-        return bool(host["kind"] == kind and host["value"] == matcher["value"])
-    return (
-        kind == "cidr"
-        and host["kind"] in {"ipv4", "ipv6"}
-        and ipaddress.ip_address(host["value"]) in ipaddress.ip_network(matcher["canonical"])
-    )
+        return host == {"kind": kind, "value": matcher["value"]}
+    if kind == "cidr" and host["kind"] in {"ipv4", "ipv6"}:
+        return ip_address(host["value"]) in ip_network(matcher["value"])
+    return False
 
 
 def _decision(
     intent: dict[str, Any],
     policy_hash: str,
     outcome: str,
-    reason: str,
-    rules: list[str],
-    now: datetime,
+    reasons: list[str],
+    rule_ids: list[str],
 ) -> dict[str, Any]:
-    identity = content_hash(
-        [intent.get("intent_id"), policy_hash, outcome, reason, sorted(rules), now.isoformat()]
-    )
-    return {
-        "schema_version": "1.0.0",
-        "decision_id": str(uuid.uuid5(_NAMESPACE, identity)),
-        "intent_id": intent["intent_id"],
-        "assessment_id": intent["assessment_id"],
+    seed = {
+        "intent": intent,
         "policy_hash": policy_hash,
         "outcome": outcome,
-        "reason_codes": [reason],
-        "evaluated_rule_ids": sorted(set(rules)),
-        "runtime_checks_required": [],
-        "decided_at": now.isoformat().replace("+00:00", "Z"),
+        "reason_codes": reasons,
+        "evaluated_rule_ids": sorted(set(rule_ids)),
+    }
+    return {
+        "schema_version": "1.0.0",
+        "decision_id": str(uuid5(_NAMESPACE, content_hash(seed))),
+        "intent_id": intent.get("intent_id", "00000000-0000-0000-0000-000000000000"),
+        "assessment_id": intent.get(
+            "assessment_id", "00000000-0000-0000-0000-000000000000"
+        ),
+        "policy_hash": policy_hash,
+        "outcome": outcome,
+        "reason_codes": reasons,
+        "evaluated_rule_ids": sorted(set(rule_ids)),
+        "runtime_checks_required": _RUNTIME_CHECKS if outcome == "allow" else [],
+        "decided_at": intent.get("created_at", "1970-01-01T00:00:00Z"),
         "evaluator": {
             "name": "pentai-policy-evaluator",
-            "version": "1.0.0",
+            "version": EVALUATOR_VERSION,
             "canonicalization_version": "1.0.0",
         },
     }
 
 
 def evaluate(
-    policy: dict[str, Any],
     intent: dict[str, Any],
+    policy: dict[str, Any],
     *,
     active: bool,
     revoked: bool = False,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    instant = (now or datetime.now(UTC)).astimezone(UTC)
-    material = deepcopy(policy)
-    stored_hash = material.pop("content_hash", "")
-
-    def deny(reason: str, rules: list[str] | None = None) -> dict[str, Any]:
-        return _decision(intent, str(stored_hash), "deny", reason, rules or [], instant)
-
-    if (
-        not stored_hash
-        or content_hash(material) != stored_hash
-        or intent.get("policy_hash") != stored_hash
-    ):
-        return deny("POLICY_HASH_MISMATCH")
-    if not active:
-        return deny("POLICY_INACTIVE")
+    stored_hash = str(policy.get("content_hash", "0" * 64))
+    unsigned = {key: value for key, value in policy.items() if key != "content_hash"}
+    if content_hash(unsigned) != stored_hash or intent.get("policy_hash") != stored_hash:
+        return _decision(intent, stored_hash, "deny", ["POLICY_HASH_MISMATCH"], [])
+    if contract_issues(intent, "action-intent-v1.schema.json"):
+        return _decision(intent, stored_hash, "deny", ["DEFAULT_DENY"], [])
+    if intent["assessment_id"] != policy.get("engagement_id"):
+        return _decision(intent, stored_hash, "deny", ["DEFAULT_DENY"], [])
     if revoked:
-        return deny("POLICY_REVOKED")
+        return _decision(intent, stored_hash, "deny", ["POLICY_REVOKED"], [])
+    if not active:
+        return _decision(intent, stored_hash, "deny", ["POLICY_INACTIVE"], [])
+    instant = (now or datetime.now(UTC)).astimezone(UTC)
+    if instant < parse_time(policy["validity"]["not_before"]):
+        return _decision(intent, stored_hash, "deny", ["POLICY_INACTIVE"], [])
+    if instant >= parse_time(policy["validity"]["not_after"]):
+        return _decision(intent, stored_hash, "deny", ["POLICY_EXPIRED"], [])
+    if instant < parse_time(intent["created_at"]) or instant >= parse_time(intent["expires_at"]):
+        return _decision(intent, stored_hash, "deny", ["TESTING_WINDOW_CLOSED"], [])
     try:
-        start = datetime.fromisoformat(policy["validity"]["not_before"].replace("Z", "+00:00"))
-        end = datetime.fromisoformat(policy["validity"]["not_after"].replace("Z", "+00:00"))
-        if instant < start or instant >= end:
-            return deny("POLICY_EXPIRED")
-    except (KeyError, TypeError, ValueError):
-        return deny("POLICY_HASH_MISMATCH")
-    try:
-        target = canonicalize_url(intent["target"]["canonical_url"])
-        supplied = {key: intent["target"].get(key) for key in ("scheme", "host", "port", "path")}
-        if supplied != {key: target[key] for key in supplied}:
-            return deny("TARGET_AMBIGUOUS")
-    except (KeyError, TypeError, CanonicalizationError):
-        return deny("TARGET_AMBIGUOUS")
+        canonical = canonicalize_url(intent["target"]["canonical_url"])
+    except (CanonicalizationError, KeyError, TypeError):
+        return _decision(intent, stored_hash, "deny", ["TARGET_AMBIGUOUS"], [])
+    if canonical != intent.get("target"):
+        return _decision(intent, stored_hash, "deny", ["TARGET_AMBIGUOUS"], [])
+
     capability_rules = [
-        r for r in policy["capability_rules"] if r["capability"] == intent.get("capability")
+        rule
+        for rule in policy["capability_rules"]
+        if rule["capability"] == intent.get("capability")
     ]
-    blocked = [r for r in capability_rules if r["effect"] == "deny"]
-    if blocked:
-        return deny("CAPABILITY_DENIED", [r["rule_id"] for r in blocked])
-    if not any(r["effect"] == "allow" for r in capability_rules):
-        return deny("CAPABILITY_DENIED")
-    method_capability = {
-        "GET": "network.http.get",
-        "HEAD": "network.http.head",
-        "OPTIONS": "network.http.options",
-    }.get(intent.get("http", {}).get("method"))
-    if method_capability != intent.get("capability"):
-        return deny("METHOD_DENIED")
-    matches = [r for r in policy["asset_rules"] if _matches(r, target)]
+    if not capability_rules or any(rule["effect"] == "deny" for rule in capability_rules):
+        return _decision(
+            intent,
+            stored_hash,
+            "deny",
+            ["CAPABILITY_DENIED"],
+            [rule["rule_id"] for rule in capability_rules],
+        )
+    if any(rule["effect"] == "conditional" for rule in capability_rules):
+        return _decision(
+            intent,
+            stored_hash,
+            "deny",
+            ["APPROVAL_MISSING"],
+            [rule["rule_id"] for rule in capability_rules],
+        )
+    expected_method = {
+        "network.http.get": "GET",
+        "network.http.head": "HEAD",
+        "network.http.options": "OPTIONS",
+    }.get(intent["capability"])
+    if intent.get("http", {}).get("method") != expected_method:
+        return _decision(
+            intent,
+            stored_hash,
+            "deny",
+            ["METHOD_DENIED"],
+            [rule["rule_id"] for rule in capability_rules],
+        )
+
+    matches = [rule for rule in policy["asset_rules"] if _asset_matches(rule, canonical)]
     if not matches:
-        return deny("TARGET_OUT_OF_SCOPE")
-    maximum = max(r["specificity"] for r in matches)
-    effective = [r for r in matches if r["specificity"] == maximum]
-    denied = [r for r in effective if r["effect"] == "deny"]
-    if denied:
-        return deny("EXPLICIT_DENY", [r["rule_id"] for r in denied])
-    allowed = [r for r in effective if r["effect"] == "allow"]
-    if not allowed:
-        return deny("DEFAULT_DENY")
-    if not any(not r.get("allowed_ports") or target["port"] in r["allowed_ports"] for r in allowed):
-        return deny("PORT_DENIED", [r["rule_id"] for r in allowed])
-    if not any(
-        not r.get("allowed_paths")
-        or any(path_matches(p, cast(str, target["path"])) for p in r["allowed_paths"])
-        for r in allowed
-    ):
-        return deny("PATH_DENIED", [r["rule_id"] for r in allowed])
-    return _decision(
-        intent, stored_hash, "allow", "EXPLICIT_ALLOW", [r["rule_id"] for r in allowed], instant
-    )
+        return _decision(intent, stored_hash, "deny", ["TARGET_OUT_OF_SCOPE"], [])
+    max_specificity = max(rule["specificity"] for rule in matches)
+    applicable = [rule for rule in matches if rule["specificity"] >= max_specificity]
+    rule_ids = [rule["rule_id"] for rule in applicable]
+    if any(rule["effect"] == "deny" for rule in applicable):
+        return _decision(intent, stored_hash, "deny", ["EXPLICIT_DENY"], rule_ids)
+    if any(rule["effect"] != "allow" for rule in applicable):
+        return _decision(intent, stored_hash, "deny", ["DEFAULT_DENY"], rule_ids)
+    for rule in applicable:
+        ports = rule.get("allowed_ports", [])
+        if ports and canonical["port"] not in ports:
+            return _decision(intent, stored_hash, "deny", ["PORT_DENIED"], rule_ids)
+        allowed_paths = rule.get("allowed_paths", [])
+        if allowed_paths and not any(
+            _path_matches(path, canonical["path"]) for path in allowed_paths
+        ):
+            return _decision(intent, stored_hash, "deny", ["PATH_DENIED"], rule_ids)
+    return _decision(intent, stored_hash, "allow", ["EXPLICIT_ALLOW"], rule_ids)

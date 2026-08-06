@@ -22,7 +22,15 @@ class MigrationTests(unittest.TestCase):
                     )
                 }
             self.assertTrue(
-                {"programs", "engagements", "policy_bundles", "approvals", "audit_events", "outbox"}
+                {
+                    "programs",
+                    "engagements",
+                    "policy_bundles",
+                    "approvals",
+                    "policy_evaluations",
+                    "audit_events",
+                    "outbox",
+                }
                 <= tables
             )
 
