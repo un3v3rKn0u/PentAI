@@ -22,8 +22,7 @@ def migrate(database_path: Path = settings.database_path) -> list[str]:
             """
         )
         applied = {
-            row["version"]
-            for row in connection.execute("SELECT version FROM schema_migrations")
+            row["version"] for row in connection.execute("SELECT version FROM schema_migrations")
         }
         for migration_path in sorted(MIGRATIONS_DIR.glob("*.sql")):
             match = MIGRATION_NAME.match(migration_path.name)

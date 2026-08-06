@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { policyStates } from "./App";
 
-describe("Phase 0 UI safety copy", () => {
-  it("keeps the initial execution state disabled", () => {
-    const executionEnabled = false;
-    expect(executionEnabled).toBe(false);
+describe("authorization workflow UI", () => {
+  it("exposes every required policy lifecycle state", () => {
+    expect(policyStates).toEqual([
+      "draft", "invalid", "awaiting approval", "active", "rejected", "revoked", "expired"
+    ]);
   });
 });

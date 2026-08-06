@@ -97,9 +97,11 @@ def _normalize_percent_encoding(path: str) -> str:
             output.append(path[index])
             index += 1
             continue
-        if index + 2 >= len(path) or not re.fullmatch(r"[0-9A-Fa-f]{2}", path[index + 1:index + 3]):
+        if index + 2 >= len(path) or not re.fullmatch(
+            r"[0-9A-Fa-f]{2}", path[index + 1 : index + 3]
+        ):
             raise CanonicalizationError("malformed percent encoding")
-        encoded = path[index:index + 3]
+        encoded = path[index : index + 3]
         decoded = chr(int(encoded[1:], 16))
         output.append(decoded if decoded in _UNRESERVED else encoded.upper())
         index += 3
