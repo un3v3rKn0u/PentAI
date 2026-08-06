@@ -76,7 +76,9 @@ Manifest/compiler validation uses stable codes including `AUTHORIZATION_AMBIGUOU
 Approval, activation, rejection, revocation, and every policy evaluation append an
 event containing minimal linkage and explanation data. Each event hash covers the
 event body and `previous_hash`. Verification starts at the genesis event and rejects
-mutation, removal, or reordering at the first invalid sequence.
+mutation, interior removal, or reordering at the first invalid sequence. Detecting
+truncation of the final event requires a separately anchored head hash, which is not
+part of this slice.
 
 The UI displays the event chain and current verification result. Audit data stores
 hashes, stable reason codes, rule IDs, actor identity, and subject identity; it does

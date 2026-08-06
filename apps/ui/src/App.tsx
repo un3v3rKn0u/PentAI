@@ -119,14 +119,26 @@ function buildManifest(program: Json, engagement: Json, source: Json) {
   };
 }
 
-function target(url: string) {
+export function buildIntentTarget(url: string) {
+  if (url !== url.trim() || url.includes("\\")) {
+    throw new Error("TARGET_AMBIGUOUS");
+  }
   const parsed = new URL(url);
   const scheme = parsed.protocol.slice(0, -1);
+  if (!["http", "https"].includes(scheme) || parsed.username || parsed.password || parsed.hash) {
+    throw new Error("TARGET_AMBIGUOUS");
+  }
   const port = parsed.port ? Number(parsed.port) : scheme === "https" ? 443 : 80;
   const canonicalUrl = `${scheme}://${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}${parsed.pathname}${parsed.search}`;
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  const kind = hostname.includes(":")
+    ? "ipv6"
+    : /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)
+      ? "ipv4"
+      : "domain";
   return {
     scheme,
-    host: { kind: "domain", value: parsed.hostname.toLowerCase() },
+    host: { kind, value: hostname },
     port,
     path: parsed.pathname || "/",
     query: parsed.search.slice(1),
@@ -253,7 +265,7 @@ export function App() {
         policy_hash: policy.content_hash ?? emptyHash,
         actor: { actor_type: "human", actor_id: "local-human-user" },
         capability: "network.http.get",
-        target: target(intentUrl),
+        target: buildIntentTarget(intentUrl),
         http: {
           method: "GET",
           headers_digest: emptyHash,
