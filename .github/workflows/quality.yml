@@ -23,7 +23,15 @@ jobs:
       - run: ruff check .
       - run: mypy
       - run: pytest
+      - run: pip-audit
       - run: python scripts/validate_contracts.py
+      - name: Build and smoke-test wheel
+        run: |
+          python -m build --wheel
+          python -m venv /tmp/pentai-wheel
+          /tmp/pentai-wheel/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/pentai-wheel/bin/python -c "from pentai_policy.document import contract_issues; assert contract_issues({}, 'engagement-manifest-v2.schema.json')"
 
   ui:
     name: UI
@@ -38,6 +46,7 @@ jobs:
           node-version: "20"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level high
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
