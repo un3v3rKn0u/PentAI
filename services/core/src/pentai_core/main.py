@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -85,7 +86,7 @@ def service() -> AuthorizationService:
     return AuthorizationService(settings.database_path)
 
 
-def call(operation: Any) -> Any:
+def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
     except DomainError as exc:

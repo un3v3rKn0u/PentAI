@@ -45,15 +45,18 @@ def _asset_matches(rule: dict[str, Any], target: dict[str, Any]) -> bool:
             and _path_matches(matcher["path"], target["path"])
         )
     if kind == "domain":
-        return host == {"kind": "domain", "value": matcher["value"]}
+        return bool(host == {"kind": "domain", "value": matcher["value"]})
     if kind == "wildcard_domain":
         if host["kind"] != "domain":
             return False
         value = host["value"]
         base = matcher["value"]
-        return (matcher.get("include_apex") and value == base) or value.endswith("." + base)
+        return bool(
+            (matcher.get("include_apex") and value == base)
+            or value.endswith("." + base)
+        )
     if kind in {"ipv4", "ipv6"}:
-        return host == {"kind": kind, "value": matcher["value"]}
+        return bool(host == {"kind": kind, "value": matcher["value"]})
     if kind == "cidr" and host["kind"] in {"ipv4", "ipv6"}:
         return ip_address(host["value"]) in ip_network(matcher["value"])
     return False
@@ -179,7 +182,7 @@ def evaluate(
             return _decision(intent, stored_hash, "deny", ["PORT_DENIED"], rule_ids)
         allowed_paths = rule.get("allowed_paths", [])
         if allowed_paths and not any(
-            _path_matches(path, canonical["path"]) for path in allowed_paths
+            _path_matches(path, str(canonical["path"])) for path in allowed_paths
         ):
             return _decision(intent, stored_hash, "deny", ["PATH_DENIED"], rule_ids)
     return _decision(intent, stored_hash, "allow", ["EXPLICIT_ALLOW"], rule_ids)

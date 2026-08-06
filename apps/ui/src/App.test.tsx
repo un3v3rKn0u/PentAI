@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { policyStates } from "./App";
 
 describe("authorization workflow safety boundary", () => {
   it("does not expose execution or grant issuance", () => {

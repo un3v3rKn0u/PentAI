@@ -201,6 +201,8 @@ def validate_and_canonicalize_manifest(
             asset_type = asset.get("type")
             raw = asset.get("canonical_value")
             try:
+                if not isinstance(raw, str):
+                    raise CanonicalizationError("canonical value must be a string")
                 if asset_type in {"domain", "wildcard_domain"}:
                     canonical = canonicalize_domain(raw)
                 elif asset_type == "url":
@@ -219,8 +221,8 @@ def validate_and_canonicalize_manifest(
                 normalized["allowed_ports"] = sorted(set(normalized.get("allowed_ports", [])))
                 normalized["allowed_paths"] = sorted(set(normalized.get("allowed_paths", [])))
                 normalized["denied_paths"] = sorted(set(normalized.get("denied_paths", [])))
-                key = (str(asset_type), canonical)
-                previous = seen.get(key)
+                asset_key = (str(asset_type), canonical)
+                previous = seen.get(asset_key)
                 effect = normalized.get("effect")
                 if previous is not None and previous != effect:
                     issues.append(
@@ -228,7 +230,7 @@ def validate_and_canonicalize_manifest(
                             "CONTRADICTORY_RULES", path, "same asset is both allowed and denied"
                         )
                     )
-                seen[key] = str(effect)
+                seen[asset_key] = str(effect)
                 canonical_assets.append(normalized)
             except (CanonicalizationError, TypeError) as exc:
                 issues.append(ValidationIssue("ASSET_INVALID", path, str(exc)))
@@ -248,9 +250,9 @@ def validate_and_canonicalize_manifest(
         allowed = set(techniques.get("allowed_capabilities", []))
         denied = set(techniques.get("denied_capabilities", []))
         conditional = {
-            item.get("capability")
+            str(item["capability"])
             for item in techniques.get("conditional_capabilities", [])
-            if isinstance(item, dict)
+            if isinstance(item, dict) and "capability" in item
         }
         if (allowed & denied) or (allowed & conditional) or (denied & conditional):
             issues.append(
@@ -279,9 +281,13 @@ def validate_and_canonicalize_manifest(
                         f"{capability} requires {_CAPABILITY_METHOD.get(capability)}",
                     )
                 )
-        for key in ("allowed_capabilities", "denied_capabilities", "allowed_http_methods"):
-            if isinstance(techniques.get(key), list):
-                techniques[key] = sorted(set(techniques[key]))
+        for field_name in (
+            "allowed_capabilities",
+            "denied_capabilities",
+            "allowed_http_methods",
+        ):
+            if isinstance(techniques.get(field_name), list):
+                techniques[field_name] = sorted(set(techniques[field_name]))
 
     limits = document.get("operational_limits")
     if not isinstance(limits, dict):
@@ -296,10 +302,17 @@ def validate_and_canonicalize_manifest(
             "maximum_total_requests",
             "maximum_response_bytes",
         )
-        for key in positive:
-            if not isinstance(limits.get(key), (int, float)) or limits[key] <= 0:
+        for field_name in positive:
+            if (
+                not isinstance(limits.get(field_name), (int, float))
+                or limits[field_name] <= 0
+            ):
                 issues.append(
-                    ValidationIssue("LIMITS_INVALID", f"/operational_limits/{key}", "must be > 0")
+                    ValidationIssue(
+                        "LIMITS_INVALID",
+                        f"/operational_limits/{field_name}",
+                        "must be > 0",
+                    )
                 )
 
     engagement = document.get("engagement")
