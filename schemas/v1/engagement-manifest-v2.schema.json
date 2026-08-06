@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/engagement-manifest-v2.schema.json",
+  "title": "PentAI Engagement Manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "engagement",
+    "sources",
+    "scope",
+    "techniques",
+    "operational_limits",
+    "network",
+    "data_handling",
+    "reporting",
+    "agent_controls",
+    "approvals",
+    "unresolved_questions"
+  ],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "engagement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "organization", "program_name", "program_type", "status", "effective_from", "expires_at", "timezone"],
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "organization": {"type": "string", "minLength": 1},
+        "program_name": {"type": "string", "minLength": 1},
+        "program_type": {"enum": ["public_bug_bounty", "private_bug_bounty", "vdp", "pentest"]},
+        "platform": {"type": "string"},
+        "program_url": {"type": "string", "format": "uri"},
+        "status": {"enum": ["draft", "approved", "active", "paused", "expired", "revoked"]},
+        "effective_from": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "timezone": {"type": "string", "minLength": 1},
+        "approved_researcher_identity": {"type": "string"},
+        "jurisdictions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "contacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["security", "emergency"],
+          "properties": {
+            "security": {"type": "string", "minLength": 1},
+            "emergency": {"type": "string", "minLength": 1},
+            "platform": {"type": "string"}
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "reference", "authority", "retrieved_at", "content_hash"],
+        "properties": {
+          "source_id": {"type": "string", "format": "uuid"},
+          "reference": {"type": "string", "minLength": 1},
+          "authority": {"enum": ["contract", "program_staff", "program_page", "platform_rule", "internal_note"]},
+          "retrieved_at": {"type": "string", "format": "date-time"},
+          "effective_at": {"type": "string", "format": "date-time"},
+          "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assets", "discovered_assets_default", "redirects_outside_scope", "third_party_services"],
+      "properties": {
+        "assets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["asset_id", "effect", "type", "canonical_value", "source_reference"],
+            "properties": {
+              "asset_id": {"type": "string", "format": "uuid"},
+              "effect": {"enum": ["allow", "deny"]},
+              "type": {"enum": ["domain", "wildcard_domain", "url", "ipv4", "ipv6", "cidr"]},
+              "canonical_value": {"type": "string", "minLength": 1},
+              "include_apex": {"type": "boolean", "default": false},
+              "environment": {"enum": ["production", "staging", "test", "unknown"]},
+              "allowed_paths": {"type": "array", "items": {"type": "string", "pattern": "^/"}, "uniqueItems": true},
+              "denied_paths": {"type": "array", "items": {"type": "string", "pattern": "^/"}, "uniqueItems": true},
+              "allowed_ports": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 65535}, "uniqueItems": true},
+              "ownership_verified": {"type": "boolean", "default": false},
+              "source_reference": {"type": "string", "minLength": 1},
+              "notes": {"type": "string"}
+            }
+          }
+        },
+        "discovered_assets_default": {"const": "deny"},
+        "redirects_outside_scope": {"const": "stop"},
+        "third_party_services": {"enum": ["deny", "allow_if_explicit"]},
+        "shared_hosting_and_cdn": {"enum": ["deny", "allow_if_explicit"]},
+        "scope_expansion_process": {"type": "string"}
+      }
+    },
+    "techniques": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_capabilities", "denied_capabilities", "conditional_capabilities", "allowed_http_methods"],
+      "properties": {
+        "allowed_capabilities": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$"}, "uniqueItems": true},
+        "denied_capabilities": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$"}, "uniqueItems": true},
+        "conditional_capabilities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["capability", "approval_type"],
+            "properties": {
+              "capability": {"type": "string"},
+              "approval_type": {"type": "string"},
+              "conditions": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "allowed_http_methods": {
+          "type": "array",
+          "items": {"enum": ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]},
+          "uniqueItems": true
+        },
+        "forbidden_techniques": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "operational_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests_per_second", "per_host_requests_per_second", "burst_limit", "concurrent_connections", "maximum_runtime_minutes", "maximum_total_requests", "stop_conditions"],
+      "properties": {
+        "requests_per_second": {"type": "number", "exclusiveMinimum": 0},
+        "per_host_requests_per_second": {"type": "number", "exclusiveMinimum": 0},
+        "burst_limit": {"type": "integer", "minimum": 1},
+        "concurrent_connections": {"type": "integer", "minimum": 1},
+        "maximum_runtime_minutes": {"type": "integer", "minimum": 1},
+        "maximum_total_requests": {"type": "integer", "minimum": 1},
+        "maximum_request_body_bytes": {"type": "integer", "minimum": 0},
+        "maximum_response_bytes": {"type": "integer", "minimum": 1},
+        "allowed_testing_windows": {"type": "array", "items": {"type": "object"}},
+        "blackout_periods": {"type": "array", "items": {"type": "object"}},
+        "required_headers": {"type": "object", "additionalProperties": {"type": "string"}},
+        "stop_conditions": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route_mode", "registered_source_ipv4", "registered_source_ipv6", "ipv6_mode", "dns_mode", "pause_on_identity_change"],
+      "properties": {
+        "route_mode": {"enum": ["static_ip", "vpn", "proxy", "local_gateway"]},
+        "route_profile_id": {"type": "string"},
+        "registered_source_ipv4": {"type": "array", "items": {"type": "string", "format": "ipv4"}, "uniqueItems": true},
+        "registered_source_ipv6": {"type": "array", "items": {"type": "string", "format": "ipv6"}, "uniqueItems": true},
+        "ipv6_mode": {"enum": ["disabled", "approved_only"]},
+        "dns_mode": {"enum": ["tunnel_resolver", "approved_resolver"]},
+        "approved_resolvers": {"type": "array", "items": {"type": "string"}},
+        "pause_on_identity_change": {"const": true}
+      }
+    },
+    "data_handling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["real_user_data", "retention_days", "approved_storage", "remote_ai_max_classification"],
+      "properties": {
+        "real_user_data": {"enum": ["avoid_and_stop", "minimal_if_explicit"]},
+        "maximum_records_to_view": {"type": "integer", "minimum": 0},
+        "retention_days": {"type": "integer", "minimum": 1},
+        "approved_storage": {"enum": ["local_encrypted"]},
+        "remote_ai_max_classification": {"enum": ["public", "internal", "confidential", "none"]},
+        "redaction_rules": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "reporting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["submission_channel", "submission_requires_human_approval", "automatic_submission"],
+      "properties": {
+        "submission_channel": {"type": "string", "minLength": 1},
+        "required_fields": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "evidence_rules": {"type": "array", "items": {"type": "string"}},
+        "submission_requires_human_approval": {"const": true},
+        "automatic_submission": {"const": false},
+        "disclosure_timeline": {"type": "string"}
+      }
+    },
+    "agent_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["autonomy", "maximum_test_depth", "maximum_runtime_minutes", "human_approval_required_for"],
+      "properties": {
+        "autonomy": {"const": "supervised_testing"},
+        "maximum_test_depth": {"type": "integer", "minimum": 0},
+        "maximum_runtime_minutes": {"type": "integer", "minimum": 1},
+        "human_approval_required_for": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      }
+    },
+    "approvals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope_reviewer", "rules_reviewer", "technical_controls_reviewer", "status"],
+      "properties": {
+        "scope_reviewer": {"type": "string", "minLength": 1},
+        "rules_reviewer": {"type": "string", "minLength": 1},
+        "technical_controls_reviewer": {"type": "string", "minLength": 1},
+        "approved_at": {"type": "string", "format": "date-time"},
+        "status": {"enum": ["pending", "approved", "rejected"]}
+      }
+    },
+    "known_issues": {"type": "array", "items": {"type": "object"}},
+    "unresolved_questions": {"type": "array", "items": {"type": "string"}},
+    "normalization_warnings": {"type": "array", "items": {"type": "string"}}
+  }
+}

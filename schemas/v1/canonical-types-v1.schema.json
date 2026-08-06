@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/canonical-types-v1.schema.json",
+  "title": "PentAI Canonical Types v1",
+  "type": "object",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "rfc3339": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "domain": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 253,
+      "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$"
+    },
+    "ipv4": {
+      "type": "string",
+      "format": "ipv4"
+    },
+    "ipv6": {
+      "type": "string",
+      "format": "ipv6"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "host": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": {"const": "domain"},
+            "value": {"$ref": "#/$defs/domain"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": {"const": "ipv4"},
+            "value": {"$ref": "#/$defs/ipv4"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": {"const": "ipv6"},
+            "value": {"$ref": "#/$defs/ipv6"}
+          }
+        }
+      ]
+    },
+    "cidr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "network", "prefix_length", "canonical"],
+      "properties": {
+        "family": {"enum": ["ipv4", "ipv6"]},
+        "network": {"type": "string"},
+        "prefix_length": {"type": "integer", "minimum": 0, "maximum": 128},
+        "canonical": {"type": "string"}
+      }
+    },
+    "canonicalUrl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "host", "port", "path", "canonical_url"],
+      "properties": {
+        "scheme": {"enum": ["http", "https"]},
+        "host": {"$ref": "#/$defs/host"},
+        "port": {"$ref": "#/$defs/port"},
+        "path": {"type": "string", "pattern": "^/"},
+        "query": {"type": "string", "default": ""},
+        "canonical_url": {"type": "string", "format": "uri"}
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {"enum": ["human", "agent", "service", "plugin"]},
+        "actor_id": {"type": "string", "minLength": 1},
+        "display_name": {"type": "string"}
+      }
+    }
+  }
+}

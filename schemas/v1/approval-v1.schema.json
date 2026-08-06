@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/approval-v1.schema.json",
+  "title": "PentAI Approval v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "approval_id", "approval_type", "subject", "assessment_id", "policy_hash", "constraints", "decision", "approver", "decided_at", "expires_at", "signature"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "approval_id": {"type": "string", "format": "uuid"},
+    "approval_type": {"enum": ["policy_activation", "conditional_action", "sensitive_validation", "report_export"]},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_type", "subject_id"],
+      "properties": {
+        "subject_type": {"enum": ["policy", "action_intent", "finding", "report"]},
+        "subject_id": {"type": "string", "format": "uuid"}
+      }
+    },
+    "assessment_id": {"type": ["string", "null"], "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capability": {"type": "string"},
+        "target_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "maximum_impact": {"enum": ["passive", "benign", "minimal_validation", "sensitive"]},
+        "maximum_uses": {"type": "integer", "minimum": 1, "maximum": 1}
+      }
+    },
+    "decision": {"enum": ["approved", "rejected"]},
+    "approver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {"const": "human"},
+        "actor_id": {"type": "string", "minLength": 1},
+        "display_name": {"type": "string"}
+      }
+    },
+    "reason": {"type": "string", "minLength": 1},
+    "decided_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "key_id", "value"],
+      "properties": {
+        "algorithm": {"enum": ["Ed25519"]},
+        "key_id": {"type": "string", "minLength": 1},
+        "value": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

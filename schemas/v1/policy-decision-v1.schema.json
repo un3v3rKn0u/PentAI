@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/policy-decision-v1.schema.json",
+  "title": "PentAI PolicyDecision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "decision_id", "intent_id", "assessment_id", "policy_hash", "outcome", "reason_codes", "evaluated_rule_ids", "runtime_checks_required", "decided_at", "evaluator"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "decision_id": {"type": "string", "format": "uuid"},
+    "intent_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "outcome": {"enum": ["allow", "deny", "approval_required"]},
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "EXPLICIT_ALLOW",
+          "DEFAULT_DENY",
+          "EXPLICIT_DENY",
+          "POLICY_INACTIVE",
+          "POLICY_EXPIRED",
+          "POLICY_REVOKED",
+          "POLICY_HASH_MISMATCH",
+          "TARGET_AMBIGUOUS",
+          "TARGET_OUT_OF_SCOPE",
+          "CAPABILITY_DENIED",
+          "METHOD_DENIED",
+          "PORT_DENIED",
+          "PATH_DENIED",
+          "TESTING_WINDOW_CLOSED",
+          "BUDGET_EXHAUSTED",
+          "APPROVAL_MISSING",
+          "NETWORK_UNATTESTED",
+          "KNOWN_ISSUE_BLOCKED",
+          "STOP_CONDITION_ACTIVE"
+        ]
+      }
+    },
+    "evaluated_rule_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}, "uniqueItems": true},
+    "required_approval_type": {"type": "string"},
+    "reserved_budget_id": {"type": "string", "format": "uuid"},
+    "runtime_checks_required": {
+      "type": "array",
+      "items": {"enum": ["policy_status", "clock", "route_identity", "source_ip", "dns", "destination_ip", "sni_host", "port", "redirect", "rate", "response_size"]},
+      "uniqueItems": true
+    },
+    "decided_at": {"type": "string", "format": "date-time"},
+    "evaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "canonicalization_version"],
+      "properties": {
+        "name": {"const": "pentai-policy-evaluator"},
+        "version": {"type": "string"},
+        "canonicalization_version": {"const": "1.0.0"}
+      }
+    }
+  }
+}

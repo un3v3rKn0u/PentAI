@@ -1,0 +1,58 @@
+{
+  "version": "1.0.0",
+  "domain": {
+    "valid": [
+      {"input": "Example.COM.", "expected": "example.com"},
+      {"input": "api.example.com", "expected": "api.example.com"},
+      {"input": "bücher.example", "expected": "xn--bcher-kva.example"}
+    ],
+    "invalid": [
+      "",
+      " example.com",
+      "example.com/path",
+      "user@example.com",
+      "example..com",
+      "-bad.example",
+      "bad-.example",
+      "example.com.evil.test/"
+    ]
+  },
+  "ip": {
+    "valid": [
+      {"input": "192.0.2.1", "expected": {"family": "ipv4", "value": "192.0.2.1"}},
+      {"input": "2001:0db8:0:0:0:0:0:1", "expected": {"family": "ipv6", "value": "2001:db8::1"}}
+    ],
+    "invalid": ["127.1", "010.0.0.1", "0x7f000001", "fe80::1%en0", " 192.0.2.1"]
+  },
+  "cidr": {
+    "valid": [
+      {"input": "192.0.2.0/24", "expected": {"family": "ipv4", "network": "192.0.2.0", "prefix_length": 24, "canonical": "192.0.2.0/24"}},
+      {"input": "2001:db8::/32", "expected": {"family": "ipv6", "network": "2001:db8::", "prefix_length": 32, "canonical": "2001:db8::/32"}}
+    ],
+    "invalid": ["192.0.2.1/24", "2001:db8::1/32", "192.0.2.0/33", "192.0.2.0"]
+  },
+  "url": {
+    "valid": [
+      {
+        "input": "HTTPS://Example.COM:443/api/../v1/items?page=1",
+        "expected_canonical_url": "https://example.com/v1/items?page=1"
+      },
+      {
+        "input": "http://192.0.2.1:8080/",
+        "expected_canonical_url": "http://192.0.2.1:8080/"
+      },
+      {
+        "input": "https://[2001:db8::1]/",
+        "expected_canonical_url": "https://[2001:db8::1]/"
+      }
+    ],
+    "invalid": [
+      "ftp://example.com/",
+      "https://user:pass@example.com/",
+      "https://example.com/#fragment",
+      "https:\\\\example.com\\path",
+      "https://example.com/%ZZ",
+      "relative/path"
+    ]
+  }
+}

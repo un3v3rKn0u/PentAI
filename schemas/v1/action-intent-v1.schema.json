@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/action-intent-v1.schema.json",
+  "title": "PentAI ActionIntent v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "intent_id", "assessment_id", "policy_hash", "actor", "capability", "target", "parameters_digest", "impact", "created_at", "expires_at", "idempotency_key"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "intent_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {"enum": ["human", "agent", "service"]},
+        "actor_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "capability": {"enum": ["network.http.get", "network.http.head", "network.http.options"]},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "host", "port", "path", "canonical_url"],
+      "properties": {
+        "scheme": {"enum": ["http", "https"]},
+        "host": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": {"enum": ["domain", "ipv4", "ipv6"]},
+            "value": {"type": "string", "minLength": 1}
+          }
+        },
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "path": {"type": "string", "pattern": "^/"},
+        "query": {"type": "string"},
+        "canonical_url": {"type": "string", "format": "uri"}
+      }
+    },
+    "http": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "headers_digest", "body_digest", "follow_redirects"],
+      "properties": {
+        "method": {"enum": ["GET", "HEAD", "OPTIONS"]},
+        "headers_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "body_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "follow_redirects": {"type": "boolean"},
+        "maximum_redirects": {"type": "integer", "minimum": 0, "maximum": 10}
+      }
+    },
+    "account_reference": {"type": "string"},
+    "parameters_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "impact": {"enum": ["passive", "benign", "minimal_validation", "sensitive"]},
+    "requested_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 300},
+        "maximum_response_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "idempotency_key": {"type": "string", "minLength": 16, "maxLength": 128}
+  }
+}

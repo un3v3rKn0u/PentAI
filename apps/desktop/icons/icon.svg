@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PentAI scaffold icon">
+  <rect width="512" height="512" rx="112" fill="#0e1218"/>
+  <path d="M256 72 416 132v112c0 101-64 166-160 196C160 410 96 345 96 244V132z" fill="#15251f" stroke="#34d399" stroke-width="24"/>
+  <path d="M190 334V174h82c48 0 78 27 78 70s-30 70-78 70h-34v20zm48-62h30c21 0 33-10 33-28s-12-28-33-28h-30z" fill="#e9eef5"/>
+</svg>

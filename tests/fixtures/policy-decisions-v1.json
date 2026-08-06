@@ -1,0 +1,47 @@
+{
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "no-active-policy-denies",
+      "policy_state": "none",
+      "intent": {"capability": "network.http.get", "target": "https://example.com/"},
+      "expected": {"outcome": "deny", "reason": "POLICY_INACTIVE"}
+    },
+    {
+      "id": "exact-allow",
+      "policy_state": "active",
+      "allow": ["https://example.com/app"],
+      "intent": {"capability": "network.http.get", "target": "https://example.com/app/status"},
+      "expected": {"outcome": "allow", "reason": "EXPLICIT_ALLOW"}
+    },
+    {
+      "id": "path-boundary-deny",
+      "policy_state": "active",
+      "allow": ["https://example.com/api"],
+      "intent": {"capability": "network.http.get", "target": "https://example.com/apiv2"},
+      "expected": {"outcome": "deny", "reason": "TARGET_OUT_OF_SCOPE"}
+    },
+    {
+      "id": "narrow-deny-wins",
+      "policy_state": "active",
+      "allow": ["https://example.com/"],
+      "deny": ["https://example.com/admin"],
+      "intent": {"capability": "network.http.get", "target": "https://example.com/admin/users"},
+      "expected": {"outcome": "deny", "reason": "EXPLICIT_DENY"}
+    },
+    {
+      "id": "subdomain-suffix-trick-denies",
+      "policy_state": "active",
+      "allow_wildcard": [{"base": "example.com", "include_apex": false}],
+      "intent": {"capability": "network.http.get", "target": "https://example.com.evil.test/"},
+      "expected": {"outcome": "deny", "reason": "TARGET_OUT_OF_SCOPE"}
+    },
+    {
+      "id": "mutation-method-denies-in-mvp",
+      "policy_state": "active",
+      "allow": ["https://example.com/"],
+      "intent": {"capability": "network.http.post", "target": "https://example.com/"},
+      "expected": {"outcome": "deny", "reason": "CAPABILITY_DENIED"}
+    }
+  ]
+}
