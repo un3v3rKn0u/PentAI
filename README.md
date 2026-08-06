@@ -20,6 +20,8 @@ See:
 - `docs/contracts/`
 - `schemas/v1/`
 - `docs/security/authorization_vertical_slice.md`
+- `docs/release_process.md`
+- `.github/SECURITY.md`
 
 ## Repository layout
 
@@ -68,6 +70,10 @@ The full test command after development dependencies are installed is:
 ```text
 pytest
 ```
+
+Security vulnerabilities should be reported privately through the repository's
+**Security → Advisories → Report a vulnerability** flow. Do not open a public issue
+containing vulnerability details, credentials, target data, or assessment evidence.
 
 ## Current limitations
 
