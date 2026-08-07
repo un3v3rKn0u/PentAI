@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.pentai.desktop",
   "build": {
-    "beforeDevCommand": "npm --prefix ../ui run dev",
-    "beforeBuildCommand": "npm --prefix ../ui run build",
+    "beforeDevCommand": "pnpm --dir apps/ui dev",
+    "beforeBuildCommand": "pnpm --dir apps/ui build",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../ui/dist"
   },

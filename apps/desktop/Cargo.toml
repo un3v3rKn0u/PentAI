@@ -19,4 +19,5 @@ tauri = { version = "2", features = [] }
 
 [features]
 default = ["custom-protocol"]
+bootstrap-smoke = []
 custom-protocol = ["tauri/custom-protocol"]

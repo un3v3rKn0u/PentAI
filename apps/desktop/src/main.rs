@@ -173,9 +173,12 @@ fn spawn_core(credential: &str, port: u16, database_path: &Path) -> Result<Child
         .env("PENTAI_CORE_PORT", port.to_string())
         .env("PENTAI_DATABASE_PATH", database_path)
         .env("PENTAI_LAUNCH_CREDENTIAL", credential)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdin(Stdio::null());
+    #[cfg(feature = "bootstrap-smoke")]
+    command.stdout(Stdio::inherit()).stderr(Stdio::inherit());
+    #[cfg(not(feature = "bootstrap-smoke"))]
+    command.stdout(Stdio::null()).stderr(Stdio::null());
+    command
         .spawn()
         .map_err(|_| "core process could not be started".to_string())
 }
@@ -258,6 +261,14 @@ fn main() {
                 port,
                 child: Mutex::new(Some(child)),
             });
+            #[cfg(feature = "bootstrap-smoke")]
+            {
+                let app_handle = app.handle().clone();
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_millis(250));
+                    app_handle.exit(0);
+                });
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

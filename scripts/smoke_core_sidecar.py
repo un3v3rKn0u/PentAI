@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+MAX_DIAGNOSTIC_BYTES = 4_000
 
 
 def host_triple() -> str:
@@ -60,6 +61,11 @@ def environment(port: int, database: Path, credential: str) -> dict[str, str]:
     }
 
 
+def child_diagnostic(stdout: bytes, stderr: bytes, credential: str) -> str:
+    combined = (stdout + stderr).replace(credential.encode(), b"<redacted>")
+    return combined[-MAX_DIAGNOSTIC_BYTES:].decode(errors="replace").strip()
+
+
 def main() -> None:
     executable = sidecar_path()
     if not executable.is_file():
@@ -78,7 +84,10 @@ def main() -> None:
         try:
             while True:
                 if process.poll() is not None:
-                    raise RuntimeError("core sidecar exited before readiness")
+                    stdout, stderr = process.communicate(timeout=1)
+                    diagnostic = child_diagnostic(stdout, stderr, credential)
+                    detail = f": {diagnostic}" if diagnostic else ""
+                    raise RuntimeError(f"core sidecar exited before readiness{detail}")
                 try:
                     if request(port, "/api/v1/readiness", credential) == 200:
                         break
