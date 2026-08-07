@@ -253,23 +253,24 @@ fn main() {
                 let _ = child.wait();
                 return Err(error.into());
             }
-            app.manage(CoreState {
+            let state = CoreState {
                 bootstrap: CoreBootstrap {
                     api_base_url: format!("http://127.0.0.1:{port}/api/v1"),
                     credential,
                 },
                 port,
                 child: Mutex::new(Some(child)),
-            });
+            };
             #[cfg(feature = "bootstrap-smoke")]
             {
-                let app_handle = app.handle().clone();
-                thread::spawn(move || {
-                    thread::sleep(Duration::from_millis(250));
-                    app_handle.exit(0);
-                });
+                state.stop();
+                std::process::exit(0);
             }
-            Ok(())
+            #[cfg(not(feature = "bootstrap-smoke"))]
+            {
+                app.manage(state);
+                Ok(())
+            }
         })
         .build(tauri::generate_context!())
         .expect("failed to initialize PentAI desktop");
