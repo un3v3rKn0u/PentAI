@@ -1,9 +1,14 @@
-import { FormEvent, useMemo, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-const API = "http://127.0.0.1:8741/api/v1";
 const emptyHash = "0".repeat(64);
 
 type Json = Record<string, any>;
+export type CoreConnection = {
+  apiBaseUrl: string;
+  credential: string;
+};
+
 type WorkflowState =
   | "draft"
   | "invalid"
@@ -13,14 +18,31 @@ type WorkflowState =
   | "revoked"
   | "expired";
 
+export async function bootstrapCore(): Promise<CoreConnection> {
+  if (isTauri()) {
+    return invoke<CoreConnection>("core_bootstrap");
+  }
+  if (import.meta.env.DEV) {
+    const apiBaseUrl = import.meta.env.VITE_PENTAI_CORE_URL;
+    const credential = import.meta.env.VITE_PENTAI_LAUNCH_CREDENTIAL;
+    if (apiBaseUrl && credential) {
+      return { apiBaseUrl, credential };
+    }
+  }
+  throw new Error("CORE_BOOTSTRAP_UNAVAILABLE");
+}
+
 function iso(hours: number) {
   return new Date(Date.now() + hours * 3_600_000).toISOString();
 }
 
-async function request(path: string, body?: Json) {
-  const response = await fetch(`${API}${path}`, {
+export async function coreRequest(connection: CoreConnection, path: string, body?: Json) {
+  const response = await fetch(`${connection.apiBaseUrl}${path}`, {
     method: body ? "POST" : "GET",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      "Authorization": `Bearer ${connection.credential}`,
+      ...(body ? { "Content-Type": "application/json" } : {})
+    },
     body: body ? JSON.stringify(body) : undefined
   });
   const result = await response.json();
@@ -147,6 +169,8 @@ export function buildIntentTarget(url: string) {
 }
 
 export function App() {
+  const [connection, setConnection] = useState<CoreConnection | null>(null);
+  const [bootstrapError, setBootstrapError] = useState("");
   const [programName, setProgramName] = useState("Synthetic authorization program");
   const [sourceText, setSourceText] = useState(
     "Synthetic authorization for HTTPS GET requests to example.test/api."
@@ -170,6 +194,39 @@ export function App() {
     () => policy?.policy ? JSON.stringify(policy.policy, null, 2) : "Compile a valid manifest to preview Policy IR v1.",
     [policy]
   );
+
+  useEffect(() => {
+    let active = true;
+    bootstrapCore()
+      .then((result) => {
+        if (active) setConnection(result);
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setBootstrapError(
+            reason instanceof Error && reason.message === "AUTHENTICATION_REQUIRED"
+              ? "CORE_AUTHENTICATION_FAILED"
+              : "CORE_UNAVAILABLE"
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function request(path: string, body?: Json) {
+    if (!connection) throw new Error("CORE_UNAVAILABLE");
+    try {
+      return await coreRequest(connection, path, body);
+    } catch (reason) {
+      if (reason instanceof Error && reason.message === "AUTHENTICATION_REQUIRED") {
+        setBootstrapError("CORE_AUTHENTICATION_FAILED");
+        setConnection(null);
+      }
+      throw reason;
+    }
+  }
 
   async function run(operation: () => Promise<void>) {
     setError("");
@@ -245,10 +302,9 @@ export function App() {
     if (!policy) return;
     await run(async () => {
       await request(`/policies/${policy.id}/approval`, {
-        approver_id: "local-human-user",
         decision: "approved"
       });
-      await request(`/policies/${policy.id}/activate`, { actor_id: "local-human-user" });
+      await request(`/policies/${policy.id}/activate`, {});
       setState("active");
       await refreshAudit();
     });
@@ -303,6 +359,12 @@ export function App() {
         <span>No ActionGrants, sockets, HTTP, HTTPS, DNS, or target execution.</span>
       </section>
 
+      {!connection && (
+        <p className="error" role="alert">
+          {bootstrapError || "Starting authenticated local core…"}
+        </p>
+      )}
+
       {error && <p className="error" role="alert">{error}</p>}
 
       <div className="workflow-grid">
@@ -310,11 +372,11 @@ export function App() {
           <h2><span>1</span> Program and source</h2>
           <form onSubmit={createProgram}>
             <label>Program name<input value={programName} onChange={(event) => setProgramName(event.target.value)} /></label>
-            <button type="submit">Create program</button>
+            <button type="submit" disabled={!connection}>Create program</button>
           </form>
           <form onSubmit={importSource}>
             <label>Authoritative source<textarea rows={4} value={sourceText} onChange={(event) => setSourceText(event.target.value)} /></label>
-            <button type="submit" disabled={!canImport}>Import and hash source</button>
+            <button type="submit" disabled={!connection || !canImport}>Import and hash source</button>
           </form>
           {source && <dl className="hash"><dt>SHA-256 provenance</dt><dd>{source.content_hash}</dd></dl>}
         </section>
@@ -332,8 +394,8 @@ export function App() {
             placeholder="Import a source to create a provenance-linked draft."
           />
           <div className="button-row">
-            <button onClick={validateManifest} disabled={!canValidate}>Validate and canonicalize</button>
-            <button onClick={compilePolicy} disabled={!manifest?.valid}>Compile Policy IR v1</button>
+            <button onClick={validateManifest} disabled={!connection || !canValidate}>Validate and canonicalize</button>
+            <button onClick={compilePolicy} disabled={!connection || !manifest?.valid}>Compile Policy IR v1</button>
           </div>
           {manifest && (
             <div className={manifest.valid ? "result good" : "result bad"}>
@@ -350,7 +412,7 @@ export function App() {
         <section className="panel">
           <h2><span>3</span> Review and activation</h2>
           <pre className="preview">{policyPreview}</pre>
-          <button onClick={approveAndActivate} disabled={!policy || state === "active"}>
+          <button onClick={approveAndActivate} disabled={!connection || !policy || state === "active"}>
             Explicitly approve and activate
           </button>
           <p className="hint">Approval binds the exact manifest and compiled-policy hashes.</p>
@@ -359,7 +421,7 @@ export function App() {
         <section className="panel">
           <h2><span>4</span> ActionIntent simulator</h2>
           <label>Canonical HTTPS URL<input value={intentUrl} onChange={(event) => setIntentUrl(event.target.value)} /></label>
-          <button onClick={simulate} disabled={state !== "active"}>Evaluate intent</button>
+          <button onClick={simulate} disabled={!connection || state !== "active"}>Evaluate intent</button>
           {decision && (
             <div className={`decision ${decision.outcome}`}>
               <strong>{decision.outcome}</strong>
@@ -371,7 +433,7 @@ export function App() {
         <section className="panel wide audit-panel">
           <div className="panel-heading">
             <h2><span>5</span> Tamper-evident audit</h2>
-            <button onClick={() => run(refreshAudit)}>Refresh and verify</button>
+            <button onClick={() => run(refreshAudit)} disabled={!connection}>Refresh and verify</button>
           </div>
           <p className={audit.verification.valid ? "verified" : "error"}>
             Chain {audit.verification.valid ? "verified" : "invalid"} · {audit.verification.event_count ?? 0} events

@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
-from pentai_core.config import settings
 from pentai_core.database import transaction
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[4] / "migrations"
 MIGRATION_NAME = re.compile(r"^(?P<version>\d{4})_[a-z0-9_]+\.sql$")
 
 
-def migrate(database_path: Path = settings.database_path) -> list[str]:
+def migrate(database_path: Path | None = None) -> list[str]:
+    database_path = database_path or Path(os.getenv("PENTAI_DATABASE_PATH", "var/pentai.db"))
     applied_now: list[str] = []
     with transaction(database_path) as connection:
         connection.execute(

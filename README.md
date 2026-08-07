@@ -20,6 +20,8 @@ See:
 - `docs/contracts/`
 - `schemas/v1/`
 - `docs/security/authorization_vertical_slice.md`
+- `docs/adr/0001-authenticated-local-core-transport.md`
+- `docs/security/local_transport_threat_model.md`
 - `docs/release_process.md`
 - `.github/SECURITY.md`
 
@@ -39,22 +41,31 @@ docs/               Product, security, and contract documents
 
 ## Local development
 
-### Core service
+### Authenticated desktop and core
 
 ```text
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pentai_core.migrate
-.venv/bin/uvicorn pentai_core.main:app --reload --host 127.0.0.1 --port 8741
+pnpm install
+pnpm --filter @pentai/ui build
+cargo run --manifest-path apps/desktop/Cargo.toml
 ```
 
-### UI
+The desktop generates a fresh credential, selects a loopback port, starts the core,
+waits for authenticated readiness, passes connection state to the UI, and terminates
+the child on exit. The core intentionally refuses standalone startup without a launch
+credential.
+
+### Standalone UI development
 
 ```text
-corepack enable
-pnpm install
+VITE_PENTAI_CORE_URL=<explicit-development-url> \
+VITE_PENTAI_LAUNCH_CREDENTIAL=<current-launch-credential> \
 pnpm --filter @pentai/ui dev
 ```
+
+These variables are recognized only by Vite development builds. Production obtains
+bootstrap state exclusively through Tauri.
 
 ### Tests
 
