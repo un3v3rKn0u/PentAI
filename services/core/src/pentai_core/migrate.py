@@ -22,8 +22,7 @@ def migrate(database_path: Path = settings.database_path) -> list[str]:
             """
         )
         applied = {
-            row["version"]
-            for row in connection.execute("SELECT version FROM schema_migrations")
+            row["version"] for row in connection.execute("SELECT version FROM schema_migrations")
         }
         for migration_path in sorted(MIGRATIONS_DIR.glob("*.sql")):
             match = MIGRATION_NAME.match(migration_path.name)
@@ -32,10 +31,12 @@ def migrate(database_path: Path = settings.database_path) -> list[str]:
             version = match.group("version")
             if version in applied:
                 continue
-            connection.executescript(migration_path.read_text(encoding="utf-8"))
-            connection.execute(
-                "INSERT INTO schema_migrations(version) VALUES (?)",
-                (version,),
+            migration = migration_path.read_text(encoding="utf-8")
+            connection.executescript(
+                "BEGIN IMMEDIATE;\n"
+                f"{migration}\n"
+                f"INSERT INTO schema_migrations(version) VALUES ('{version}');\n"
+                "COMMIT;"
             )
             applied_now.append(version)
     return applied_now

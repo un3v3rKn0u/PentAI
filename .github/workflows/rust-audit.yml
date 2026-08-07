@@ -1,0 +1,37 @@
+name: Rust audit
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "apps/desktop/Cargo.toml"
+      - "apps/desktop/Cargo.lock"
+      - ".github/workflows/rust-audit.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "apps/desktop/Cargo.toml"
+      - "apps/desktop/Cargo.lock"
+      - ".github/workflows/rust-audit.yml"
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: RustSec audit
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Audit locked Rust dependencies
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: apps/desktop
