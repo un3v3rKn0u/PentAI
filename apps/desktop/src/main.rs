@@ -15,6 +15,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+#[cfg(not(feature = "bootstrap-smoke"))]
 use tauri::{Manager, State};
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(12);
@@ -60,6 +61,7 @@ impl CoreState {
 }
 
 #[tauri::command]
+#[cfg(not(feature = "bootstrap-smoke"))]
 fn core_bootstrap(state: State<'_, CoreState>) -> CoreBootstrap {
     state.bootstrap.clone()
 }
@@ -235,6 +237,32 @@ fn wait_until_ready(child: &mut Child, port: u16, credential: &str) -> Result<()
     Err("core readiness timed out".to_string())
 }
 
+#[cfg(feature = "bootstrap-smoke")]
+fn main() {
+    let credential = launch_credential().expect("secure credential generation failed");
+    let port = reserve_loopback_port().expect("no loopback port is available");
+    let database_path =
+        env::temp_dir().join(format!("pentai-bootstrap-smoke-{}.db", std::process::id()));
+    let mut child = spawn_core(&credential, port, &database_path)
+        .expect("packaged core process could not be started");
+    if let Err(error) = wait_until_ready(&mut child, port, &credential) {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("{error}");
+    }
+    CoreState {
+        bootstrap: CoreBootstrap {
+            api_base_url: format!("http://127.0.0.1:{port}/api/v1"),
+            credential,
+        },
+        port,
+        child: Mutex::new(Some(child)),
+    }
+    .stop();
+    let _ = std::fs::remove_file(database_path);
+}
+
+#[cfg(not(feature = "bootstrap-smoke"))]
 fn main() {
     let application = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![core_bootstrap])
@@ -253,24 +281,15 @@ fn main() {
                 let _ = child.wait();
                 return Err(error.into());
             }
-            let state = CoreState {
+            app.manage(CoreState {
                 bootstrap: CoreBootstrap {
                     api_base_url: format!("http://127.0.0.1:{port}/api/v1"),
                     credential,
                 },
                 port,
                 child: Mutex::new(Some(child)),
-            };
-            #[cfg(feature = "bootstrap-smoke")]
-            {
-                state.stop();
-                std::process::exit(0);
-            }
-            #[cfg(not(feature = "bootstrap-smoke"))]
-            {
-                app.manage(state);
-                Ok(())
-            }
+            });
+            Ok(())
         })
         .build(tauri::generate_context!())
         .expect("failed to initialize PentAI desktop");

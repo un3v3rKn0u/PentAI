@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,21 +15,12 @@ def desktop_executable() -> Path:
     return RELEASE / f"pentai-desktop{extension}"
 
 
-def command(executable: Path) -> list[str]:
-    if sys.platform.startswith("linux"):
-        xvfb_run = shutil.which("xvfb-run")
-        if xvfb_run is None:
-            raise RuntimeError("xvfb-run is required for the Linux desktop smoke test")
-        return [xvfb_run, "--auto-servernum", str(executable)]
-    return [str(executable)]
-
-
 def main() -> None:
     executable = desktop_executable()
     if not executable.is_file():
         raise RuntimeError(f"bundled desktop executable is missing: {executable}")
     completed = subprocess.run(  # noqa: S603 - executable is the locally built desktop
-        command(executable),
+        [str(executable)],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         timeout=30,
