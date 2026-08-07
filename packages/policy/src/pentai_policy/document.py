@@ -65,20 +65,27 @@ class ManifestValidation:
         )
 
 
-_SCHEMAS = Path(__file__).resolve().parents[4] / "schemas" / "v1"
+def _source_schema(schema_name: str) -> Path | None:
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "schemas" / "v1" / schema_name
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 @cache
 def _contract_validator(schema_name: str) -> Draft202012Validator:
-    source_schema = _SCHEMAS / schema_name
-    if source_schema.is_file():
-        schema_text = source_schema.read_text(encoding="utf-8")
-    else:
+    try:
         schema_text = (
             resources.files("pentai_policy")
             .joinpath("schemas", schema_name)
             .read_text(encoding="utf-8")
         )
+    except FileNotFoundError:
+        source_schema = _source_schema(schema_name)
+        if source_schema is None:
+            raise
+        schema_text = source_schema.read_text(encoding="utf-8")
     return Draft202012Validator(json.loads(schema_text), format_checker=FormatChecker())
 
 

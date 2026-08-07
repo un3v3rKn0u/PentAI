@@ -43,6 +43,8 @@ def main() -> None:
     os.environ["PYINSTALLER_CONFIG_DIR"] = str(BUILD_ROOT / "config")
     schema_source = ROOT / "schemas" / "v1"
     schema_destination = "pentai_policy/schemas"
+    migrations_source = ROOT / "migrations"
+    migrations_destination = "pentai_core/migrations"
 
     PyInstaller.__main__.run(
         [
@@ -63,6 +65,8 @@ def main() -> None:
             str(ROOT / "packages" / "policy" / "src"),
             "--add-data",
             f"{schema_source}{os.pathsep}{schema_destination}",
+            "--add-data",
+            f"{migrations_source}{os.pathsep}{migrations_destination}",
             str(ROOT / "scripts" / "core_sidecar_entry.py"),
         ]
     )
