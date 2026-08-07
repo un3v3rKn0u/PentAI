@@ -27,6 +27,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/pentai-core"],
     "icon": []
   }
 }

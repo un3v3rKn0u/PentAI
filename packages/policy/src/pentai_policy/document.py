@@ -271,6 +271,20 @@ def validate_and_canonicalize_manifest(
             for item in techniques.get("conditional_capabilities", [])
             if isinstance(item, dict) and "capability" in item
         }
+        conditional_items = techniques.get("conditional_capabilities", [])
+        conditional_names = [
+            str(item["capability"])
+            for item in conditional_items
+            if isinstance(item, dict) and "capability" in item
+        ]
+        if len(conditional_names) != len(set(conditional_names)):
+            issues.append(
+                ValidationIssue(
+                    "CONTRADICTORY_RULES",
+                    "/techniques/conditional_capabilities",
+                    "a capability may have only one conditional rule",
+                )
+            )
         if (allowed & denied) or (allowed & conditional) or (denied & conditional):
             issues.append(
                 ValidationIssue(
@@ -320,10 +334,7 @@ def validate_and_canonicalize_manifest(
             "maximum_response_bytes",
         )
         for field_name in positive:
-            if (
-                not isinstance(limits.get(field_name), (int, float))
-                or limits[field_name] <= 0
-            ):
+            if not isinstance(limits.get(field_name), (int, float)) or limits[field_name] <= 0:
                 issues.append(
                     ValidationIssue(
                         "LIMITS_INVALID",

@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "approval_id", "approval_type", "subject", "assessment_id", "policy_hash", "constraints", "decision", "approver", "decided_at", "expires_at", "signature"],
   "properties": {
-    "schema_version": {"const": "1.0.0"},
+    "schema_version": {"enum": ["1.0.0", "1.1.0"]},
     "approval_id": {"type": "string", "format": "uuid"},
     "approval_type": {"enum": ["policy_activation", "conditional_action", "sensitive_validation", "report_export"]},
     "subject": {
@@ -49,7 +49,7 @@
       "additionalProperties": false,
       "required": ["algorithm", "key_id", "value"],
       "properties": {
-        "algorithm": {"enum": ["Ed25519"]},
+        "algorithm": {"enum": ["Ed25519", "local-transaction-sha256"]},
         "key_id": {"type": "string", "minLength": 1},
         "value": {"type": "string", "minLength": 1}
       }

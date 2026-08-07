@@ -186,7 +186,7 @@ Deliverables:
 - [ ] Define manifest v2, policy IR v1, message envelopes, `ActionIntent`, `PolicyDecision`, `Approval`, and `ActionGrant`.
 - [ ] Build deterministic canonicalization libraries for domains, URLs, IPs/CIDRs, and paths.
 - [ ] Create a malicious and ambiguous authorization test corpus.
-- [ ] Implement the desktop shell, local core bootstrap, per-launch authentication, and health endpoint.
+- [x] Implement the desktop shell, local core bootstrap, per-launch authentication, and health endpoint.
 - [ ] Implement database migrations and baseline Program/Engagement/Source models.
 - [ ] Prove operating-system credential-store integration on all target platforms.
 - [ ] Create design prototypes for intake, policy diff, approval, network state, and emergency stop.
@@ -597,7 +597,7 @@ Avoid progress reporting based only on completed tickets. Report demonstrable ve
 
 - [ ] Implement domain/IP/URL/CIDR value objects.
 - [ ] Implement Program, Engagement, Source, and Manifest persistence.
-- [ ] Implement authenticated desktop-to-core startup.
+- [x] Implement authenticated desktop-to-core startup.
 - [ ] Prototype intake, policy conflict, approval, and safety status screens.
 - [ ] Validate keychain integration on each target OS.
 

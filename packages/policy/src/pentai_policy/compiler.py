@@ -55,14 +55,14 @@ def compile_manifest(manifest: dict[str, Any], manifest_hash: str) -> dict[str, 
             "matcher": matcher,
         }
         base_rule = {
-                "rule_id": _stable_id("asset-rule", rule_seed),
-                "effect": asset["effect"],
-                "asset_type": asset["type"],
-                "matcher": matcher,
-                "specificity": specificity,
-                "allowed_ports": sorted(set(asset.get("allowed_ports", []))),
-                "allowed_paths": sorted(set(asset.get("allowed_paths", []))),
-                "source_references": [asset["source_reference"]],
+            "rule_id": _stable_id("asset-rule", rule_seed),
+            "effect": asset["effect"],
+            "asset_type": asset["type"],
+            "matcher": matcher,
+            "specificity": specificity,
+            "allowed_ports": sorted(set(asset.get("allowed_ports", []))),
+            "allowed_paths": sorted(set(asset.get("allowed_paths", []))),
+            "source_references": [asset["source_reference"]],
         }
         asset_rules.append(base_rule)
         for denied_path in sorted(set(asset.get("denied_paths", []))):
@@ -99,7 +99,9 @@ def compile_manifest(manifest: dict[str, Any], manifest_hash: str) -> dict[str, 
         )
         for item in techniques["conditional_capabilities"]
     ]
-    for capability, effect, conditions in sorted(effects):
+    for capability, effect, conditions in sorted(
+        effects, key=lambda item: (item[0], item[1], content_hash(item[2]))
+    ):
         seed = {"capability": capability, "effect": effect, "conditions": conditions}
         capability_rules.append(
             {

@@ -48,6 +48,7 @@ python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 pnpm install
 pnpm --filter @pentai/ui build
+.venv/bin/python scripts/build_core_sidecar.py
 cargo run --manifest-path apps/desktop/Cargo.toml
 ```
 
@@ -55,6 +56,9 @@ The desktop generates a fresh credential, selects a loopback port, starts the co
 waits for authenticated readiness, passes connection state to the UI, and terminates
 the child on exit. The core intentionally refuses standalone startup without a launch
 credential.
+
+The sidecar build is native: run it on each target operating system before compiling
+or bundling the desktop application.
 
 ### Standalone UI development
 

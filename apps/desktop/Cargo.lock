@@ -2072,6 +2072,7 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
 ]

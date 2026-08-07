@@ -92,9 +92,7 @@ def app_request(
     asyncio.run(invoke())
     start = next(message for message in messages if message["type"] == "http.response.start")
     response_body = b"".join(
-        message.get("body", b"")
-        for message in messages
-        if message["type"] == "http.response.body"
+        message.get("body", b"") for message in messages if message["type"] == "http.response.body"
     )
     return AppResponse(start["status"], response_body)
 
@@ -145,9 +143,7 @@ def test_malformed_or_incorrect_credentials_are_uniformly_denied(
     authenticated_client: tuple[FastAPI, str], authorization: str
 ) -> None:
     app, credential = authenticated_client
-    response = app_request(
-        app, "GET", "/api/v1/readiness", authorization=authorization
-    )
+    response = app_request(app, "GET", "/api/v1/readiness", authorization=authorization)
     assert response.status_code == 401
     assert credential not in response.text
     if authorization:
@@ -266,6 +262,7 @@ def test_core_process_requires_authentication_and_shuts_down_gracefully(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+
     def request(path: str, *, token: str | None = None, method: str = "GET") -> int:
         connection = http.client.HTTPConnection("127.0.0.1", port, timeout=0.5)
         headers = {"Authorization": f"Bearer {token}"} if token else {}

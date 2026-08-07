@@ -3,6 +3,7 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::{rngs::OsRng, TryRngCore};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{
     env,
     ffi::OsString,
@@ -125,6 +126,24 @@ fn packaged_core_path() -> Result<PathBuf, String> {
         .map(|directory| directory.join(filename))
         .filter(|candidate| candidate.is_file())
         .ok_or_else(|| "packaged core executable is missing".to_string())
+        .and_then(verify_packaged_core)
+}
+
+fn verify_packaged_core(candidate: PathBuf) -> Result<PathBuf, String> {
+    if cfg!(debug_assertions) {
+        return Ok(candidate);
+    }
+    let actual = file_sha256(&candidate)?;
+    if actual != env!("PENTAI_CORE_SIDECAR_SHA256") {
+        return Err("packaged core integrity verification failed".to_string());
+    }
+    Ok(candidate)
+}
+
+fn file_sha256(candidate: &Path) -> Result<String, String> {
+    let bytes =
+        std::fs::read(candidate).map_err(|_| "packaged core could not be read".to_string())?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
 }
 
 fn python_path(root: &Path) -> Result<OsString, String> {
@@ -270,5 +289,15 @@ mod tests {
     fn selected_ports_are_loopback_bindable() {
         let port = reserve_loopback_port().expect("port");
         assert!(TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok());
+    }
+
+    #[test]
+    fn compiled_sidecar_identity_matches_the_built_binary() {
+        let sidecar =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join(env!("PENTAI_CORE_SIDECAR_BUILD_PATH"));
+        assert_eq!(
+            file_sha256(&sidecar).expect("sidecar digest"),
+            env!("PENTAI_CORE_SIDECAR_SHA256")
+        );
     }
 }

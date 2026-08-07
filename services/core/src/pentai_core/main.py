@@ -216,9 +216,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/v1/policies/{policy_id}/activate")
     def activate_policy(policy_id: str, request: Request) -> dict[str, Any]:
         actor = principal(request)
-        return call(
-            lambda: authorization.activate_policy(policy_id, actor_id=actor.principal_id)
-        )
+        return call(lambda: authorization.activate_policy(policy_id, actor_id=actor.principal_id))
 
     @app.post("/api/v1/policy-decisions")
     def evaluate_policy(evaluation: EvaluationRequest) -> dict[str, Any]:

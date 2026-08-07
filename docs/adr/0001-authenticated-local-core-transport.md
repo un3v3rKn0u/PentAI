@@ -41,13 +41,16 @@ The packaged Tauri application owns exactly one core child process.
 ## Packaging
 
 Development launches the core with the repository `.venv` interpreter and an explicit
-module path. Packaged builds must place a platform-specific `pentai-core` executable
-beside the Tauri executable. A missing packaged executable is a fatal bootstrap error.
-`PENTAI_CORE_EXECUTABLE` is an explicit development-only override; it is ignored by
-release builds and is not read by the UI.
+module path. Each native build first freezes the core into a target-triple-suffixed
+`pentai-core` executable. Tauri's `externalBin` packaging places that executable beside
+the desktop executable. The build embeds the sidecar SHA-256 digest, and the desktop
+verifies it before spawn. A missing or mismatched packaged executable is a fatal
+bootstrap error. `PENTAI_CORE_EXECUTABLE` is an explicit development-only override; it
+is ignored by release builds and is not read by the UI.
 
-The sidecar artifact build, signing, and installer inclusion must be completed and
-verified for Windows, macOS, and Ubuntu before a distributable build is approved.
+Native sidecar build and lifecycle smoke jobs run on Windows, macOS, and Ubuntu CI.
+Production developer signing, notarization where applicable, and independent review
+remain required before a distributable build is approved.
 
 ## Credential lifetime and storage
 
@@ -63,12 +66,12 @@ This boundary protects against ordinary unrelated local processes and web conten
 do not have the credential. It does not protect against a malicious administrator,
 same-user process inspection/debugging, compromise of the Tauri process or webview, a
 replaced signed application/core binary, or an operating system compromise. Binary
-signing, platform hardening, and sidecar provenance remain separate release controls.
+platform signing and hardening remain separate release controls.
 
 ## Consequences
 
 - Directly launching the core without a valid credential fails.
 - Standalone UI development requires explicit development-only connection variables.
 - Core startup becomes part of desktop startup and migration failure is fail-closed.
-- ActionGrant or target-network work remains prohibited until packaging and
-  cross-platform lifecycle tests pass independent security review.
+- ActionGrant or target-network work remains prohibited until cross-platform lifecycle
+  CI passes and the boundary receives independent security review.
