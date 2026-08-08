@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from pentai_core.authorization import AuthorizationService, DomainError
+from pentai_core.main import FileSourceRequest, _decode_file_content
 from pentai_core.migrate import migrate
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
 
@@ -144,6 +146,80 @@ class SourceIntakeTests(unittest.TestCase):
             EncryptedSourceStore(self.store.root, b"short")
         with self.assertRaisesRegex(SourceStoreError, "does not match provenance"):
             self.store.store(b"synthetic", "0" * 64)
+
+    def test_bounded_file_source_is_encrypted_and_audited(self) -> None:
+        content = json.dumps({"scope": ["owned.invalid"]}).encode()
+        source = self.service.import_file_source(
+            self.program["id"],
+            authority="contract",
+            filename="program-rules.json",
+            content=content,
+            media_type="application/json",
+            source_version="fixture-v2",
+        )
+        self.assertEqual(source["source_kind"], "file")
+        self.assertEqual(source["reference"], "file:program-rules.json")
+        self.assertEqual(source["plaintext_size"], len(content))
+        self.assertEqual(self.store.load(str(source["content_hash"])), content)
+        event = self.service.audit_events()[-1]
+        self.assertEqual(event["action"], "source.imported")
+        self.assertNotIn("owned.invalid", str(event))
+
+    def test_file_import_rejects_paths_sizes_types_and_malformed_content(self) -> None:
+        valid = {
+            "authority": "contract",
+            "filename": "rules.txt",
+            "content": b"synthetic rules",
+            "media_type": "text/plain",
+        }
+        cases = (
+            ({"filename": "../rules.txt"}, "SOURCE_FILENAME_INVALID"),
+            ({"filename": "folder\\rules.txt"}, "SOURCE_FILENAME_INVALID"),
+            ({"content": b""}, "SOURCE_EMPTY"),
+            ({"content": b"x" * (2 * 1024 * 1024 + 1)}, "SOURCE_TOO_LARGE"),
+            ({"media_type": "application/octet-stream"}, "SOURCE_MEDIA_TYPE_INVALID"),
+            ({"filename": "rules.pdf"}, "SOURCE_MEDIA_TYPE_INVALID"),
+            ({"content": b"text\x00binary"}, "SOURCE_CONTENT_INVALID"),
+            ({"content": b"\xff"}, "SOURCE_ENCODING_INVALID"),
+        )
+        for override, expected in cases:
+            with self.subTest(expected=expected), self.assertRaises(DomainError) as raised:
+                self.service.import_file_source(self.program["id"], **(valid | override))
+            self.assertEqual(raised.exception.code, expected)
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.import_file_source(
+                self.program["id"],
+                authority="contract",
+                filename="rules.json",
+                content=b"{not-json}",
+                media_type="application/json",
+            )
+        self.assertEqual(raised.exception.code, "SOURCE_CONTENT_INVALID")
+
+    def test_file_transport_rejects_invalid_or_oversized_base64(self) -> None:
+        with self.assertRaises(DomainError) as raised:
+            _decode_file_content("not base64!")
+        self.assertEqual(raised.exception.code, "SOURCE_ENCODING_INVALID")
+
+        with self.assertRaises(ValueError):
+            FileSourceRequest(
+                program_id=self.program["id"],
+                authority="contract",
+                filename="rules.txt",
+                media_type="text/plain",
+                content_base64="A" * 2_796_205,
+            )
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.import_file_source(
+                self.program["id"],
+                authority="contract",
+                filename="rules.pdf",
+                content=b"not a pdf",
+                media_type="application/pdf",
+            )
+        self.assertEqual(raised.exception.code, "SOURCE_CONTENT_INVALID")
 
     def test_program_and_source_timestamps_are_current_utc(self) -> None:
         source = self.import_source()

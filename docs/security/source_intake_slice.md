@@ -43,9 +43,11 @@ core over a one-use stdin channel. Missing keys, failed storage, authentication
 failure, and digest mismatch deny import. Phase 0 placeholder records remain honestly
 marked `legacy_missing` after migration.
 
-File and URL source kinds remain rejected until dedicated size/content controls and
-SSRF-safe acquisition exist. Key rotation, credential-store backup/restore, and
-Windows/Linux credential-store verification are also open. Therefore the Phase 1
-“complete source import” action and vertical demonstration 1 remain incomplete.
+File payloads are accepted only through the bounded, path-free API documented in
+`file_source_import_slice.md`; the native file-picker UI remains open. URL source kinds
+remain rejected until SSRF-safe acquisition exists. Key rotation, credential-store
+backup/restore, and Windows/Linux credential-store verification are also open.
+Therefore the Phase 1 “complete source import” action and vertical demonstration 1
+remain incomplete.
 
 No target-facing networking or authority is introduced by this slice.

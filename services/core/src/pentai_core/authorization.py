@@ -4,7 +4,7 @@ import hashlib
 import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 from uuid import uuid4
 
@@ -28,6 +28,14 @@ _SOURCE_AUTHORITIES = {
     "internal_note",
 }
 _SOURCE_KINDS = {"pasted_text", "file", "url"}
+_MAX_SOURCE_FILE_BYTES = 2 * 1024 * 1024
+_FILE_MEDIA_EXTENSIONS = {
+    "application/json": {".json"},
+    "application/pdf": {".pdf"},
+    "text/html": {".htm", ".html"},
+    "text/markdown": {".markdown", ".md"},
+    "text/plain": {".txt"},
+}
 
 
 class DomainError(ValueError):
@@ -220,8 +228,103 @@ class AuthorizationService:
                 raise DomainError(
                     "SOURCE_EFFECTIVE_AT_INVALID", "source effective time is invalid"
                 ) from exc
+        return self._persist_source(
+            program_id,
+            authority=authority,
+            reference=reference.strip(),
+            content_bytes=content.encode(),
+            effective_at=effective_at,
+            source_kind="pasted_text",
+            media_type=media_type.strip().lower(),
+            source_version=source_version,
+            actor_id=actor_id,
+        )
+
+    def import_file_source(
+        self,
+        program_id: str,
+        *,
+        authority: str,
+        filename: str,
+        content: bytes,
+        media_type: str,
+        effective_at: str | None = None,
+        source_version: str | None = None,
+        actor_id: str = "local-session",
+    ) -> dict[str, Any]:
+        normalized_filename = filename.strip()
+        if (
+            not normalized_filename
+            or len(normalized_filename) > 255
+            or "\x00" in normalized_filename
+            or "/" in normalized_filename
+            or "\\" in normalized_filename
+            or PurePath(normalized_filename).name != normalized_filename
+            or normalized_filename in {".", ".."}
+        ):
+            raise DomainError("SOURCE_FILENAME_INVALID", "source filename is invalid")
+        if not content:
+            raise DomainError("SOURCE_EMPTY", "source content is required")
+        if len(content) > _MAX_SOURCE_FILE_BYTES:
+            raise DomainError("SOURCE_TOO_LARGE", "source file exceeds the 2 MiB limit")
+        normalized_media_type = media_type.strip().lower()
+        allowed_extensions = _FILE_MEDIA_EXTENSIONS.get(normalized_media_type)
+        extension = PurePath(normalized_filename).suffix.lower()
+        if allowed_extensions is None or extension not in allowed_extensions:
+            raise DomainError(
+                "SOURCE_MEDIA_TYPE_INVALID",
+                "source media type and filename extension are not an approved pair",
+            )
+        if normalized_media_type == "application/pdf":
+            if not content.startswith(b"%PDF-"):
+                raise DomainError("SOURCE_CONTENT_INVALID", "PDF source signature is invalid")
+        else:
+            if b"\x00" in content:
+                raise DomainError("SOURCE_CONTENT_INVALID", "text source contains binary data")
+            try:
+                decoded = content.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise DomainError("SOURCE_ENCODING_INVALID", "text source must be UTF-8") from exc
+            if normalized_media_type == "application/json":
+                try:
+                    json.loads(decoded)
+                except json.JSONDecodeError as exc:
+                    raise DomainError("SOURCE_CONTENT_INVALID", "JSON source is malformed") from exc
+        if authority not in _SOURCE_AUTHORITIES:
+            raise DomainError("SOURCE_AUTHORITY_INVALID", "source authority is not supported")
+        if effective_at is not None:
+            try:
+                effective_at = _timestamp(parse_time(effective_at))
+            except ValueError as exc:
+                raise DomainError(
+                    "SOURCE_EFFECTIVE_AT_INVALID", "source effective time is invalid"
+                ) from exc
+        return self._persist_source(
+            program_id,
+            authority=authority,
+            reference=f"file:{normalized_filename}",
+            content_bytes=content,
+            effective_at=effective_at,
+            source_kind="file",
+            media_type=normalized_media_type,
+            source_version=source_version,
+            actor_id=actor_id,
+        )
+
+    def _persist_source(
+        self,
+        program_id: str,
+        *,
+        authority: str,
+        reference: str,
+        content_bytes: bytes,
+        effective_at: str | None,
+        source_kind: str,
+        media_type: str,
+        source_version: str | None,
+        actor_id: str,
+    ) -> dict[str, Any]:
         source_id = str(uuid4())
-        content_bytes = content.encode()
         digest = hashlib.sha256(content_bytes).hexdigest()
         retrieved_at = _timestamp()
         with transaction(self.database_path) as connection:
@@ -243,7 +346,7 @@ class AuthorizationService:
                 SELECT * FROM source_documents
                 WHERE program_id = ? AND authority = ? AND reference = ? AND content_hash = ?
                 """,
-                (program_id, authority, reference.strip(), digest),
+                (program_id, authority, reference, digest),
             ).fetchone()
             if existing is not None:
                 return self._source_record(existing)
@@ -262,7 +365,7 @@ class AuthorizationService:
                         source_id,
                         program_id,
                         authority,
-                        reference.strip(),
+                        reference,
                         retrieved_at,
                         effective_at,
                         digest,
