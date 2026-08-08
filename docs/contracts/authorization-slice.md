@@ -39,6 +39,13 @@ Unknown authorization-critical fields are therefore rejected. This slice uses so
 records plus each asset's `source_reference`; broader field provenance requires a
 versioned contract change.
 
+Phase 1 migration `0004_source_provenance.sql` strengthens the persisted source side
+of this binding with normalized source kind, media type, optional source version,
+immutable rows, idempotent repeated imports, and audit linkage. Pasted text is the
+only accepted acquisition kind in this increment. File/URL acquisition and encrypted
+original storage remain explicitly unsupported; a content-addressed reference is not
+represented as an encrypted stored object.
+
 ## Verification
 
 ```text

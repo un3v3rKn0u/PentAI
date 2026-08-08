@@ -12,6 +12,7 @@ The first release is being prepared as `0.1.0`. Move these entries into a dated
 
 ### Added
 
+- Immutable, audited pasted-source provenance records and metadata listing APIs.
 - Phase 0 monorepo scaffold for the React/Vite UI, Tauri desktop shell, FastAPI core
   service, and deterministic Python policy package.
 - Initial SQLite migration and migration verification.

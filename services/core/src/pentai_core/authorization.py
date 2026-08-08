@@ -19,6 +19,15 @@ from pentai_policy.document import parse_time
 
 from pentai_core.database import transaction
 
+_SOURCE_AUTHORITIES = {
+    "contract",
+    "program_staff",
+    "program_page",
+    "platform_rule",
+    "internal_note",
+}
+_SOURCE_KINDS = {"pasted_text", "file", "url"}
+
 
 class DomainError(ValueError):
     def __init__(self, code: str, message: str) -> None:
@@ -88,16 +97,54 @@ class AuthorizationService:
         )
         return {**event, "event_hash": event_hash}
 
-    def create_program(self, name: str, platform: str | None = None) -> dict[str, Any]:
+    def create_program(
+        self,
+        name: str,
+        platform: str | None = None,
+        *,
+        program_url: str | None = None,
+        actor_id: str = "local-session",
+    ) -> dict[str, Any]:
         if not name.strip():
             raise DomainError("PROGRAM_NAME_REQUIRED", "program name is required")
+        if program_url is not None and not program_url.strip():
+            raise DomainError("PROGRAM_URL_INVALID", "program URL cannot be blank")
         program_id = str(uuid4())
         with transaction(self.database_path) as connection:
             connection.execute(
-                "INSERT INTO programs(id, name, platform, status) VALUES (?, ?, ?, 'draft')",
-                (program_id, name.strip(), platform),
+                """
+                INSERT INTO programs(id, name, platform, program_url, status)
+                VALUES (?, ?, ?, ?, 'draft')
+                """,
+                (program_id, name.strip(), platform, program_url),
             )
-        return {"id": program_id, "name": name.strip(), "platform": platform, "status": "draft"}
+            self._audit(
+                connection,
+                action="program.created",
+                subject_type="program",
+                subject_id=program_id,
+                actor_type="human",
+                actor_id=actor_id,
+                data={"name": name.strip(), "platform": platform, "program_url": program_url},
+            )
+        return {
+            "id": program_id,
+            "name": name.strip(),
+            "platform": platform,
+            "program_url": program_url,
+            "status": "draft",
+            "version": 1,
+        }
+
+    def list_programs(self) -> list[dict[str, Any]]:
+        with transaction(self.database_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT id, name, platform, program_url, status, created_at, updated_at, version
+                FROM programs ORDER BY created_at, id
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def create_engagement(
         self,
@@ -142,43 +189,131 @@ class AuthorizationService:
         reference: str,
         content: str,
         effective_at: str | None = None,
+        source_kind: str = "pasted_text",
+        media_type: str = "text/plain",
+        source_version: str | None = None,
+        actor_id: str = "local-session",
     ) -> dict[str, Any]:
-        if not content:
+        if not content.strip():
             raise DomainError("SOURCE_EMPTY", "source content is required")
+        if authority not in _SOURCE_AUTHORITIES:
+            raise DomainError("SOURCE_AUTHORITY_INVALID", "source authority is not supported")
+        if source_kind not in _SOURCE_KINDS:
+            raise DomainError("SOURCE_KIND_INVALID", "source kind is not supported")
+        if source_kind != "pasted_text":
+            raise DomainError(
+                "SOURCE_ACQUISITION_REQUIRED",
+                "file and URL sources must be acquired by a dedicated safe importer",
+            )
+        if not reference.strip():
+            raise DomainError("SOURCE_REFERENCE_REQUIRED", "source reference is required")
+        if not media_type.strip():
+            raise DomainError("SOURCE_MEDIA_TYPE_REQUIRED", "source media type is required")
+        if effective_at is not None:
+            try:
+                effective_at = _timestamp(parse_time(effective_at))
+            except ValueError as exc:
+                raise DomainError(
+                    "SOURCE_EFFECTIVE_AT_INVALID", "source effective time is invalid"
+                ) from exc
         source_id = str(uuid4())
         digest = hashlib.sha256(content.encode()).hexdigest()
         retrieved_at = _timestamp()
         with transaction(self.database_path) as connection:
+            program = connection.execute(
+                "SELECT id FROM programs WHERE id = ?", (program_id,)
+            ).fetchone()
+            if program is None:
+                raise DomainError("PROGRAM_NOT_FOUND", "program does not exist")
+            existing = connection.execute(
+                """
+                SELECT * FROM source_documents
+                WHERE program_id = ? AND authority = ? AND reference = ? AND content_hash = ?
+                """,
+                (program_id, authority, reference.strip(), digest),
+            ).fetchone()
+            if existing is not None:
+                return self._source_record(existing)
             try:
                 connection.execute(
                     """
                     INSERT INTO source_documents(
                         id, program_id, authority, reference, retrieved_at, effective_at,
-                        content_hash, encrypted_blob_ref, metadata_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')
+                        content_hash, encrypted_blob_ref, metadata_json, source_kind,
+                        media_type, source_version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
                     """,
                     (
                         source_id,
                         program_id,
                         authority,
-                        reference,
+                        reference.strip(),
                         retrieved_at,
                         effective_at,
                         digest,
                         f"sha256:{digest}",
+                        source_kind,
+                        media_type.strip().lower(),
+                        source_version,
                     ),
                 )
             except sqlite3.IntegrityError as exc:
-                raise DomainError("PROGRAM_NOT_FOUND", "program does not exist") from exc
+                raise DomainError(
+                    "SOURCE_PERSISTENCE_FAILED", "source could not be stored"
+                ) from exc
+            record = {
+                "id": source_id,
+                "program_id": program_id,
+                "authority": authority,
+                "reference": reference.strip(),
+                "retrieved_at": retrieved_at,
+                "effective_at": effective_at,
+                "content_hash": digest,
+                "source_kind": source_kind,
+                "media_type": media_type.strip().lower(),
+                "source_version": source_version,
+            }
+            self._audit(
+                connection,
+                action="source.imported",
+                subject_type="source_document",
+                subject_id=source_id,
+                actor_type="human",
+                actor_id=actor_id,
+                data={key: value for key, value in record.items() if key != "id"},
+                occurred_at=retrieved_at,
+            )
+        return record
+
+    @staticmethod
+    def _source_record(row: sqlite3.Row) -> dict[str, Any]:
         return {
-            "id": source_id,
-            "program_id": program_id,
-            "authority": authority,
-            "reference": reference,
-            "retrieved_at": retrieved_at,
-            "effective_at": effective_at,
-            "content_hash": digest,
+            "id": row["id"],
+            "program_id": row["program_id"],
+            "authority": row["authority"],
+            "reference": row["reference"],
+            "retrieved_at": row["retrieved_at"],
+            "effective_at": row["effective_at"],
+            "content_hash": row["content_hash"],
+            "source_kind": row["source_kind"],
+            "media_type": row["media_type"],
+            "source_version": row["source_version"],
         }
+
+    def list_sources(self, program_id: str) -> list[dict[str, Any]]:
+        with transaction(self.database_path) as connection:
+            if connection.execute(
+                "SELECT 1 FROM programs WHERE id = ?", (program_id,)
+            ).fetchone() is None:
+                raise DomainError("PROGRAM_NOT_FOUND", "program does not exist")
+            rows = connection.execute(
+                """
+                SELECT * FROM source_documents
+                WHERE program_id = ? ORDER BY retrieved_at, id
+                """,
+                (program_id,),
+            ).fetchall()
+        return [self._source_record(row) for row in rows]
 
     def save_manifest(self, engagement_id: str, candidate: dict[str, Any]) -> dict[str, Any]:
         with transaction(self.database_path) as connection:

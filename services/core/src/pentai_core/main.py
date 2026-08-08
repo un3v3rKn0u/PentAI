@@ -37,6 +37,7 @@ class StrictRequest(BaseModel):
 class ProgramRequest(StrictRequest):
     name: str
     platform: str | None = None
+    program_url: str | None = None
 
 
 class EngagementRequest(StrictRequest):
@@ -52,6 +53,9 @@ class SourceRequest(StrictRequest):
     reference: str
     content: str
     effective_at: str | None = None
+    source_kind: str = "pasted_text"
+    media_type: str = "text/plain"
+    source_version: str | None = None
 
 
 class ManifestRequest(StrictRequest):
@@ -164,8 +168,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.post("/api/v1/programs")
-    def create_program(request: ProgramRequest) -> dict[str, Any]:
-        return call(lambda: authorization.create_program(request.name, request.platform))
+    def create_program(request: ProgramRequest, http_request: Request) -> dict[str, Any]:
+        actor = principal(http_request)
+        return call(
+            lambda: authorization.create_program(
+                request.name,
+                request.platform,
+                program_url=request.program_url,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.get("/api/v1/programs")
+    def list_programs() -> dict[str, Any]:
+        return {"programs": authorization.list_programs()}
 
     @app.post("/api/v1/engagements")
     def create_engagement(request: EngagementRequest) -> dict[str, Any]:
@@ -179,7 +195,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.post("/api/v1/sources")
-    def import_source(request: SourceRequest) -> dict[str, Any]:
+    def import_source(request: SourceRequest, http_request: Request) -> dict[str, Any]:
+        actor = principal(http_request)
         return call(
             lambda: authorization.import_source(
                 request.program_id,
@@ -187,8 +204,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 reference=request.reference,
                 content=request.content,
                 effective_at=request.effective_at,
+                source_kind=request.source_kind,
+                media_type=request.media_type,
+                source_version=request.source_version,
+                actor_id=actor.principal_id,
             )
         )
+
+    @app.get("/api/v1/programs/{program_id}/sources")
+    def list_sources(program_id: str) -> dict[str, Any]:
+        return {"sources": call(lambda: authorization.list_sources(program_id))}
 
     @app.post("/api/v1/manifests")
     def save_manifest(request: ManifestRequest) -> dict[str, Any]:
