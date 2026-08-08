@@ -44,7 +44,8 @@ of this binding with normalized source kind, media type, optional source version
 immutable rows, idempotent repeated imports, and audit linkage. Migration
 `0005_encrypted_source_blobs.sql` distinguishes legacy placeholders from new
 AES-256-GCM encrypted originals. Pasted text is the only accepted acquisition kind in
-this increment; file/URL acquisition remains explicitly unsupported.
+this baseline. Bounded file payloads are accepted by the additive local API described
+in `docs/security/file_source_import_slice.md`; URL acquisition remains unsupported.
 
 ## Verification
 

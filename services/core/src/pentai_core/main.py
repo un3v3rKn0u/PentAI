@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import secrets
 import threading
+from base64 import b64decode
+from binascii import Error as Base64Error
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -9,7 +11,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from pentai_core import __version__
 from pentai_core.authorization import AuthorizationService, DomainError
@@ -57,6 +59,14 @@ class SourceRequest(StrictRequest):
     source_kind: str = "pasted_text"
     media_type: str = "text/plain"
     source_version: str | None = None
+class FileSourceRequest(StrictRequest):
+    program_id: str
+    authority: str
+    filename: str
+    media_type: str
+    content_base64: str = Field(max_length=2_796_204)
+    effective_at: str | None = None
+    source_version: str | None = None
 
 
 class ManifestRequest(StrictRequest):
@@ -83,6 +93,13 @@ def call[T](operation: Callable[[], T]) -> T:
             status_code=409,
             detail={"code": exc.code, "message": str(exc)},
         ) from exc
+
+
+def _decode_file_content(encoded: str) -> bytes:
+    try:
+        return b64decode(encoded, validate=True)
+    except (Base64Error, ValueError) as exc:
+        raise DomainError("SOURCE_ENCODING_INVALID", "file content encoding is invalid") from exc
 
 
 def _unauthorized() -> JSONResponse:
@@ -220,6 +237,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/v1/programs/{program_id}/sources")
     def list_sources(program_id: str) -> dict[str, Any]:
         return {"sources": call(lambda: authorization.list_sources(program_id))}
+
+    @app.post("/api/v1/sources/files")
+    def import_file_source(
+        request: FileSourceRequest, http_request: Request
+    ) -> dict[str, Any]:
+        actor = principal(http_request)
+        return call(
+            lambda: authorization.import_file_source(
+                request.program_id,
+                authority=request.authority,
+                filename=request.filename,
+                content=_decode_file_content(request.content_base64),
+                media_type=request.media_type,
+                effective_at=request.effective_at,
+                source_version=request.source_version,
+                actor_id=actor.principal_id,
+            )
+        )
 
     @app.post("/api/v1/manifests")
     def save_manifest(request: ManifestRequest) -> dict[str, Any]:
