@@ -333,6 +333,45 @@ feat(policy): reject expired engagement manifests
 - Authors may not approve their own PR.
 - New commits after approval dismiss stale approvals for protected areas.
 
+#### Sole-maintainer exception
+
+PentAI is currently maintained by one person. While there is no other qualified human
+available, the sole maintainer may perform the required security review even though
+they are also the author, Product Owner, Security Lead, repository owner, or a
+combination of those roles. This is a documented exception to the independence,
+two-approver, and author-self-approval requirements above; it is not an independent
+review and must never be described as one.
+
+**Required when using this exception**
+
+1. State in the pull request and approval record that the sole-maintainer exception
+   was used, identify every role held by the reviewer, and explicitly disclose that
+   the review was not independent.
+2. Perform a separate security-review pass after implementation is complete. Review
+   the complete diff, affected invariants and contracts, threat and abuse cases,
+   authorization boundaries, negative/default-deny tests, compatibility, rollback,
+   and all validation evidence.
+3. Record the review date, scope, evidence examined, findings, limitations, deferred
+   work, and any accepted residual risk. Unresolved material findings block approval.
+4. Require all applicable automated checks to pass. The exception cannot waive,
+   bypass, or relabel a missing, skipped, cancelled, or failed check.
+5. Record approval as `Sole-maintainer security review — non-independent`, never as
+   an independent approval. GitHub self-approval, if unavailable or prohibited, may
+   be represented by a dated approval record committed to the repository and linked
+   from the pull request.
+6. Do not use the exception for signing/notarization key custody, production release
+   authorization, destructive migration approval, disclosure decisions involving
+   another party, or any external requirement that expressly mandates independent or
+   dual control. Those items remain blocked until the required reviewer exists.
+7. Re-evaluate this exception when another regular maintainer or qualified security
+   reviewer becomes available. From that point, the normal independent-review and
+   approval requirements apply to new security-critical changes.
+
+Use of this exception reduces assurance but permits a formal project decision when
+the alternative is an impossible approval condition. The sole maintainer explicitly
+accepts that residual governance risk for the reviewed scope; technical or product
+risks still require their own documented treatment.
+
 ### Merge strategy
 
 **Required:** use squash merge for normal feature, fix, documentation, refactor, test,
@@ -533,7 +572,8 @@ The existing workflows provide:
 Protect `<default-branch>` with:
 
 - pull requests required; no direct pushes;
-- one approval normally and two for protected/security-sensitive areas;
+- one approval normally and two for protected/security-sensitive areas, except while
+  the documented sole-maintainer exception in section 9 applies;
 - CODEOWNERS review for policy, contracts, invariants, migrations, workflows, and
   release/signing configuration;
 - required successful status checks using the stable job names above;
@@ -644,6 +684,8 @@ the exact scope, and never improvise it on the only copy.
 - [ ] Title and description explain one coherent outcome.
 - [ ] Security, privacy, compatibility, migration, rollback, and release impact stated.
 - [ ] Tests and manual validation reported.
-- [ ] Required independent reviewers assigned.
+- [ ] Required independent reviewers assigned, or the sole-maintainer exception is
+      explicitly recorded as non-independent with its review evidence and accepted
+      governance risk.
 - [ ] Required Actions pass; conflicts and conversations resolved.
 - [ ] Squash message is clean; source branch will be deleted after merge.
