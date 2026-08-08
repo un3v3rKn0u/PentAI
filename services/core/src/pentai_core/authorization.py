@@ -365,7 +365,7 @@ class AuthorizationService:
                         source_id,
                         program_id,
                         authority,
-                        reference,
+                        reference.strip(),
                         retrieved_at,
                         effective_at,
                         digest,

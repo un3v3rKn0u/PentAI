@@ -146,7 +146,6 @@ class SourceIntakeTests(unittest.TestCase):
             EncryptedSourceStore(self.store.root, b"short")
         with self.assertRaisesRegex(SourceStoreError, "does not match provenance"):
             self.store.store(b"synthetic", "0" * 64)
-
     def test_bounded_file_source_is_encrypted_and_audited(self) -> None:
         content = json.dumps({"scope": ["owned.invalid"]}).encode()
         source = self.service.import_file_source(

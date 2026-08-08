@@ -1,6 +1,6 @@
 # Phase 1 bounded file-source import
 
-**Status:** Implemented locally; security review pending
+**Status:** Implemented; sole-maintainer security review recorded
 
 ## Outcome
 

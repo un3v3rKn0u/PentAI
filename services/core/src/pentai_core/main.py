@@ -59,8 +59,6 @@ class SourceRequest(StrictRequest):
     source_kind: str = "pasted_text"
     media_type: str = "text/plain"
     source_version: str | None = None
-
-
 class FileSourceRequest(StrictRequest):
     program_id: str
     authority: str
