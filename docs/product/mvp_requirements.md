@@ -2,10 +2,14 @@
 
 **Document ID:** PENTAI-PRD-MVP-001<br>
 **Version:** 1.0.0<br>
-**Status:** Proposed Phase 0 baseline<br>
-**Date:** 2026-08-05<br>
+**Status:** Engineering baseline; Product Owner and Security Lead approval pending<br>
+**Date:** 2026-08-08<br>
 **Architecture:** `PentAI_Software_Architecture.md`<br>
 **Intake authority:** `design_intake_workflow.md`
+
+This document specifies the intended MVP, including Phase 1 capabilities that are not
+implemented. Phase 0 acceptance and approval status are recorded in
+`docs/security/phase0_status.md` and `docs/security/phase0_approvals.md`.
 
 ## 1. Product Goal
 

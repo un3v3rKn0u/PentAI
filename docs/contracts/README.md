@@ -15,6 +15,23 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `action-grant-v1.schema.json` — short-lived, signed, single-use execution authority.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
+## Ownership and review
+
+| Schema | Owning role | Compatibility and versioning | Required reviewers |
+|---|---|---|---|
+| Engagement Manifest v2 | Product Safety Lead | Contract Maintainer | Product Owner, Policy Maintainer, Security Reviewer |
+| Policy IR v1 | Policy Maintainer | Contract Maintainer | Core Maintainer, independent Security Reviewer |
+| ActionIntent v1 | Execution Safety Lead | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
+| PolicyDecision v1 | Policy Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
+| Approval v1.1 | Core Security Maintainer | Contract Maintainer | Product Safety Lead, independent Security Reviewer |
+| ActionGrant v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
+| Canonical Types v1 | Policy Maintainer | Contract Maintainer | Gateway Maintainer, independent Security Reviewer |
+
+The owning role is accountable for semantics and consumers. The Contract Maintainer is
+accountable for compatibility analysis, schema release notes, and version changes.
+Security-critical changes also require the two-approval review policy in
+`GIT_WORKFLOW.md`; authors cannot supply the independent approval.
+
 ## Compatibility
 
 - `$id` is the stable contract identity.

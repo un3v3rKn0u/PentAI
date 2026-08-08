@@ -3,7 +3,8 @@
 - **Status:** Accepted for Phase 0 implementation
 - **Date:** 2026-08-07
 - **Owners:** Desktop and Core maintainers
-- **Security approval:** Required before Phase 0 exit
+- **Engineering acceptance:** Implemented and merged in PR #15
+- **Independent security approval:** Pending before Phase 0 exit
 
 ## Context
 
@@ -52,6 +53,9 @@ Native sidecar build and lifecycle smoke jobs run on Windows, macOS, and Ubuntu 
 Production developer signing, notarization where applicable, and independent review
 remain required before a distributable build is approved.
 
+Hosted CI evidence is recorded by immutable run URL in the Phase 0 exit-gate record;
+the workflow configuration alone is not cross-platform evidence.
+
 ## Credential lifetime and storage
 
 The launch credential exists only in Tauri memory, the child environment, and webview
@@ -59,6 +63,12 @@ memory for the lifetime of one desktop launch. It is regenerated on every launch
 is never written to the database, audit ledger, application logs, or operating-system
 credential store. A keychain is appropriate for future durable secrets, but not for
 this ephemeral credential.
+
+Storing the launch credential in an OS credential store would extend its lifetime and
+create recoverable state without improving the stated per-launch possession boundary.
+The broader roadmap item for proving secure storage of future durable secrets is
+therefore a proposed deferral, not a completed item, and requires Product Owner and
+Security Lead approval in `docs/security/phase0_approvals.md`.
 
 ## Security limitations
 

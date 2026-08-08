@@ -22,6 +22,8 @@ See:
 - `docs/security/authorization_vertical_slice.md`
 - `docs/adr/0001-authenticated-local-core-transport.md`
 - `docs/security/local_transport_threat_model.md`
+- `docs/security/phase0_traceability.md`
+- `docs/security/phase0_approvals.md`
 - `docs/release_process.md`
 - `.github/SECURITY.md`
 
@@ -73,18 +75,15 @@ bootstrap state exclusively through Tauri.
 
 ### Tests
 
-The deterministic standard-library suite runs without installing third-party packages:
+After installing the declared development environment, run the Python and contract suite:
 
 ```text
-PYTHONPATH=packages/policy/src:services/core/src python3 -m unittest discover -s tests -p "test_*.py"
-python3 scripts/validate_contracts.py
+.venv/bin/pytest
+.venv/bin/python scripts/validate_contracts.py
 ```
 
-The full test command after development dependencies are installed is:
-
-```text
-pytest
-```
+`pytest` includes the Hypothesis canonicalization properties and regression corpus.
+The full local verification matrix is documented in `docs/security/phase0_status.md`.
 
 Security vulnerabilities should be reported privately through the repository's
 **Security → Advisories → Report a vulnerability** flow. Do not open a public issue
