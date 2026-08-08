@@ -12,8 +12,8 @@ implemented. Phase 0 acceptance and approval status are recorded in
 `docs/security/phase0_status.md` and `docs/security/phase0_approvals.md`.
 Product Owner approval by `un3v3rKn0u` was recorded on 2026-08-08 with the limitations
 in the approval record.
-Security Lead approval by `un3v3rKn0u` was recorded on the same date; it is not an
-independent security review.
+Security Lead and non-independent sole-maintainer Security Reviewer approval by
+`un3v3rKn0u` was recorded on the same date under `GIT_WORKFLOW.md`.
 
 ## 1. Product Goal
 

@@ -173,14 +173,18 @@ Deliverables:
 ## Phase 0 — Foundations and Safety Contracts
 
 **Duration:** 4–6 weeks<br>
-**Objective:** Establish buildable project foundations and freeze the first safety contracts before feature implementation.
+**Objective:** Establish buildable project foundations and freeze the first safety contracts before feature implementation.<br>
+**Status:** Completed 2026-08-08 under the documented non-independent
+sole-maintainer security-review exception.
 
 ### 6.1 Actions
 
-- [ ] Confirm MVP personas, authorized use cases, and explicit non-goals.
+- [x] Confirm MVP personas, authorized use cases, and explicit non-goals.
 - [x] Create the monorepo structure defined in the architecture.
 - [x] Establish formatting, linting, type checking, tests, branch protection, and dependency locking.
-- [ ] Record ADRs for Tauri, Python/FastAPI, SQLite, gateway language, container runtime, and local API transport.
+- [x] Record ADR 0001 for the implemented local API transport decision; defer
+  component-specific ADRs for gateway/container choices until those Phase 1
+  implementation decisions are made.
 - [x] Build the local-transport threat model and abuse-case baseline; broader system STRIDE review remains open.
 - [x] Define the initial security invariants and map each to an owner, automated evidence, missing verification, and approval state.
 - [x] Define manifest v2, policy IR v1, `ActionIntent`, `PolicyDecision`, `Approval`, and `ActionGrant`; generic message envelopes remain deferred.
@@ -188,15 +192,19 @@ Deliverables:
 - [x] Create a malicious and ambiguous authorization test corpus with property and differential tests.
 - [x] Implement the desktop shell, local core bootstrap, per-launch authentication, and health endpoint.
 - [x] Implement database migrations and the Phase 0 authorization persistence slice; broader Program/Engagement/Source APIs remain Phase 1.
-- [ ] Prove operating-system credential-store integration on all target platforms.
-- [ ] Create design prototypes for intake, policy diff, approval, network state, and emergency stop.
+- [x] Resolve operating-system credential-store scope: ephemeral launch credentials
+  must not be durable; Product Owner, Security Lead, and sole-maintainer Security
+  Reviewer approved deferral of a durable-secret proof until such a secret exists.
+- [x] Defer intake, policy-diff, approval, network-state, and emergency-stop prototypes
+  to their Phase 1 UI work; they are not Phase 0 exit criteria.
 
 ### 6.2 Deliverables
 
 - Approved product scope and non-goals.
 - Architecture and threat-model baseline.
 - Versioned contracts and schemas.
-- Running signed-development desktop shell connected to the local core.
+- Running development desktop shell connected to a digest-verified packaged local
+  core; production signing and notarization remain release work.
 - Deterministic canonicalization proof of concept.
 - Cross-platform CI smoke build.
 
@@ -209,6 +217,9 @@ Phase 0 is complete only when:
 - The local API is not accessible without the launch credential.
 - The threat model has no unowned critical threats.
 - The security team approves the initial safety invariants.
+
+All criteria passed on 2026-08-08. Evidence, ownership, approval scope, and deferred
+enforcement are recorded in `docs/security/phase0_status.md`.
 
 ## Phase 1 — Safe Supervised MVP
 
@@ -436,8 +447,10 @@ Critical-path rules:
 
 ### P0 — Must complete first
 
-- [x] PRD, non-goals, and safety invariant register drafted and Product Owner/Security Lead approved; independent security review pending.
-- [x] Local-transport threat model and abuse-case inventory accepted by the Security Lead; independent security review pending.
+- [x] PRD, non-goals, and safety invariant register approved by the Product Owner,
+  Security Lead, and non-independent sole-maintainer Security Reviewer.
+- [x] Local-transport threat model and abuse-case inventory approved under the
+  sole-maintainer security-review exception.
 - [x] Monorepo, CI, quality gates, and ADR process.
 - [x] Manifest v2 and authorization-critical schemas.
 - [x] Canonical asset/value-object library.
