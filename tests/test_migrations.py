@@ -13,7 +13,7 @@ class MigrationTests(unittest.TestCase):
     def test_initial_migration_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "pentai.db"
-            self.assertEqual(migrate(database), ["0001", "0002", "0003"])
+            self.assertEqual(migrate(database), ["0001", "0002", "0003", "0004"])
             self.assertEqual(migrate(database), [])
             with sqlite3.connect(database) as connection:
                 tables = {
@@ -114,6 +114,52 @@ class MigrationTests(unittest.TestCase):
                 }
                 <= triggers
             )
+
+    def test_existing_rows_receive_compatible_source_provenance_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for name in (
+                "0001_initial.sql",
+                "0002_authorization_slice.sql",
+                "0003_authorization_immutability.sql",
+            ):
+                (migrations / name).write_text(
+                    (repository_migrations / name).read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "INSERT INTO programs(id, name, status) VALUES ('p1', 'fixture', 'draft')"
+                )
+                connection.execute(
+                    """
+                    INSERT INTO source_documents(
+                        id, program_id, authority, reference, retrieved_at,
+                        content_hash, encrypted_blob_ref
+                    ) VALUES ('s1', 'p1', 'contract', 'synthetic://legacy',
+                              '2026-08-08T00:00:00Z', ?, ?)
+                    """,
+                    ("a" * 64, "sha256:" + "a" * 64),
+                )
+            (migrations / "0004_source_provenance.sql").write_text(
+                (repository_migrations / "0004_source_provenance.sql").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0004"])
+            with sqlite3.connect(database) as connection:
+                row = connection.execute(
+                    "SELECT source_kind, media_type, source_version FROM source_documents"
+                ).fetchone()
+            self.assertEqual(row, ("pasted_text", "text/plain", None))
 
 
 if __name__ == "__main__":
