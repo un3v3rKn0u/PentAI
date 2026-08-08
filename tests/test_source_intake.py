@@ -144,7 +144,6 @@ class SourceIntakeTests(unittest.TestCase):
             EncryptedSourceStore(self.store.root, b"short")
         with self.assertRaisesRegex(SourceStoreError, "does not match provenance"):
             self.store.store(b"synthetic", "0" * 64)
-
     def test_program_and_source_timestamps_are_current_utc(self) -> None:
         source = self.import_source()
         retrieved = datetime.fromisoformat(str(source["retrieved_at"]).replace("Z", "+00:00"))

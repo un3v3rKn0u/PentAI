@@ -178,6 +178,5 @@ class MigrationTests(unittest.TestCase):
                 ).fetchone()
             self.assertEqual(encrypted, ("legacy_missing", None, None))
 
-
 if __name__ == "__main__":
     unittest.main()
