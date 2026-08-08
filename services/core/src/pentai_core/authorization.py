@@ -18,6 +18,7 @@ from pentai_policy import (
 from pentai_policy.document import parse_time
 
 from pentai_core.database import transaction
+from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
 
 _SOURCE_AUTHORITIES = {
     "contract",
@@ -44,8 +45,11 @@ def _timestamp(value: datetime | None = None) -> str:
 
 
 class AuthorizationService:
-    def __init__(self, database_path: Path) -> None:
+    def __init__(
+        self, database_path: Path, *, source_store: EncryptedSourceStore | None = None
+    ) -> None:
         self.database_path = database_path
+        self.source_store = source_store
 
     def _audit(
         self,
@@ -217,7 +221,8 @@ class AuthorizationService:
                     "SOURCE_EFFECTIVE_AT_INVALID", "source effective time is invalid"
                 ) from exc
         source_id = str(uuid4())
-        digest = hashlib.sha256(content.encode()).hexdigest()
+        content_bytes = content.encode()
+        digest = hashlib.sha256(content_bytes).hexdigest()
         retrieved_at = _timestamp()
         with transaction(self.database_path) as connection:
             program = connection.execute(
@@ -225,6 +230,14 @@ class AuthorizationService:
             ).fetchone()
             if program is None:
                 raise DomainError("PROGRAM_NOT_FOUND", "program does not exist")
+            if self.source_store is None:
+                raise DomainError(
+                    "SOURCE_STORAGE_UNAVAILABLE", "encrypted source storage is unavailable"
+                )
+            try:
+                blob_reference = self.source_store.store(content_bytes, digest)
+            except SourceStoreError as exc:
+                raise DomainError("SOURCE_STORAGE_FAILED", str(exc)) from exc
             existing = connection.execute(
                 """
                 SELECT * FROM source_documents
@@ -240,8 +253,10 @@ class AuthorizationService:
                     INSERT INTO source_documents(
                         id, program_id, authority, reference, retrieved_at, effective_at,
                         content_hash, encrypted_blob_ref, metadata_json, source_kind,
-                        media_type, source_version
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
+                        media_type, source_version, blob_status, encryption_version,
+                        plaintext_size
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, 'available',
+                              'aes-256-gcm-v1', ?)
                     """,
                     (
                         source_id,
@@ -251,10 +266,11 @@ class AuthorizationService:
                         retrieved_at,
                         effective_at,
                         digest,
-                        f"sha256:{digest}",
+                        blob_reference,
                         source_kind,
                         media_type.strip().lower(),
                         source_version,
+                        len(content_bytes),
                     ),
                 )
             except sqlite3.IntegrityError as exc:
@@ -272,6 +288,9 @@ class AuthorizationService:
                 "source_kind": source_kind,
                 "media_type": media_type.strip().lower(),
                 "source_version": source_version,
+                "blob_status": "available",
+                "encryption_version": "aes-256-gcm-v1",
+                "plaintext_size": len(content_bytes),
             }
             self._audit(
                 connection,
@@ -298,6 +317,9 @@ class AuthorizationService:
             "source_kind": row["source_kind"],
             "media_type": row["media_type"],
             "source_version": row["source_version"],
+            "blob_status": row["blob_status"],
+            "encryption_version": row["encryption_version"],
+            "plaintext_size": row["plaintext_size"],
         }
 
     def list_sources(self, program_id: str) -> list[dict[str, Any]]:

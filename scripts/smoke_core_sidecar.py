@@ -50,13 +50,15 @@ def request(port: int, path: str, token: str | None = None, method: str = "GET")
         connection.close()
 
 
-def environment(port: int, database: Path, credential: str) -> dict[str, str]:
+def environment(port: int, database: Path, credential: str, source_store: Path) -> dict[str, str]:
     return {
         **os.environ,
         "PENTAI_ENVIRONMENT": "production",
         "PENTAI_CORE_HOST": "127.0.0.1",
         "PENTAI_CORE_PORT": str(port),
         "PENTAI_DATABASE_PATH": str(database),
+        "PENTAI_SOURCE_STORE_PATH": str(source_store),
+        "PENTAI_SOURCE_KEY_STDIN": "1",
         "PENTAI_LAUNCH_CREDENTIAL": credential,
     }
 
@@ -71,15 +73,26 @@ def main() -> None:
     if not executable.is_file():
         raise RuntimeError("core sidecar has not been built")
     credential = secrets.token_urlsafe(32)
+    source_key = secrets.token_urlsafe(32)
     port = reserve_port()
     with tempfile.TemporaryDirectory() as temporary:
         process = subprocess.Popen(  # noqa: S603 - executable is the locally built sidecar
             [str(executable)],
-            env=environment(port, Path(temporary) / "pentai.db", credential),
-            stdin=subprocess.DEVNULL,
+            env=environment(
+                port,
+                Path(temporary) / "pentai.db",
+                credential,
+                Path(temporary) / "source-blobs",
+            ),
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        if process.stdin is None:
+            raise RuntimeError("core source-key channel is unavailable")
+        process.stdin.write(f"{source_key}\n".encode())
+        process.stdin.close()
+        process.stdin = None
         deadline = time.monotonic() + 20
         try:
             while True:
@@ -104,8 +117,8 @@ def main() -> None:
             stdout, stderr = process.communicate(timeout=10)
             if process.returncode != 0:
                 raise RuntimeError("core sidecar did not exit cleanly")
-            if credential.encode() in stdout + stderr:
-                raise RuntimeError("launch credential appeared in core output")
+            if credential.encode() in stdout + stderr or source_key.encode() in stdout + stderr:
+                raise RuntimeError("credential material appeared in core output")
         finally:
             if process.poll() is None:
                 process.kill()
@@ -113,6 +126,7 @@ def main() -> None:
 
         collision_port = reserve_port()
         collision_credential = secrets.token_urlsafe(32)
+        collision_source_key = secrets.token_urlsafe(32)
         with socket.socket() as collision:
             collision.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             collision.bind(("127.0.0.1", collision_port))
@@ -123,16 +137,20 @@ def main() -> None:
                     collision_port,
                     Path(temporary) / "collision.db",
                     collision_credential,
+                    Path(temporary) / "collision-sources",
                 ),
-                stdin=subprocess.DEVNULL,
+                input=f"{collision_source_key}\n".encode(),
                 capture_output=True,
                 timeout=10,
                 check=False,
             )
         if blocked.returncode == 0:
             raise RuntimeError("core sidecar accepted an occupied port")
-        if collision_credential.encode() in blocked.stdout + blocked.stderr:
-            raise RuntimeError("launch credential appeared in collision output")
+        if (
+            collision_credential.encode() in blocked.stdout + blocked.stderr
+            or collision_source_key.encode() in blocked.stdout + blocked.stderr
+        ):
+            raise RuntimeError("credential material appeared in collision output")
     print("Core sidecar lifecycle smoke test passed")
 
 

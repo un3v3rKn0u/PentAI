@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.migrate import migrate
+from pentai_core.source_store import EncryptedSourceStore
 from pentai_policy import canonicalize_url, content_hash, evaluate
 from pentai_policy.document import contract_issues
 
@@ -144,7 +145,10 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.database = Path(self.temporary.name) / "pentai.db"
         migrate(self.database)
-        self.service = AuthorizationService(self.database)
+        self.service = AuthorizationService(
+            self.database,
+            source_store=EncryptedSourceStore(Path(self.temporary.name) / "sources", b"k" * 32),
+        )
         self.program = self.service.create_program("Synthetic program")
         self.engagement = self.service.create_engagement(
             self.program["id"],

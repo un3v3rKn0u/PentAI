@@ -41,10 +41,10 @@ versioned contract change.
 
 Phase 1 migration `0004_source_provenance.sql` strengthens the persisted source side
 of this binding with normalized source kind, media type, optional source version,
-immutable rows, idempotent repeated imports, and audit linkage. Pasted text is the
-only accepted acquisition kind in this increment. File/URL acquisition and encrypted
-original storage remain explicitly unsupported; a content-addressed reference is not
-represented as an encrypted stored object.
+immutable rows, idempotent repeated imports, and audit linkage. Migration
+`0005_encrypted_source_blobs.sql` distinguishes legacy placeholders from new
+AES-256-GCM encrypted originals. Pasted text is the only accepted acquisition kind in
+this increment; file/URL acquisition remains explicitly unsupported.
 
 ## Verification
 

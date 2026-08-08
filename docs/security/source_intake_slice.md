@@ -1,6 +1,6 @@
 # Phase 1 source intake provenance slice
 
-**Status:** Implemented locally; security review pending
+**Status:** Encrypted-storage extension implemented locally; security review pending
 **Scope:** Pasted-text source metadata and provenance only
 
 ## Outcome
@@ -36,10 +36,16 @@ continue to bind manifests to these persisted source records.
   and diagnostics.
 - `INV-DATA-003` and `INV-DATA-004`: new imports produce hash-chained audit events.
 
-The `encrypted_blob_ref` remains a content-addressed placeholder and no original
-source bytes are persisted. File and URL source kinds are deliberately rejected until
-dedicated acquisition, size/content controls, SSRF defenses, durable key custody, and
-encrypted blob storage exist. Therefore the Phase 1 “complete source import” action
-and vertical demonstration 1 remain incomplete.
+New pasted-source originals are persisted as AES-256-GCM authenticated,
+content-addressed blobs. Their durable master key is created and retrieved by the
+desktop through the operating-system credential service, then delivered to the owned
+core over a one-use stdin channel. Missing keys, failed storage, authentication
+failure, and digest mismatch deny import. Phase 0 placeholder records remain honestly
+marked `legacy_missing` after migration.
+
+File and URL source kinds remain rejected until dedicated size/content controls and
+SSRF-safe acquisition exist. Key rotation, credential-store backup/restore, and
+Windows/Linux credential-store verification are also open. Therefore the Phase 1
+“complete source import” action and vertical demonstration 1 remain incomplete.
 
 No target-facing networking or authority is introduced by this slice.

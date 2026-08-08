@@ -13,7 +13,7 @@ class MigrationTests(unittest.TestCase):
     def test_initial_migration_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "pentai.db"
-            self.assertEqual(migrate(database), ["0001", "0002", "0003", "0004"])
+            self.assertEqual(migrate(database), ["0001", "0002", "0003", "0004", "0005"])
             self.assertEqual(migrate(database), [])
             with sqlite3.connect(database) as connection:
                 tables = {
@@ -161,6 +161,22 @@ class MigrationTests(unittest.TestCase):
                 ).fetchone()
             self.assertEqual(row, ("pasted_text", "text/plain", None))
 
+            (migrations / "0005_encrypted_source_blobs.sql").write_text(
+                (repository_migrations / "0005_encrypted_source_blobs.sql").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0005"])
+            with sqlite3.connect(database) as connection:
+                encrypted = connection.execute(
+                    """
+                    SELECT blob_status, encryption_version, plaintext_size
+                    FROM source_documents
+                    """
+                ).fetchone()
+            self.assertEqual(encrypted, ("legacy_missing", None, None))
 
 if __name__ == "__main__":
     unittest.main()
