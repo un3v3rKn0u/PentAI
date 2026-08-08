@@ -180,9 +180,7 @@ class AuthorizationService:
             "content_hash": digest,
         }
 
-    def save_manifest(
-        self, engagement_id: str, candidate: dict[str, Any]
-    ) -> dict[str, Any]:
+    def save_manifest(self, engagement_id: str, candidate: dict[str, Any]) -> dict[str, Any]:
         with transaction(self.database_path) as connection:
             engagement = connection.execute(
                 "SELECT * FROM engagements WHERE id = ?", (engagement_id,)
@@ -197,8 +195,7 @@ class AuthorizationService:
                 "timezone": engagement["timezone"],
             }
             if not isinstance(candidate_engagement, dict) or any(
-                candidate_engagement.get(key) != value
-                for key, value in expected_engagement.items()
+                candidate_engagement.get(key) != value for key, value in expected_engagement.items()
             ):
                 raise DomainError(
                     "ENGAGEMENT_MISMATCH",
@@ -209,9 +206,7 @@ class AuthorizationService:
                 (engagement["program_id"],),
             ).fetchall()
             source_hashes = {row["id"]: row["content_hash"] for row in source_rows}
-            validation = validate_and_canonicalize_manifest(
-                candidate, source_hashes=source_hashes
-            )
+            validation = validate_and_canonicalize_manifest(candidate, source_hashes=source_hashes)
             canonical = validation.document or candidate
             digest = content_hash(canonical)
             previous = connection.execute(
@@ -335,7 +330,11 @@ class AuthorizationService:
         if decision not in {"approved", "rejected"}:
             raise DomainError("APPROVAL_DECISION_INVALID", "decision must be approved or rejected")
         decided_at = _timestamp()
-        expiry = expires_at or _timestamp(_now() + timedelta(hours=8))
+        expiry = (
+            _timestamp(parse_time(expires_at))
+            if expires_at is not None
+            else _timestamp(_now() + timedelta(hours=8))
+        )
         if parse_time(expiry) <= parse_time(decided_at):
             raise DomainError("APPROVAL_EXPIRED", "approval expiry must be in the future")
         with transaction(self.database_path) as connection:
@@ -351,8 +350,17 @@ class AuthorizationService:
             if policy is None:
                 raise DomainError("POLICY_NOT_FOUND", "policy does not exist")
             approval_id = str(uuid4())
+            attestation_payload = {
+                "approval_id": approval_id,
+                "manifest_hash": policy["manifest_hash"],
+                "policy_hash": policy["content_hash"],
+                "approver_id": approver_id.strip(),
+                "decision": decision,
+                "decided_at": decided_at,
+                "expires_at": expiry,
+            }
             document: dict[str, Any] = {
-                "schema_version": "1.0.0",
+                "schema_version": "1.1.0",
                 "approval_id": approval_id,
                 "approval_type": "policy_activation",
                 "subject": {"subject_type": "policy", "subject_id": policy_bundle_id},
@@ -364,17 +372,9 @@ class AuthorizationService:
                 "decided_at": decided_at,
                 "expires_at": expiry,
                 "signature": {
-                    "algorithm": "Ed25519",
-                    "key_id": "local-human-attestation",
-                    "value": content_hash(
-                        {
-                            "approval_id": approval_id,
-                            "manifest_hash": policy["manifest_hash"],
-                            "policy_hash": policy["content_hash"],
-                            "approver_id": approver_id.strip(),
-                            "decision": decision,
-                        }
-                    ),
+                    "algorithm": "local-transaction-sha256",
+                    "key_id": "local-authorization-ledger",
+                    "value": content_hash(attestation_payload),
                 },
             }
             if reason:
@@ -435,6 +435,10 @@ class AuthorizationService:
             ).fetchone()
             if policy is None:
                 raise DomainError("POLICY_NOT_FOUND", "policy does not exist")
+            if policy["revoked_at"] is not None:
+                raise DomainError("POLICY_REVOKED", "revoked policies cannot be activated")
+            if policy["activated_at"] is not None:
+                raise DomainError("POLICY_ALREADY_ACTIVE", "policy is already active")
             policy_document = json.loads(policy["policy_json"])
             if (
                 content_hash({k: v for k, v in policy_document.items() if k != "content_hash"})
@@ -460,7 +464,8 @@ class AuthorizationService:
                 SELECT * FROM approvals
                 WHERE policy_bundle_id = ? AND approval_type = 'policy_activation'
                   AND decision = 'approved' AND invalidated_at IS NULL
-                  AND manifest_hash = ? AND policy_hash = ? AND expires_at > ?
+                  AND manifest_hash = ? AND policy_hash = ?
+                  AND julianday(expires_at) > julianday(?)
                 ORDER BY decided_at DESC LIMIT 1
                 """,
                 (
@@ -472,6 +477,57 @@ class AuthorizationService:
             ).fetchone()
             if approval is None:
                 raise DomainError("APPROVAL_MISSING", "exact human policy approval is required")
+            approval_document = json.loads(approval["document_json"])
+            expected_attestation = content_hash(
+                {
+                    "approval_id": approval["id"],
+                    "manifest_hash": approval["manifest_hash"],
+                    "policy_hash": approval["policy_hash"],
+                    "approver_id": approval["approver_id"],
+                    "decision": approval["decision"],
+                    "decided_at": approval["decided_at"],
+                    "expires_at": approval["expires_at"],
+                }
+            )
+            signature = approval_document.get("signature", {})
+            common_fields_valid = (
+                approval_document.get("schema_version") in {"1.0.0", "1.1.0"}
+                and approval_document.get("approval_id") == approval["id"]
+                and approval_document.get("approval_type") == approval["approval_type"]
+                and approval_document.get("subject", {}).get("subject_type") == "policy"
+                and approval_document.get("subject", {}).get("subject_id")
+                == approval["policy_bundle_id"]
+                and approval_document.get("policy_hash") == approval["policy_hash"]
+                and approval_document.get("decision") == approval["decision"]
+                and approval_document.get("decided_at") == approval["decided_at"]
+                and approval_document.get("expires_at") == approval["expires_at"]
+                and approval_document.get("approver", {}).get("actor_id") == approval["approver_id"]
+            )
+            current_attestation_valid = (
+                approval_document.get("schema_version") == "1.1.0"
+                and signature.get("algorithm") == "local-transaction-sha256"
+                and signature.get("key_id") == "local-authorization-ledger"
+                and signature.get("value") == expected_attestation
+            )
+            legacy_attestation = content_hash(
+                {
+                    "approval_id": approval["id"],
+                    "manifest_hash": approval["manifest_hash"],
+                    "policy_hash": approval["policy_hash"],
+                    "approver_id": approval["approver_id"],
+                    "decision": approval["decision"],
+                }
+            )
+            legacy_attestation_valid = (
+                approval_document.get("schema_version") == "1.0.0"
+                and signature.get("algorithm") == "Ed25519"
+                and signature.get("key_id") == "local-human-attestation"
+                and signature.get("value") == legacy_attestation
+            )
+            if not common_fields_valid or not (
+                current_attestation_valid or legacy_attestation_valid
+            ):
+                raise DomainError("APPROVAL_INVALID", "approval attestation is invalid")
             previous_policy = connection.execute(
                 """
                 SELECT * FROM policy_bundles
@@ -507,13 +563,15 @@ class AuthorizationService:
                     },
                     occurred_at=activated_at,
                 )
-            connection.execute(
+            activated = connection.execute(
                 """
                 UPDATE policy_bundles SET activated_at = ?
                 WHERE id = ? AND activated_at IS NULL AND revoked_at IS NULL
                 """,
                 (activated_at, policy_bundle_id),
             )
+            if activated.rowcount != 1:
+                raise DomainError("POLICY_STATE_CHANGED", "policy activation state changed")
             connection.execute(
                 """
                 UPDATE engagements SET status = 'active', active_policy_id = ?
@@ -629,9 +687,7 @@ class AuthorizationService:
 
     def audit_events(self) -> list[dict[str, Any]]:
         with transaction(self.database_path) as connection:
-            rows = connection.execute(
-                "SELECT * FROM audit_events ORDER BY sequence"
-            ).fetchall()
+            rows = connection.execute("SELECT * FROM audit_events ORDER BY sequence").fetchall()
         return [
             {
                 "sequence": row["sequence"],

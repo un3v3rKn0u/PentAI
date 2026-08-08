@@ -19,6 +19,12 @@ no target-facing networking code.
   truncation of the final event requires a separately anchored head hash, which is not
   part of this slice.
 
+Approval v1.1 labels the Phase 0 transactional attestation as
+`local-transaction-sha256`; it is integrity linkage inside the protected SQLite
+transaction, not a public-key signature. Previously persisted v1.0 local attestations
+remain readable for activation compatibility but no new approval claims Ed25519
+without an Ed25519 operation.
+
 ## Stable decision codes
 
 The slice emits `EXPLICIT_ALLOW`, `DEFAULT_DENY`, `EXPLICIT_DENY`, `POLICY_INACTIVE`,

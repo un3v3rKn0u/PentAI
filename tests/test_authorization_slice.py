@@ -5,13 +5,15 @@ import json
 import sqlite3
 import tempfile
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.migrate import migrate
 from pentai_policy import canonicalize_url, content_hash, evaluate
+from pentai_policy.document import contract_issues
 
 
 def timestamp(offset: timedelta) -> str:
@@ -230,9 +232,7 @@ class AuthorizationSliceTests(unittest.TestCase):
 
         cross_assessment = intent_for(str(uuid4()), bundle["content_hash"])
         self.assertEqual(
-            self.service.evaluate_intent(
-                self.engagement["id"], cross_assessment
-            )["reason_codes"],
+            self.service.evaluate_intent(self.engagement["id"], cross_assessment)["reason_codes"],
             ["DEFAULT_DENY"],
         )
 
@@ -276,6 +276,36 @@ class AuthorizationSliceTests(unittest.TestCase):
         bundle = self.service.compile_policy(version["id"])
         with self.assertRaisesRegex(DomainError, "exact human policy approval"):
             self.service.activate_policy(bundle["id"], actor_id="researcher")
+
+    def test_expired_offset_approval_cannot_activate(self) -> None:
+        version = self.service.save_manifest(self.engagement["id"], self.manifest)
+        bundle = self.service.compile_policy(version["id"])
+        approval_time = datetime.now(UTC)
+        expiry = (approval_time + timedelta(minutes=1)).astimezone(timezone(timedelta(hours=10)))
+        with patch("pentai_core.authorization._now", return_value=approval_time):
+            approval = self.service.approve_policy(
+                bundle["id"],
+                approver_id="human-reviewer",
+                expires_at=expiry.isoformat(),
+            )
+        self.assertTrue(approval["expires_at"].endswith("Z"))
+        with (
+            patch(
+                "pentai_core.authorization._now",
+                return_value=approval_time + timedelta(minutes=2),
+            ),
+            self.assertRaises(DomainError) as raised,
+        ):
+            self.service.activate_policy(bundle["id"], actor_id="human-reviewer")
+        self.assertEqual(raised.exception.code, "APPROVAL_MISSING")
+
+    def test_approval_uses_truthful_transaction_attestation(self) -> None:
+        version = self.service.save_manifest(self.engagement["id"], self.manifest)
+        bundle = self.service.compile_policy(version["id"])
+        approval = self.service.approve_policy(bundle["id"], approver_id="human-reviewer")
+        self.assertEqual(approval["schema_version"], "1.1.0")
+        self.assertEqual(approval["signature"]["algorithm"], "local-transaction-sha256")
+        self.assertEqual(contract_issues(approval, "approval-v1.schema.json"), ())
 
     def test_edit_creates_version_and_does_not_inherit_approval(self) -> None:
         first = self.service.save_manifest(self.engagement["id"], self.manifest)
@@ -337,6 +367,42 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertEqual(active[0], second_bundle["id"])
         self.assertEqual(active[1], 1)
 
+        with self.assertRaises(DomainError) as raised:
+            self.service.activate_policy(first_bundle["id"], actor_id="human-reviewer")
+        self.assertEqual(raised.exception.code, "POLICY_REVOKED")
+        with sqlite3.connect(self.database) as connection:
+            after = connection.execute(
+                "SELECT active_policy_id FROM engagements WHERE id = ?",
+                (self.engagement["id"],),
+            ).fetchone()
+            replacement = connection.execute(
+                "SELECT revoked_at FROM policy_bundles WHERE id = ?",
+                (second_bundle["id"],),
+            ).fetchone()
+        self.assertEqual(after[0], second_bundle["id"])
+        self.assertIsNone(replacement[0])
+
+    def test_duplicate_conditional_capability_is_rejected_without_crashing(self) -> None:
+        duplicate = copy.deepcopy(self.manifest)
+        duplicate["techniques"]["conditional_capabilities"] = [
+            {
+                "capability": "network.http.head",
+                "approval_type": "conditional_action",
+                "conditions": ["first"],
+            },
+            {
+                "capability": "network.http.head",
+                "approval_type": "conditional_action",
+                "conditions": ["second"],
+            },
+        ]
+        version = self.service.save_manifest(self.engagement["id"], duplicate)
+        self.assertFalse(version["valid"])
+        self.assertIn("CONTRADICTORY_RULES", {item["code"] for item in version["issues"]})
+        with self.assertRaises(DomainError) as raised:
+            self.service.compile_policy(version["id"])
+        self.assertEqual(raised.exception.code, "CONTRADICTORY_RULES")
+
     def test_audit_chain_covers_lifecycle_and_detects_tampering(self) -> None:
         _, bundle = self.activate()
         intent = intent_for(self.engagement["id"], bundle["content_hash"])
@@ -388,6 +454,20 @@ class AuthorizationSliceTests(unittest.TestCase):
                 connection.execute(
                     "UPDATE manifest_versions SET content_hash = ? WHERE id = ?",
                     ("e" * 64, version["id"]),
+                )
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "UPDATE manifest_versions SET supersedes_id = NULL WHERE id = ?",
+                    (version["id"],),
+                )
+            approval = connection.execute(
+                "SELECT id FROM approvals WHERE policy_bundle_id = ?",
+                (bundle["id"],),
+            ).fetchone()
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "UPDATE approvals SET document_json = '{}' WHERE id = ?",
+                    (approval[0],),
                 )
 
 

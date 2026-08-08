@@ -65,20 +65,27 @@ class ManifestValidation:
         )
 
 
-_SCHEMAS = Path(__file__).resolve().parents[4] / "schemas" / "v1"
+def _source_schema(schema_name: str) -> Path | None:
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "schemas" / "v1" / schema_name
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 @cache
 def _contract_validator(schema_name: str) -> Draft202012Validator:
-    source_schema = _SCHEMAS / schema_name
-    if source_schema.is_file():
-        schema_text = source_schema.read_text(encoding="utf-8")
-    else:
+    try:
         schema_text = (
             resources.files("pentai_policy")
             .joinpath("schemas", schema_name)
             .read_text(encoding="utf-8")
         )
+    except FileNotFoundError:
+        source_schema = _source_schema(schema_name)
+        if source_schema is None:
+            raise
+        schema_text = source_schema.read_text(encoding="utf-8")
     return Draft202012Validator(json.loads(schema_text), format_checker=FormatChecker())
 
 
@@ -271,6 +278,20 @@ def validate_and_canonicalize_manifest(
             for item in techniques.get("conditional_capabilities", [])
             if isinstance(item, dict) and "capability" in item
         }
+        conditional_items = techniques.get("conditional_capabilities", [])
+        conditional_names = [
+            str(item["capability"])
+            for item in conditional_items
+            if isinstance(item, dict) and "capability" in item
+        ]
+        if len(conditional_names) != len(set(conditional_names)):
+            issues.append(
+                ValidationIssue(
+                    "CONTRADICTORY_RULES",
+                    "/techniques/conditional_capabilities",
+                    "a capability may have only one conditional rule",
+                )
+            )
         if (allowed & denied) or (allowed & conditional) or (denied & conditional):
             issues.append(
                 ValidationIssue(
@@ -320,10 +341,7 @@ def validate_and_canonicalize_manifest(
             "maximum_response_bytes",
         )
         for field_name in positive:
-            if (
-                not isinstance(limits.get(field_name), (int, float))
-                or limits[field_name] <= 0
-            ):
+            if not isinstance(limits.get(field_name), (int, float)) or limits[field_name] <= 0:
                 issues.append(
                     ValidationIssue(
                         "LIMITS_INVALID",

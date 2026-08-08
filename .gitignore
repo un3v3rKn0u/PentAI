@@ -19,6 +19,8 @@ htmlcov/
 node_modules/
 dist/
 target/
+build/
+apps/desktop/binaries/pentai-core-*
 *.db
 *.db-shm
 *.db-wal

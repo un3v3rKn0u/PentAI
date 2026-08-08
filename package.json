@@ -8,5 +8,8 @@
     "build": "pnpm --filter @pentai/ui build",
     "test": "pnpm --filter @pentai/ui test",
     "typecheck": "pnpm --filter @pentai/ui typecheck"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4"
   }
 }

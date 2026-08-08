@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildIntentTarget } from "./App";
+import { buildIntentTarget, coreRequest } from "./App";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("authorization workflow safety boundary", () => {
   it("does not expose execution or grant issuance", () => {
@@ -39,5 +43,49 @@ describe("authorization workflow safety boundary", () => {
     "https:\\\\example.test\\api"
   ])("rejects authorization-ambiguous target %s", (url) => {
     expect(() => buildIntentTarget(url)).toThrow("TARGET_AMBIGUOUS");
+  });
+
+  it("authenticates every core request without exposing the credential in the URL", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ status: "ready" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    const credential = `runtime-${crypto.randomUUID()}`;
+
+    await coreRequest(
+      { apiBaseUrl: "http://127.0.0.1:49152/api/v1", credential },
+      "/readiness"
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:49152/api/v1/readiness",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: `Bearer ${credential}` })
+      })
+    );
+    expect(fetchMock.mock.calls[0][0]).not.toContain(credential);
+  });
+
+  it("surfaces authentication failure without echoing response details", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          detail: { code: "AUTHENTICATION_REQUIRED", message: "Authentication required" }
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    await expect(
+      coreRequest(
+        {
+          apiBaseUrl: "http://127.0.0.1:49152/api/v1",
+          credential: `runtime-${crypto.randomUUID()}`
+        },
+        "/readiness"
+      )
+    ).rejects.toThrow("AUTHENTICATION_REQUIRED");
   });
 });

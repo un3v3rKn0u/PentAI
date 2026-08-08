@@ -51,10 +51,7 @@ def _asset_matches(rule: dict[str, Any], target: dict[str, Any]) -> bool:
             return False
         value = host["value"]
         base = matcher["value"]
-        return bool(
-            (matcher.get("include_apex") and value == base)
-            or value.endswith("." + base)
-        )
+        return bool((matcher.get("include_apex") and value == base) or value.endswith("." + base))
     if kind in {"ipv4", "ipv6"}:
         return bool(host == {"kind": kind, "value": matcher["value"]})
     if kind == "cidr" and host["kind"] in {"ipv4", "ipv6"}:
@@ -80,9 +77,7 @@ def _decision(
         "schema_version": "1.0.0",
         "decision_id": str(uuid5(_NAMESPACE, content_hash(seed))),
         "intent_id": intent.get("intent_id", "00000000-0000-0000-0000-000000000000"),
-        "assessment_id": intent.get(
-            "assessment_id", "00000000-0000-0000-0000-000000000000"
-        ),
+        "assessment_id": intent.get("assessment_id", "00000000-0000-0000-0000-000000000000"),
         "policy_hash": policy_hash,
         "outcome": outcome,
         "reason_codes": reasons,

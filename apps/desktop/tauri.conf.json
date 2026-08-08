@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.pentai.desktop",
   "build": {
-    "beforeDevCommand": "npm --prefix ../ui run dev",
-    "beforeBuildCommand": "npm --prefix ../ui run build",
+    "beforeDevCommand": "pnpm --dir apps/ui dev",
+    "beforeBuildCommand": "pnpm --dir apps/ui build",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../ui/dist"
   },
@@ -21,12 +21,13 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8741; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:*; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/pentai-core"],
     "icon": []
   }
 }
