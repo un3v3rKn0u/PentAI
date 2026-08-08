@@ -2,7 +2,7 @@
 
 **Document ID:** PENTAI-SEC-INV-001<br>
 **Version:** 1.0.0<br>
-**Status:** Engineering baseline; independent security approval pending<br>
+**Status:** Security Lead approved; independent security approval pending<br>
 **Date:** 2026-08-08<br>
 **Owner:** Security Lead<br>
 

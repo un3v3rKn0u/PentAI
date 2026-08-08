@@ -4,7 +4,7 @@
 **Principle:** Parse, validate, canonicalize, then compare. Failure or ambiguity denies.
 **Owner:** Policy Maintainer<br>
 **Compatibility owner:** Contract Maintainer<br>
-**Approval:** Engineering verification complete; independent security approval pending.
+**Approval:** Security Lead approved; independent security approval pending.
 
 Successful canonicalization is deterministic and idempotent. A canonical value
 canonicalizes to itself; malformed or authorization-ambiguous input fails closed.

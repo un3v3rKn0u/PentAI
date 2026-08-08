@@ -1,6 +1,6 @@
 # Phase 0 security invariant traceability
 
-**Status:** Engineering baseline; independent security approval pending<br>
+**Status:** Security Lead approved; independent security approval pending<br>
 **Accountable register owner:** Security Lead<br>
 **Verification evidence owner:** QA and Security Test Lead<br>
 **Last reconciled:** 2026-08-08
@@ -12,15 +12,15 @@ deferred Phase 1 component exists. “Deferred” is a release boundary, not a p
 | Invariant | Authoritative enforcing component | Accountable owner role | Existing automated evidence | Missing verification / boundary | Approval status |
 |---|---|---|---|---|---|
 | INV-AUTH-001 | Execution Broker | Execution Safety Lead | Policy inactive/expired/revoked tests in `test_authorization_slice.py` | Broker, signatures, and target execution are Phase 1 | Deferred; not fully verified |
-| INV-AUTH-002 | Core domain service | Core Maintainer | Policy hash, immutable records, and migration tests | Grant/execution/evidence linkage is Phase 1 | Phase 0 slice verified; security approval pending |
-| INV-AUTH-003 | Policy evaluator | Policy Maintainer | Golden decision corpus, negative tests, canonicalization properties | Gateway integration is Phase 1 | Phase 0 evaluator verified; security approval pending |
-| INV-AUTH-004 | Policy evaluator | Policy Maintainer | Deny precedence and path-boundary tests | Gateway parity is Phase 1 | Phase 0 evaluator verified; security approval pending |
-| INV-AUTH-005 | Approval service and capability authorization | Core Security Maintainer | Actor-forgery, exact approval, immutable activation, authenticated-route tests | Strong OS user presence is not implemented; local session proves possession, not a named human | Phase 0 local boundary verified; independent approval pending |
+| INV-AUTH-002 | Core domain service | Core Maintainer | Policy hash, immutable records, and migration tests | Grant/execution/evidence linkage is Phase 1 | Security Lead approved Phase 0 slice; independent review pending |
+| INV-AUTH-003 | Policy evaluator | Policy Maintainer | Golden decision corpus, negative tests, canonicalization properties | Gateway integration is Phase 1 | Security Lead approved Phase 0 evaluator; independent review pending |
+| INV-AUTH-004 | Policy evaluator | Policy Maintainer | Deny precedence and path-boundary tests | Gateway parity is Phase 1 | Security Lead approved Phase 0 evaluator; independent review pending |
+| INV-AUTH-005 | Approval service and capability authorization | Core Security Maintainer | Actor-forgery, exact approval, immutable activation, authenticated-route tests | Strong OS user presence is not implemented; local session proves possession, not a named human | Security Lead approved Phase 0 boundary; independent review pending |
 | INV-GRANT-001 | Gateway | Gateway Maintainer | Schema validation only | Issuance, signatures, expiry, audience, replay, and gateway do not exist | Phase 1 deferred |
 | INV-GRANT-002 | Gateway and Execution Broker | Execution Safety Lead | Intent immutability and policy-hash tests | Grant comparison and execution do not exist | Phase 1 deferred |
 | INV-GRANT-003 | Policy evaluator | Policy Maintainer | Conditional capability cannot become allow | Typed action approval integration is incomplete | Partially verified; Phase 1 deferred |
 | INV-GRANT-004 | Core and Gateway | Core Maintainer | Revocation epoch contract and policy-revocation tests | Grant invalidation and mid-flight checks do not exist | Phase 1 deferred |
-| INV-SCOPE-001 | Canonicalization package | Policy Maintainer | Fixture, property, idempotence, malicious-input, and differential tests | Runtime DNS/redirect inputs await gateway | Phase 0 canonicalizers verified; security approval pending |
+| INV-SCOPE-001 | Canonicalization package | Policy Maintainer | Fixture, property, idempotence, malicious-input, and differential tests | Runtime DNS/redirect inputs await gateway | Security Lead approved Phase 0 canonicalizers; independent review pending |
 | INV-SCOPE-002 | Policy compiler and evaluator | Policy Maintainer | Ambiguous manifest, wildcard/apex, encoded-path, port, and precedence tests | Runtime network ambiguity checks await gateway | Phase 0 compiler/evaluator verified; Phase 1 enforcement deferred |
 | INV-SCOPE-003 | Gateway | Gateway Maintainer | Runtime-check requirements in decision tests | DNS, CNAME, redirect, SNI, Host, and resolved-IP enforcement do not exist | Phase 1 deferred |
 | INV-SCOPE-004 | Policy evaluator | Policy Maintainer | Default-deny/out-of-scope decision tests | Discovery pipeline does not exist | Contract verified; Phase 1 deferred |
@@ -50,8 +50,9 @@ deferred Phase 1 component exists. “Deferred” is a release boundary, not a p
 
 ## Approval interpretation
 
-Engineering acceptance is evidenced by merged pull requests #14 and #15 plus passing
-checks. It is not independent security approval. The Security Lead owns the register;
-an independent Security Reviewer must approve the baseline and the local-transport
-boundary before the Phase 0 exit gate can pass. Deferred Phase 1 rows remain open and
-must not be represented as implemented capabilities.
+Engineering acceptance is evidenced by merged pull requests #14, #15, and #16 plus
+passing checks. Security Lead `un3v3rKn0u` approved the Phase 0 baseline on 2026-08-08,
+but is also Product Owner, repository owner, and the only reviewer. An independent
+Security Reviewer must approve the baseline and local-transport boundary before the
+Phase 0 exit gate can pass. Deferred Phase 1 rows remain open and must not be
+represented as implemented capabilities.

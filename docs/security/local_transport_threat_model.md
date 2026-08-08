@@ -2,6 +2,7 @@
 
 **Owner roles:** Desktop Maintainer and Core Maintainer<br>
 **Engineering acceptance:** Implemented in PR #15<br>
+**Security Lead approval:** `un3v3rKn0u`, 2026-08-08<br>
 **Independent security approval:** Pending
 
 ## Scope and assets
