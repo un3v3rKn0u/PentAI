@@ -178,16 +178,16 @@ Deliverables:
 ### 6.1 Actions
 
 - [ ] Confirm MVP personas, authorized use cases, and explicit non-goals.
-- [ ] Create the monorepo structure defined in the architecture.
-- [ ] Establish formatting, linting, type checking, tests, branch protection, and dependency locking.
+- [x] Create the monorepo structure defined in the architecture.
+- [x] Establish formatting, linting, type checking, tests, branch protection, and dependency locking.
 - [ ] Record ADRs for Tauri, Python/FastAPI, SQLite, gateway language, container runtime, and local API transport.
-- [ ] Build the system threat model using STRIDE plus misuse/abuse cases.
-- [ ] Define the initial security invariants and map each to an owner and automated test.
-- [ ] Define manifest v2, policy IR v1, message envelopes, `ActionIntent`, `PolicyDecision`, `Approval`, and `ActionGrant`.
-- [ ] Build deterministic canonicalization libraries for domains, URLs, IPs/CIDRs, and paths.
-- [ ] Create a malicious and ambiguous authorization test corpus.
+- [x] Build the local-transport threat model and abuse-case baseline; broader system STRIDE review remains open.
+- [x] Define the initial security invariants and map each to an owner, automated evidence, missing verification, and approval state.
+- [x] Define manifest v2, policy IR v1, `ActionIntent`, `PolicyDecision`, `Approval`, and `ActionGrant`; generic message envelopes remain deferred.
+- [x] Build deterministic canonicalization libraries for domains, wildcards, URLs, ports, IPs/CIDRs, and paths.
+- [x] Create a malicious and ambiguous authorization test corpus with property and differential tests.
 - [x] Implement the desktop shell, local core bootstrap, per-launch authentication, and health endpoint.
-- [ ] Implement database migrations and baseline Program/Engagement/Source models.
+- [x] Implement database migrations and the Phase 0 authorization persistence slice; broader Program/Engagement/Source APIs remain Phase 1.
 - [ ] Prove operating-system credential-store integration on all target platforms.
 - [ ] Create design prototypes for intake, policy diff, approval, network state, and emergency stop.
 
@@ -436,16 +436,16 @@ Critical-path rules:
 
 ### P0 — Must complete first
 
-- [ ] PRD, non-goals, and safety invariant register.
-- [ ] Threat model and abuse-case inventory.
-- [ ] Monorepo, CI, quality gates, and ADR process.
-- [ ] Manifest v2 and critical message schemas.
-- [ ] Canonical asset/value-object library.
-- [ ] Policy compiler/evaluator skeleton.
-- [ ] Tauri/FastAPI authenticated bootstrap.
-- [ ] Persistence/migration baseline.
-- [ ] OS keychain proof of concept.
-- [ ] Policy and canonicalization test corpus.
+- [x] PRD, non-goals, and safety invariant register drafted; formal approvals pending.
+- [x] Local-transport threat model and abuse-case inventory; workshop approval pending.
+- [x] Monorepo, CI, quality gates, and ADR process.
+- [x] Manifest v2 and authorization-critical schemas.
+- [x] Canonical asset/value-object library.
+- [x] Policy compiler/evaluator skeleton.
+- [x] Tauri/FastAPI authenticated bootstrap.
+- [x] Persistence/migration baseline.
+- [ ] OS credential-store proof for a future durable secret; proposed deferral is not approved.
+- [x] Policy and canonicalization test corpus.
 
 ### P1 — Enables supervised execution
 
@@ -579,33 +579,33 @@ Avoid progress reporting based only on completed tickets. Report demonstrable ve
 
 ### Week 1
 
-- [ ] Confirm team, role ownership, MVP scope, and non-goals.
-- [ ] Create repository structure and engineering standards.
+- [ ] Confirm accountable humans for the recorded roles and approve MVP scope/non-goals.
+- [x] Create repository structure and engineering standards.
 - [ ] Open ADRs for unresolved implementation decisions.
 - [ ] Run the first threat-model workshop.
-- [ ] Convert architecture invariants into a tracked checklist.
+- [x] Convert architecture invariants into a tracked owner/evidence/gap checklist.
 
 ### Week 2
 
-- [ ] Draft manifest v2 and policy IR v1.
-- [ ] Define message and API compatibility rules.
-- [ ] Build the first canonicalization test corpus.
-- [ ] Scaffold desktop, UI, core service, and database.
-- [ ] Establish cross-platform CI smoke builds.
+- [x] Draft manifest v2 and policy IR v1.
+- [x] Define authorization contract and local API compatibility rules.
+- [x] Build the canonicalization fixture, property, differential, and malicious-input corpus.
+- [x] Scaffold desktop, UI, core service, and database.
+- [x] Establish Windows, macOS, and Ubuntu CI smoke builds.
 
 ### Week 3
 
-- [ ] Implement domain/IP/URL/CIDR value objects.
+- [x] Implement domain/wildcard/port/path/IP/URL/CIDR canonicalizers.
 - [ ] Implement Program, Engagement, Source, and Manifest persistence.
 - [x] Implement authenticated desktop-to-core startup.
 - [ ] Prototype intake, policy conflict, approval, and safety status screens.
-- [ ] Validate keychain integration on each target OS.
+- [ ] Validate OS credential storage when a durable secret exists, or approve the documented deferral.
 
 ### Week 4
 
 - [ ] Demonstrate source import with hashes and provenance.
-- [ ] Demonstrate deterministic allow/deny decisions without network execution.
-- [ ] Run property and malicious-input tests.
+- [x] Demonstrate deterministic allow/deny decisions without network execution.
+- [x] Run property and malicious-input tests locally; record PR CI evidence when available.
 - [ ] Review Phase 0 risks and architecture decisions.
 - [ ] Reforecast Phase 1 using measured team velocity.
 

@@ -2,8 +2,8 @@
 
 **Document ID:** PENTAI-SEC-INV-001<br>
 **Version:** 1.0.0<br>
-**Status:** Proposed Phase 0 baseline<br>
-**Date:** 2026-08-05<br>
+**Status:** Engineering baseline; independent security approval pending<br>
+**Date:** 2026-08-08<br>
 **Owner:** Security Lead<br>
 
 ## 1. Purpose
@@ -22,6 +22,12 @@ Each invariant has:
 - A defined failure response.
 
 AI output, UI state, plugin behavior, and prompt instructions are never authoritative enforcement mechanisms.
+
+The accountable owner, automated evidence, missing downstream enforcement, and
+approval state for every invariant are maintained in `phase0_traceability.md`.
+Acceptance of implementation through a pull request is not independent security
+approval. Phase 1 components named below are requirements, not claims that those
+components exist.
 
 ## 3. Authorization Invariants
 

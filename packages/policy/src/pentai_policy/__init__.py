@@ -5,8 +5,10 @@ from pentai_policy.canonicalize import (
     canonicalize_cidr,
     canonicalize_domain,
     canonicalize_ip,
+    canonicalize_path,
     canonicalize_port,
     canonicalize_url,
+    canonicalize_wildcard_domain,
 )
 from pentai_policy.compiler import CompilationError, compile_manifest
 from pentai_policy.document import (
@@ -23,8 +25,10 @@ __all__ = [
     "canonicalize_cidr",
     "canonicalize_domain",
     "canonicalize_ip",
+    "canonicalize_path",
     "canonicalize_port",
     "canonicalize_url",
+    "canonicalize_wildcard_domain",
     "CompilationError",
     "ManifestValidation",
     "ValidationIssue",

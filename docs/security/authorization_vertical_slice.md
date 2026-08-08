@@ -2,7 +2,7 @@
 
 **Status:** implemented local-only milestone
 **Contracts:** Engagement Manifest v2, Policy IR v1, ActionIntent v1, PolicyDecision v1,
-Approval v1, canonicalization v1
+Approval v1.1, canonicalization v1
 
 ## Workflow
 
@@ -87,15 +87,17 @@ not store source text or secret values.
 ## Verification
 
 ```text
-PYTHONPATH=packages/policy/src:services/core/src python3 -m unittest discover -s tests -p "test_*.py"
-python3 scripts/validate_contracts.py
 .venv/bin/ruff check .
+.venv/bin/ruff format --check .
 .venv/bin/mypy
 .venv/bin/pytest
+.venv/bin/python scripts/validate_contracts.py
 pnpm typecheck
 pnpm test
 pnpm build
+cargo fmt --manifest-path apps/desktop/Cargo.toml -- --check
 cargo check --manifest-path apps/desktop/Cargo.toml
+cargo test --manifest-path apps/desktop/Cargo.toml
 ```
 
 ## Known limitations

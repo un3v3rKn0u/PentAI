@@ -2,15 +2,22 @@
 
 **Contract:** PENTAI-CANON-v1<br>
 **Principle:** Parse, validate, canonicalize, then compare. Failure or ambiguity denies.
+**Owner:** Policy Maintainer<br>
+**Compatibility owner:** Contract Maintainer<br>
+**Approval:** Engineering verification complete; independent security approval pending.
+
+Successful canonicalization is deterministic and idempotent. A canonical value
+canonicalizes to itself; malformed or authorization-ambiguous input fails closed.
 
 ## Domain
 
 - Input is Unicode or ASCII hostname text, never a URL.
-- Apply Unicode NFC and IDNA2008-compatible ASCII conversion.
+- Apply Unicode NFC and non-transitional UTS #46/IDNA2008 ASCII conversion with STD3 rules.
 - Lowercase ASCII and remove exactly one terminal root dot.
 - Reject empty labels, labels over 63 octets, total ASCII name over 253 characters, invalid hyphen placement, control characters, percent encoding, ports, paths, userinfo, and IP literals.
 - Canonical representation: ASCII A-label hostname without a trailing dot.
-- Wildcard policies store `base_domain` plus explicit `include_apex`; wildcard matching occurs only on label boundaries.
+- Wildcard input must use `*.` as the complete left-most label. Policies store the
+  canonical `base_domain` plus explicit `include_apex`; matching occurs only on label boundaries.
 - `example.com.evil.test` never matches `example.com`.
 
 ## URL
@@ -21,7 +28,8 @@
 - Remove the default port (`80` for HTTP, `443` for HTTPS); retain non-default ports.
 - Empty path becomes `/`.
 - Remove dot segments before policy comparison.
-- Percent-decode only unreserved characters; uppercase retained percent-hex.
+- Percent-decode only unreserved characters; uppercase retained percent-hex. Reject
+  encoded `/`, `\\`, and `%` in paths to prevent separator and double-decoding ambiguity.
 - Preserve query for request identity, but scope path matching does not infer query authorization.
 - Policy path matching uses segment/boundary semantics: `/api` matches `/api` and `/api/...`, not `/apiv2`.
 - Redirect targets are parsed and authorized as new runtime destinations.
@@ -80,3 +88,21 @@ The explicit numeric `port` records the effective port even when omitted from `c
 4. At equal or greater specificity, deny overrides allow.
 5. If no explicit allow remains, deny.
 6. Re-evaluate after DNS, CNAME, redirect, port, scheme, SNI/Host, or protocol changes.
+
+## Deliberately stricter behavior
+
+- `urllib.parse` is used only as a structural reference. PentAI additionally rejects
+  userinfo, every fragment delimiter (including an empty fragment), port zero,
+  IPv4-like hostnames, backslashes, and malformed percent escapes.
+- `ipaddress` is the differential reference for accepted IP/CIDR values. PentAI also
+  rejects IPv4 leading zeros, zone identifiers, and CIDRs with host bits set.
+  IPv4-mapped IPv6 remains IPv6 and uses `ipaddress`'s stable compressed form.
+- The `idna` package is the domain reference. PentAI adds DNS length/label limits and
+  rejects URL, wildcard, and encoded syntax from ordinary domain values.
+- Generic URL servers may assign meaning to encoded separators or repeated decoding;
+  PentAI rejects those inputs because different intermediary behavior is unsafe for
+  authorization.
+
+The fixture corpus records discovered defects. Hypothesis tests cover determinism,
+idempotence, boundaries, Unicode, arbitrary malicious text, and differential behavior
+in the normal `pytest` CI job.

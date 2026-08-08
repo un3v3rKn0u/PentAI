@@ -4,55 +4,51 @@
     "valid": [
       {"input": "Example.COM.", "expected": "example.com"},
       {"input": "api.example.com", "expected": "api.example.com"},
-      {"input": "bücher.example", "expected": "xn--bcher-kva.example"}
+      {"input": "bücher.example", "expected": "xn--bcher-kva.example"},
+      {"input": "faß.de", "expected": "xn--fa-hia.de"}
     ],
-    "invalid": [
-      "",
-      " example.com",
-      "example.com/path",
-      "user@example.com",
-      "example..com",
-      "-bad.example",
-      "bad-.example",
-      "example.com.evil.test/"
-    ]
+    "invalid": ["", " example.com", "example.com/path", "user@example.com", "example..com", "-bad.example", "bad-.example", "example.com.evil.test/", "a..example", "example.com..", "‍.example", "*.example.com"]
   },
   "ip": {
     "valid": [
       {"input": "192.0.2.1", "expected": {"family": "ipv4", "value": "192.0.2.1"}},
-      {"input": "2001:0db8:0:0:0:0:0:1", "expected": {"family": "ipv6", "value": "2001:db8::1"}}
+      {"input": "2001:0db8:0:0:0:0:0:1", "expected": {"family": "ipv6", "value": "2001:db8::1"}},
+      {"input": "::ffff:192.0.2.128", "expected": {"family": "ipv6", "value": "::ffff:192.0.2.128"}}
     ],
-    "invalid": ["127.1", "010.0.0.1", "0x7f000001", "fe80::1%en0", " 192.0.2.1"]
+    "invalid": ["127.1", "010.0.0.1", "0x7f000001", "fe80::1%en0", " 192.0.2.1", "2130706433"]
   },
   "cidr": {
     "valid": [
+      {"input": "0.0.0.0/0", "expected": {"family": "ipv4", "network": "0.0.0.0", "prefix_length": 0, "canonical": "0.0.0.0/0"}},
       {"input": "192.0.2.0/24", "expected": {"family": "ipv4", "network": "192.0.2.0", "prefix_length": 24, "canonical": "192.0.2.0/24"}},
-      {"input": "2001:db8::/32", "expected": {"family": "ipv6", "network": "2001:db8::", "prefix_length": 32, "canonical": "2001:db8::/32"}}
+      {"input": "2001:db8::/32", "expected": {"family": "ipv6", "network": "2001:db8::", "prefix_length": 32, "canonical": "2001:db8::/32"}},
+      {"input": "2001:db8::1/128", "expected": {"family": "ipv6", "network": "2001:db8::1", "prefix_length": 128, "canonical": "2001:db8::1/128"}}
     ],
-    "invalid": ["192.0.2.1/24", "2001:db8::1/32", "192.0.2.0/33", "192.0.2.0"]
+    "invalid": ["192.0.2.1/24", "2001:db8::1/32", "192.0.2.0/33", "192.0.2.0", "0.0.0.0/-1", "::/129", "fe80::%en0/64"]
+  },
+  "wildcard": {
+    "valid": [
+      {"input": "*.Example.COM.", "expected": "example.com"},
+      {"input": "*.bücher.example", "expected": "xn--bcher-kva.example"}
+    ],
+    "invalid": ["example.com", "*example.com", "api.*.example.com", "*.*.example.com", "*.", "*.127.1"]
+  },
+  "path": {
+    "valid": [
+      {"input": "/a/./b/../c", "expected": "/a/c"},
+      {"input": "/cafés", "expected": "/caf%C3%A9s"},
+      {"input": "/%7euser", "expected": "/~user"},
+      {"input": "/a//b/", "expected": "/a/b/"}
+    ],
+    "invalid": ["", "relative", "/a\\b", "/a?b", "/a#b", "/%", "/%ZZ", "/%2fadmin", "/%5Cadmin", "/%252e%252e/admin", "/a\u0000b"]
   },
   "url": {
     "valid": [
-      {
-        "input": "HTTPS://Example.COM:443/api/../v1/items?page=1",
-        "expected_canonical_url": "https://example.com/v1/items?page=1"
-      },
-      {
-        "input": "http://192.0.2.1:8080/",
-        "expected_canonical_url": "http://192.0.2.1:8080/"
-      },
-      {
-        "input": "https://[2001:db8::1]/",
-        "expected_canonical_url": "https://[2001:db8::1]/"
-      }
+      {"input": "HTTPS://Example.COM:443/api/../v1/items?page=1", "expected_canonical_url": "https://example.com/v1/items?page=1"},
+      {"input": "http://192.0.2.1:8080/", "expected_canonical_url": "http://192.0.2.1:8080/"},
+      {"input": "https://[2001:db8::1]/", "expected_canonical_url": "https://[2001:db8::1]/"},
+      {"input": "https://[::ffff:192.0.2.128]/", "expected_canonical_url": "https://[::ffff:192.0.2.128]/"}
     ],
-    "invalid": [
-      "ftp://example.com/",
-      "https://user:pass@example.com/",
-      "https://example.com/#fragment",
-      "https:\\\\example.com\\path",
-      "https://example.com/%ZZ",
-      "relative/path"
-    ]
+    "invalid": ["ftp://example.com/", "https://user:pass@example.com/", "https://example.com/#fragment", "https://example.com/#", "https:\\\\example.com\\path", "https://example.com/%ZZ", "https://example.com:0/", "https://127.1/", "https://2130706433/", "https://example.com/%2fadmin", "https://example.com/%252e%252e/admin", "https://example.com/?bad=%ZZ", "https://exam\tple.com/", "relative/path"]
   }
 }

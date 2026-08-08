@@ -17,7 +17,9 @@ from pentai_policy.canonicalize import (
     canonicalize_cidr,
     canonicalize_domain,
     canonicalize_ip,
+    canonicalize_path,
     canonicalize_url,
+    canonicalize_wildcard_domain,
 )
 
 
@@ -227,8 +229,10 @@ def validate_and_canonicalize_manifest(
             try:
                 if not isinstance(raw, str):
                     raise CanonicalizationError("canonical value must be a string")
-                if asset_type in {"domain", "wildcard_domain"}:
+                if asset_type == "domain":
                     canonical = canonicalize_domain(raw)
+                elif asset_type == "wildcard_domain":
+                    canonical = canonicalize_wildcard_domain(raw)
                 elif asset_type == "url":
                     canonical = str(canonicalize_url(raw)["canonical_url"])
                 elif asset_type in {"ipv4", "ipv6"}:
@@ -243,8 +247,12 @@ def validate_and_canonicalize_manifest(
                 normalized = deepcopy(asset)
                 normalized["canonical_value"] = canonical
                 normalized["allowed_ports"] = sorted(set(normalized.get("allowed_ports", [])))
-                normalized["allowed_paths"] = sorted(set(normalized.get("allowed_paths", [])))
-                normalized["denied_paths"] = sorted(set(normalized.get("denied_paths", [])))
+                normalized["allowed_paths"] = sorted(
+                    {canonicalize_path(item) for item in normalized.get("allowed_paths", [])}
+                )
+                normalized["denied_paths"] = sorted(
+                    {canonicalize_path(item) for item in normalized.get("denied_paths", [])}
+                )
                 asset_key = (str(asset_type), canonical)
                 previous = seen.get(asset_key)
                 effect = normalized.get("effect")
