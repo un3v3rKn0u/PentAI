@@ -2,7 +2,7 @@
 
 **As of:** 2026-08-08<br>
 **Decision owner:** Security Lead<br>
-**Current decision:** Phase 0 does **not** formally pass
+**Current decision:** Phase 0 does **not** formally pass; independent review pending
 
 This record distinguishes implementation, local verification, hosted cross-platform
 verification, and human approval. A merge or green workflow is engineering evidence;
@@ -36,16 +36,16 @@ it is not an independent approval.
 
 | Safety area | Implemented | Locally verified | Cross-platform verified | Approved | Remaining gate |
 |---|---:|---:|---:|---:|---|
-| Authenticated desktop-to-core bootstrap | Yes | Yes | Windows/macOS/Ubuntu, PR #15 | Engineering only | Independent security approval |
-| Packaged core ownership and lifecycle | Yes | Yes on macOS | Windows/macOS/Ubuntu, PR #15 | Engineering only | Independent security approval |
+| Authenticated desktop-to-core bootstrap | Yes | Yes | Windows/macOS/Ubuntu, PR #15 | Security Lead approved | Independent security approval |
+| Packaged core ownership and lifecycle | Yes | Yes on macOS | Windows/macOS/Ubuntu, PR #15 | Security Lead approved | Independent security approval |
 | Sidecar provenance | SHA-256 before spawn | Yes | Windows/macOS/Ubuntu, PR #15 | No release approval | Developer signing/notarization remains a release control |
-| Authorization vertical slice | Yes | Yes | Ubuntu Quality; desktop boundary on three OSes | Engineering only | Independent security approval; Phase 1 enforcement deferred |
-| Contract compatibility and ownership | Seven schemas plus Approval 1.1 | Yes | Ubuntu Quality | Role owners recorded | Human approval of ownership baseline |
-| Canonicalization | Domain/wildcard/URL/IP/CIDR/port/path | Yes, including Hypothesis | Ubuntu Python CI; branch lifecycle green on three OSes | Engineering only | Independent security approval |
-| Ephemeral launch credential storage | In-memory by design | Yes | Lifecycle smoke on three OSes | ADR engineering acceptance only | Independent approval of ADR |
-| Durable-secret OS credential store | No durable secret exists | Not applicable to launch credential | No | Product Owner approved deferral | Security Lead approves deferral, or implement future durable-secret proof |
-| Threat/abuse model | Local transport baseline | Controls linked to tests | Boundary smoke on three OSes | No independent approval | Threat-owner and independent security review |
-| Security invariants | Full owner/evidence/gap mapping | Phase 0 evidence classified | Boundary evidence only | No independent approval | Security Lead plus independent Security Reviewer approval |
+| Authorization vertical slice | Yes | Yes | Ubuntu Quality; desktop boundary on three OSes | Security Lead approved Phase 0 slice | Independent security approval; Phase 1 enforcement deferred |
+| Contract compatibility and ownership | Seven schemas plus Approval 1.1 | Yes | Ubuntu Quality | Product Owner and Security Lead approved | Independent security review |
+| Canonicalization | Domain/wildcard/URL/IP/CIDR/port/path | Yes, including Hypothesis | Ubuntu Python CI; branch lifecycle green on three OSes | Security Lead approved | Independent security approval |
+| Ephemeral launch credential storage | In-memory by design | Yes | Lifecycle smoke on three OSes | Security Lead approved ADR | Independent approval of ADR |
+| Durable-secret OS credential store | No durable secret exists | Not applicable to launch credential | No | Product Owner and Security Lead approved deferral | None for deferral; future proof remains deferred |
+| Threat/abuse model | Local transport baseline | Controls linked to tests | Boundary smoke on three OSes | Security Lead accepted owner mapping | Independent security review |
+| Security invariants | Full owner/evidence/gap mapping | Phase 0 evidence classified | Boundary evidence only | Security Lead approved | Independent Security Reviewer approval |
 
 ## Local trust-boundary conclusions
 
@@ -78,18 +78,18 @@ verified for the future Phase 1 action pipeline.
 
 | Criterion | Evidence | Owner | Approval status | Blocker |
 |---|---|---|---|---|
-| Every authorization-critical schema has an owner and compatibility policy | `docs/contracts/README.md`; contract validator; wheel resource test | Contract Maintainer and per-schema owner | Product Owner accepted product baseline; security acceptance pending | Security acceptance |
-| Canonicalizers pass IDNA, wildcard, URL-boundary, CIDR, encoded-path, and IP edge properties | `test_canonicalize.py`; malicious regression fixture; PR #16 Python CI | Policy Maintainer | Engineering verified locally and in CI | Independent review |
-| Local API inaccessible without launch credential | PR #15 auth tests and three-platform packaged smoke | Core Security Maintainer | Engineering accepted | Independent security approval |
-| Threat model has no unowned critical threats | Every local-transport threat has maintainer roles; full invariant matrix assigns roles | Security Lead | Not approved | Threat-owner and independent security review |
-| Security team approves initial invariants | Register and full traceability matrix prepared | Security Lead | Pending | Authentic human approval |
-| Durable-secret credential-store roadmap decision is resolved | ADR explains why ephemeral launch credentials must not be durable | Product Owner and Security Lead | Product Owner approved; Security Lead pending | Security Lead approval of deferral |
+| Every authorization-critical schema has an owner and compatibility policy | `docs/contracts/README.md`; contract validator; wheel resource test | Contract Maintainer and per-schema owner | Product Owner and Security Lead approved | Independent security review required by repository policy |
+| Canonicalizers pass IDNA, wildcard, URL-boundary, CIDR, encoded-path, and IP edge properties | `test_canonicalize.py`; malicious regression fixture; PR #16 Python CI | Policy Maintainer | Security Lead approved engineering evidence | Independent review |
+| Local API inaccessible without launch credential | PR #15 auth tests and three-platform packaged smoke | Core Security Maintainer | Security Lead approved | Independent security approval |
+| Threat model has no unowned critical threats | Every local-transport threat has maintainer roles; full invariant matrix assigns roles | Security Lead | Security Lead accepted owner mapping | Independent security review |
+| Security team approves initial invariants | Register and full traceability matrix prepared | Security Lead | Security Lead approved | Independent Security Reviewer approval required by repository policy |
+| Durable-secret credential-store roadmap decision is resolved | ADR explains why ephemeral launch credentials must not be durable | Product Owner and Security Lead | Product Owner and Security Lead approved deferral | None |
 
 ## Formal decision
 
-Phase 0 remains **blocked at its exit gate**, even when this branch's CI becomes green.
-The remaining gate is documentary governance: Security Lead approval of the baseline
-and credential-store deferral, plus independent security approval of the
-invariants and local transport boundary. This decision does not claim artifact signing,
+Phase 0 remains **blocked at its exit gate**. Product Owner and Security Lead approvals
+are complete, but both roles are held by the repository's only reviewer. The remaining
+gate is independent security approval of the invariants, canonicalization, contract
+ownership baseline, threat model, and local transport boundary. This decision does not claim artifact signing,
 notarization, ActionGrant issuance, gateway enforcement, worker isolation, or any
 target-facing network capability exists.

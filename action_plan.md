@@ -436,15 +436,15 @@ Critical-path rules:
 
 ### P0 — Must complete first
 
-- [x] PRD, non-goals, and safety invariant register drafted; formal approvals pending.
-- [x] Local-transport threat model and abuse-case inventory; workshop approval pending.
+- [x] PRD, non-goals, and safety invariant register drafted and Product Owner/Security Lead approved; independent security review pending.
+- [x] Local-transport threat model and abuse-case inventory accepted by the Security Lead; independent security review pending.
 - [x] Monorepo, CI, quality gates, and ADR process.
 - [x] Manifest v2 and authorization-critical schemas.
 - [x] Canonical asset/value-object library.
 - [x] Policy compiler/evaluator skeleton.
 - [x] Tauri/FastAPI authenticated bootstrap.
 - [x] Persistence/migration baseline.
-- [ ] OS credential-store proof for a future durable secret; proposed deferral is not approved.
+- [x] Defer OS credential-store proof until a future durable secret exists; Product Owner and Security Lead approved the deferral.
 - [x] Policy and canonicalization test corpus.
 
 ### P1 — Enables supervised execution

@@ -4,6 +4,7 @@
 - **Date:** 2026-08-07
 - **Owners:** Desktop and Core maintainers
 - **Engineering acceptance:** Implemented and merged in PR #15
+- **Security Lead approval:** `un3v3rKn0u`, 2026-08-08
 - **Independent security approval:** Pending before Phase 0 exit
 
 ## Context
@@ -70,8 +71,9 @@ The broader roadmap item for proving secure storage of future durable secrets is
 therefore a proposed deferral, not a completed item, and requires Product Owner and
 Security Lead approval in `docs/security/phase0_approvals.md`.
 
-Product Owner `un3v3rKn0u` approved that deferral on 2026-08-08. Security Lead approval
-remains pending; this does not constitute independent security approval of this ADR.
+Product Owner and Security Lead `un3v3rKn0u` approved that deferral on 2026-08-08. The
+same-role holder is not an independent reviewer, so independent security approval of
+this ADR remains pending.
 
 ## Security limitations
 
