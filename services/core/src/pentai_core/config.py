@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from base64 import urlsafe_b64decode
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,8 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 8741
     database_path: Path = Path("var/pentai.db")
+    source_store_path: Path = Path("var/source-blobs")
+    source_master_key: bytes | None = None
     launch_credential: str | None = None
     test_mode: bool = False
 
@@ -48,11 +51,31 @@ class Settings:
             host=host,
             port=int(os.getenv("PENTAI_CORE_PORT", "8741")),
             database_path=Path(os.getenv("PENTAI_DATABASE_PATH", "var/pentai.db")),
+            source_store_path=Path(os.getenv("PENTAI_SOURCE_STORE_PATH", "var/source-blobs")),
+            source_master_key=_source_master_key(),
             launch_credential=os.getenv("PENTAI_LAUNCH_CREDENTIAL"),
             test_mode=environment == "test" and os.getenv("PENTAI_TEST_MODE") == "1",
         )
         settings.validate()
         return settings
+
+
+def _source_master_key() -> bytes | None:
+    if os.getenv("PENTAI_SOURCE_KEY_STDIN") == "1":
+        encoded = sys.stdin.readline(128).strip()
+        if not encoded:
+            raise ValueError("The source encryption key is unavailable")
+    else:
+        encoded = os.getenv("PENTAI_SOURCE_MASTER_KEY")
+    if encoded is None:
+        return None
+    try:
+        key = urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+    except ValueError as exc:
+        raise ValueError("The source encryption key is invalid") from exc
+    if len(key) != 32:
+        raise ValueError("The source encryption key is invalid")
+    return key
 
 
 def allowed_origins(settings: Settings) -> list[str]:

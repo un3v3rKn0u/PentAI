@@ -15,6 +15,7 @@ from pentai_core import __version__
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.config import Settings, allowed_origins
 from pentai_core.migrate import migrate
+from pentai_core.source_store import EncryptedSourceStore
 
 
 class HealthResponse(BaseModel):
@@ -100,7 +101,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     runtime = settings or Settings.from_environment()
     runtime.validate()
     migrate(runtime.database_path)
-    authorization = AuthorizationService(runtime.database_path)
+    source_store = (
+        EncryptedSourceStore(runtime.source_store_path, runtime.source_master_key)
+        if runtime.source_master_key is not None
+        else None
+    )
+    authorization = AuthorizationService(runtime.database_path, source_store=source_store)
     app = FastAPI(
         title="PentAI Local Core",
         version=__version__,

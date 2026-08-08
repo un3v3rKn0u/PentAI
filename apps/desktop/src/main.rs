@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use keyring::{Entry, Error as KeyringError};
 use rand::{rngs::OsRng, TryRngCore};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -17,6 +18,7 @@ use std::{
 };
 #[cfg(not(feature = "bootstrap-smoke"))]
 use tauri::{Manager, State};
+use zeroize::Zeroizing;
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(12);
 
@@ -72,6 +74,34 @@ fn launch_credential() -> Result<String, String> {
         .try_fill_bytes(&mut bytes)
         .map_err(|_| "secure credential generation failed".to_string())?;
     Ok(URL_SAFE_NO_PAD.encode(bytes))
+}
+
+fn generate_source_master_key() -> Result<Vec<u8>, String> {
+    let mut bytes = vec![0_u8; 32];
+    OsRng
+        .try_fill_bytes(&mut bytes)
+        .map_err(|_| "secure source-key generation failed".to_string())?;
+    Ok(bytes)
+}
+
+fn source_master_key() -> Result<String, String> {
+    let entry = Entry::new("local.pentai.desktop", "source-encryption-key-v1")
+        .map_err(|_| "OS credential storage is unavailable".to_string())?;
+    let key = Zeroizing::new(match entry.get_secret() {
+        Ok(value) => value,
+        Err(KeyringError::NoEntry) => {
+            let value = generate_source_master_key()?;
+            entry.set_secret(&value).map_err(|_| {
+                "source key could not be saved to OS credential storage".to_string()
+            })?;
+            value
+        }
+        Err(_) => return Err("source key could not be read from OS credential storage".to_string()),
+    });
+    if key.len() != 32 {
+        return Err("source key in OS credential storage is invalid".to_string());
+    }
+    Ok(URL_SAFE_NO_PAD.encode(key.as_slice()))
 }
 
 fn reserve_loopback_port() -> Result<u16, String> {
@@ -156,7 +186,13 @@ fn python_path(root: &Path) -> Result<OsString, String> {
     .map_err(|_| "development Python path is invalid".to_string())
 }
 
-fn spawn_core(credential: &str, port: u16, database_path: &Path) -> Result<Child, String> {
+fn spawn_core(
+    credential: &str,
+    source_key: &str,
+    port: u16,
+    database_path: &Path,
+    source_store_path: &Path,
+) -> Result<Child, String> {
     let executable = packaged_core_path()?;
     let mut command = Command::new(&executable);
     if cfg!(debug_assertions) && env::var_os("PENTAI_CORE_EXECUTABLE").is_none() {
@@ -174,15 +210,27 @@ fn spawn_core(credential: &str, port: u16, database_path: &Path) -> Result<Child
         .env("PENTAI_CORE_HOST", "127.0.0.1")
         .env("PENTAI_CORE_PORT", port.to_string())
         .env("PENTAI_DATABASE_PATH", database_path)
+        .env("PENTAI_SOURCE_STORE_PATH", source_store_path)
+        .env("PENTAI_SOURCE_KEY_STDIN", "1")
         .env("PENTAI_LAUNCH_CREDENTIAL", credential)
-        .stdin(Stdio::null());
+        .stdin(Stdio::piped());
     #[cfg(feature = "bootstrap-smoke")]
     command.stdout(Stdio::inherit()).stderr(Stdio::inherit());
     #[cfg(not(feature = "bootstrap-smoke"))]
     command.stdout(Stdio::null()).stderr(Stdio::null());
-    command
+    let mut child = command
         .spawn()
-        .map_err(|_| "core process could not be started".to_string())
+        .map_err(|_| "core process could not be started".to_string())?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "core source-key channel is unavailable".to_string())?;
+    stdin
+        .write_all(format!("{source_key}\n").as_bytes())
+        .and_then(|()| stdin.flush())
+        .map_err(|_| "source key could not be delivered to the core".to_string())?;
+    drop(stdin);
+    Ok(child)
 }
 
 fn authenticated_request(
@@ -240,11 +288,23 @@ fn wait_until_ready(child: &mut Child, port: u16, credential: &str) -> Result<()
 #[cfg(feature = "bootstrap-smoke")]
 fn main() {
     let credential = launch_credential().expect("secure credential generation failed");
+    let source_key = Zeroizing::new(
+        URL_SAFE_NO_PAD
+            .encode(generate_source_master_key().expect("secure source-key generation failed")),
+    );
     let port = reserve_loopback_port().expect("no loopback port is available");
     let database_path =
         env::temp_dir().join(format!("pentai-bootstrap-smoke-{}.db", std::process::id()));
-    let mut child = spawn_core(&credential, port, &database_path)
-        .expect("packaged core process could not be started");
+    let source_store_path =
+        env::temp_dir().join(format!("pentai-source-smoke-{}", std::process::id()));
+    let mut child = spawn_core(
+        &credential,
+        source_key.as_str(),
+        port,
+        &database_path,
+        &source_store_path,
+    )
+    .expect("packaged core process could not be started");
     if let Err(error) = wait_until_ready(&mut child, port, &credential) {
         let _ = child.kill();
         let _ = child.wait();
@@ -260,6 +320,7 @@ fn main() {
     }
     .stop();
     let _ = std::fs::remove_file(database_path);
+    let _ = std::fs::remove_dir_all(source_store_path);
 }
 
 #[cfg(not(feature = "bootstrap-smoke"))]
@@ -268,6 +329,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![core_bootstrap])
         .setup(|app| {
             let credential = launch_credential()?;
+            let source_key = Zeroizing::new(source_master_key()?);
             let port = reserve_loopback_port()?;
             let data_directory = app
                 .path()
@@ -275,7 +337,13 @@ fn main() {
                 .map_err(|_| "application data directory is unavailable".to_string())?;
             std::fs::create_dir_all(&data_directory)
                 .map_err(|_| "application data directory could not be created".to_string())?;
-            let mut child = spawn_core(&credential, port, &data_directory.join("pentai.db"))?;
+            let mut child = spawn_core(
+                &credential,
+                source_key.as_str(),
+                port,
+                &data_directory.join("pentai.db"),
+                &data_directory.join("source-blobs"),
+            )?;
             if let Err(error) = wait_until_ready(&mut child, port, &credential) {
                 let _ = child.kill();
                 let _ = child.wait();
