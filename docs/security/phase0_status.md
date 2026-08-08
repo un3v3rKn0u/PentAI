@@ -26,8 +26,11 @@ it is not an independent approval.
   [Quality](https://github.com/un3v3rKn0u/PentAI/actions/runs/31263500631),
   [CodeQL](https://github.com/un3v3rKn0u/PentAI/actions/runs/31263500617), and
   [Rust audit](https://github.com/un3v3rKn0u/PentAI/actions/runs/31263500621).
-- Canonicalization property/regression evidence for this change is locally verified;
-  its immutable PR workflow links must be added after the branch workflows complete.
+- PR #16 passed [Python and contracts](https://github.com/un3v3rKn0u/PentAI/actions/runs/31264656875/job/93120740023),
+  including the Hypothesis suite, plus UI, SQLite migration, dependency review, and
+  Python/JavaScript CodeQL checks. Its
+  [Desktop smoke run](https://github.com/un3v3rKn0u/PentAI/actions/runs/31264656859)
+  passed on Windows, macOS, and Ubuntu.
 
 ## Safety-area status
 
@@ -38,7 +41,7 @@ it is not an independent approval.
 | Sidecar provenance | SHA-256 before spawn | Yes | Windows/macOS/Ubuntu, PR #15 | No release approval | Developer signing/notarization remains a release control |
 | Authorization vertical slice | Yes | Yes | Ubuntu Quality; desktop boundary on three OSes | Engineering only | Independent security approval; Phase 1 enforcement deferred |
 | Contract compatibility and ownership | Seven schemas plus Approval 1.1 | Yes | Ubuntu Quality | Role owners recorded | Human approval of ownership baseline |
-| Canonicalization | Domain/wildcard/URL/IP/CIDR/port/path | Yes, including Hypothesis | PR CI pending for this change | Engineering only | Green PR CI and independent security approval |
+| Canonicalization | Domain/wildcard/URL/IP/CIDR/port/path | Yes, including Hypothesis | Ubuntu Python CI; branch lifecycle green on three OSes | Engineering only | Independent security approval |
 | Ephemeral launch credential storage | In-memory by design | Yes | Lifecycle smoke on three OSes | ADR engineering acceptance only | Independent approval of ADR |
 | Durable-secret OS credential store | No durable secret exists | Not applicable to launch credential | No | Proposed deferral only | Product Owner and Security Lead approve deferral, or implement future durable-secret proof |
 | Threat/abuse model | Local transport baseline | Controls linked to tests | Boundary smoke on three OSes | No independent approval | Threat-owner and independent security review |
@@ -76,7 +79,7 @@ verified for the future Phase 1 action pipeline.
 | Criterion | Evidence | Owner | Approval status | Blocker |
 |---|---|---|---|---|
 | Every authorization-critical schema has an owner and compatibility policy | `docs/contracts/README.md`; contract validator; wheel resource test | Contract Maintainer and per-schema owner | Role assignment recorded; human baseline approval pending | Product/Security acceptance |
-| Canonicalizers pass IDNA, wildcard, URL-boundary, CIDR, encoded-path, and IP edge properties | `test_canonicalize.py`; malicious regression fixture; `docs/contracts/canonicalization.md` | Policy Maintainer | Engineering verified locally | Green PR CI and independent review |
+| Canonicalizers pass IDNA, wildcard, URL-boundary, CIDR, encoded-path, and IP edge properties | `test_canonicalize.py`; malicious regression fixture; PR #16 Python CI | Policy Maintainer | Engineering verified locally and in CI | Independent review |
 | Local API inaccessible without launch credential | PR #15 auth tests and three-platform packaged smoke | Core Security Maintainer | Engineering accepted | Independent security approval |
 | Threat model has no unowned critical threats | Every local-transport threat has maintainer roles; full invariant matrix assigns roles | Security Lead | Not approved | Threat-owner and independent security review |
 | Security team approves initial invariants | Register and full traceability matrix prepared | Security Lead | Pending | Authentic human approval |
