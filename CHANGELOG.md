@@ -16,6 +16,7 @@ The first release is being prepared as `0.1.0`. Move these entries into a dated
 - AES-256-GCM source-blob storage with desktop OS-credential-service key custody.
 - Bounded, path-free file-source ingestion for approved text, JSON, HTML, and PDF inputs.
 - SSRF-resistant, DNS-pinned HTTP(S) URL-source acquisition with redirect revalidation.
+- Supervised source-intake UI for pasted text, bounded local files, guarded URLs, and history.
 - Phase 0 monorepo scaffold for the React/Vite UI, Tauri desktop shell, FastAPI core
   service, and deterministic Python policy package.
 - Initial SQLite migration and migration verification.

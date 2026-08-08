@@ -18,6 +18,11 @@ type WorkflowState =
   | "revoked"
   | "expired";
 
+type SourceMode = "pasted_text" | "file" | "url";
+type IntakeState = "empty" | "ready" | "loading" | "denied" | "degraded" | "error";
+
+const maxSourceBytes = 2 * 1024 * 1024;
+
 export async function bootstrapCore(): Promise<CoreConnection> {
   if (isTauri()) {
     return invoke<CoreConnection>("core_bootstrap");
@@ -50,6 +55,29 @@ export async function coreRequest(connection: CoreConnection, path: string, body
     throw new Error(result.detail?.code ?? "REQUEST_FAILED");
   }
   return result;
+}
+
+export function encodeBytesBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 16_384) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 16_384));
+  }
+  return btoa(binary);
+}
+
+export function sourceFileMediaType(filename: string) {
+  const extension = filename.toLowerCase().split(".").pop();
+  const mediaTypes: Record<string, string> = {
+    txt: "text/plain",
+    md: "text/markdown",
+    markdown: "text/markdown",
+    htm: "text/html",
+    html: "text/html",
+    json: "application/json",
+    pdf: "application/pdf"
+  };
+  if (!extension || !mediaTypes[extension]) throw new Error("SOURCE_MEDIA_TYPE_INVALID");
+  return mediaTypes[extension];
 }
 
 function buildManifest(program: Json, engagement: Json, source: Json) {
@@ -175,6 +203,13 @@ export function App() {
   const [sourceText, setSourceText] = useState(
     "Synthetic authorization for HTTPS GET requests to example.test/api."
   );
+  const [sourceMode, setSourceMode] = useState<SourceMode>("pasted_text");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [sourceAuthority, setSourceAuthority] = useState("contract");
+  const [sources, setSources] = useState<Json[]>([]);
+  const [intakeState, setIntakeState] = useState<IntakeState>("empty");
+  const [sourceError, setSourceError] = useState("");
   const [manifestText, setManifestText] = useState("");
   const [program, setProgram] = useState<Json | null>(null);
   const [engagement, setEngagement] = useState<Json | null>(null);
@@ -208,6 +243,7 @@ export function App() {
               ? "CORE_AUTHENTICATION_FAILED"
               : "CORE_UNAVAILABLE"
           );
+          setIntakeState("degraded");
         }
       });
     return () => {
@@ -242,31 +278,78 @@ export function App() {
     await run(async () => {
       const created = await request("/programs", { name: programName, platform: "local" });
       setProgram(created);
+      setSources([]);
+      setSource(null);
+      setEngagement(null);
+      setManifest(null);
+      setManifestText("");
+      setPolicy(null);
+      setDecision(null);
+      setIntakeState("empty");
       setState("draft");
     });
+  }
+
+  async function refreshSources(programId = program?.id) {
+    if (!programId) return;
+    const result = await request(`/programs/${programId}/sources`);
+    setSources(result.sources);
+    setIntakeState(result.sources.length ? "ready" : "empty");
   }
 
   async function importSource(event: FormEvent) {
     event.preventDefault();
     if (!program) return;
-    await run(async () => {
-      const createdEngagement = await request("/engagements", {
-        program_id: program.id,
-        effective_from: iso(-1),
-        expires_at: iso(8),
-        timezone: "UTC"
-      });
-      const imported = await request("/sources", {
-        program_id: program.id,
-        authority: "contract",
-        reference: "synthetic://local-ui",
-        content: sourceText
-      });
+    setSourceError("");
+    setIntakeState("loading");
+    try {
+      let imported: Json;
+      if (sourceMode === "file") {
+        if (!sourceFile) throw new Error("SOURCE_FILE_REQUIRED");
+        if (sourceFile.size > maxSourceBytes) throw new Error("SOURCE_TOO_LARGE");
+        const selectedBytes = new Uint8Array(await sourceFile.arrayBuffer());
+        if (selectedBytes.byteLength > maxSourceBytes) throw new Error("SOURCE_TOO_LARGE");
+        imported = await request("/sources/files", {
+          program_id: program.id,
+          authority: sourceAuthority,
+          filename: sourceFile.name,
+          media_type: sourceFileMediaType(sourceFile.name),
+          content_base64: encodeBytesBase64(selectedBytes)
+        });
+      } else if (sourceMode === "url") {
+        imported = await request("/sources/urls", {
+          program_id: program.id,
+          authority: sourceAuthority,
+          url: sourceUrl
+        });
+      } else {
+        imported = await request("/sources", {
+          program_id: program.id,
+          authority: sourceAuthority,
+          reference: "pasted://local-supervised-intake",
+          content: sourceText
+        });
+      }
+      const createdEngagement = engagement ?? await request("/engagements", {
+          program_id: program.id,
+          effective_from: iso(-1),
+          expires_at: iso(8),
+          timezone: "UTC"
+        });
       setEngagement(createdEngagement);
       setSource(imported);
+      await refreshSources(program.id);
       setManifestText(JSON.stringify(buildManifest(program, createdEngagement, imported), null, 2));
       setState("draft");
-    });
+    } catch (reason) {
+      const code = reason instanceof Error ? reason.message : "REQUEST_FAILED";
+      setSourceError(code);
+      setIntakeState(
+        code.includes("DENIED") || code.includes("INVALID") || code.includes("TOO_LARGE")
+          ? "denied"
+          : "error"
+      );
+    }
   }
 
   async function validateManifest() {
@@ -349,20 +432,21 @@ export function App() {
         <div>
           <p className="eyebrow">Authorization vertical slice</p>
           <h1>PentAI policy workbench</h1>
-          <p>Import, resolve, approve, activate, and simulate. No request leaves this device.</p>
+          <p>Import authoritative sources, approve policy, and simulate decisions under human control.</p>
         </div>
         <span className={`state-pill ${statusClass}`}>{state}</span>
       </header>
 
       <section className="safety-banner">
-        <strong>Simulation only</strong>
-        <span>No ActionGrants, sockets, HTTP, HTTPS, DNS, or target execution.</span>
+        <strong>Supervised intake; simulation-only assessment</strong>
+        <span>Only an explicit URL import may use guarded HTTP(S). No ActionGrants or target testing.</span>
       </section>
 
       {!connection && (
-        <p className="error" role="alert">
-          {bootstrapError || "Starting authenticated local core…"}
-        </p>
+        <div className="error" role="alert">
+          <span>{bootstrapError || "Starting authenticated local core…"}</span>
+          {bootstrapError && <button onClick={() => window.location.reload()}>Recover local core</button>}
+        </div>
       )}
 
       {error && <p className="error" role="alert">{error}</p>}
@@ -374,10 +458,83 @@ export function App() {
             <label>Program name<input value={programName} onChange={(event) => setProgramName(event.target.value)} /></label>
             <button type="submit" disabled={!connection}>Create program</button>
           </form>
-          <form onSubmit={importSource}>
-            <label>Authoritative source<textarea rows={4} value={sourceText} onChange={(event) => setSourceText(event.target.value)} /></label>
-            <button type="submit" disabled={!connection || !canImport}>Import and hash source</button>
+          <form onSubmit={importSource} aria-busy={intakeState === "loading"}>
+            <fieldset disabled={!connection || !canImport || intakeState === "loading"}>
+              <legend>Supervised source import</legend>
+              <div className="mode-row" role="group" aria-label="Source type">
+                {(["pasted_text", "file", "url"] as SourceMode[]).map((mode) => (
+                  <button
+                    type="button"
+                    key={mode}
+                    className={sourceMode === mode ? "selected" : ""}
+                    onClick={() => {
+                      setSourceMode(mode);
+                      setSourceError("");
+                    }}
+                  >
+                    {mode === "pasted_text" ? "Paste text" : mode === "file" ? "Choose file" : "Acquire URL"}
+                  </button>
+                ))}
+              </div>
+              <label>
+                Source authority
+                <select value={sourceAuthority} onChange={(event) => setSourceAuthority(event.target.value)}>
+                  <option value="contract">Contract</option>
+                  <option value="program_staff">Program staff</option>
+                  <option value="program_page">Program page</option>
+                  <option value="platform_rule">Platform rule</option>
+                  <option value="internal_note">Internal note</option>
+                </select>
+              </label>
+              {sourceMode === "pasted_text" && (
+                <label>Authoritative text<textarea rows={4} value={sourceText} onChange={(event) => setSourceText(event.target.value)} /></label>
+              )}
+              {sourceMode === "file" && (
+                <label>
+                  Local source file (maximum 2 MiB)
+                  <input
+                    type="file"
+                    accept=".txt,.md,.markdown,.htm,.html,.json,.pdf,text/plain,text/markdown,text/html,application/json,application/pdf"
+                    onChange={(event) => setSourceFile(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+              )}
+              {sourceMode === "url" && (
+                <label>
+                  Public HTTP(S) source URL
+                  <input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://program.example/rules" />
+                </label>
+              )}
+              <button type="submit">
+                {intakeState === "loading" ? "Importing…" : "Review and import source"}
+              </button>
+            </fieldset>
           </form>
+          <p className={`intake-state ${intakeState}`} role="status">
+            {intakeState === "empty" && "No sources imported."}
+            {intakeState === "ready" && `${sources.length} immutable source${sources.length === 1 ? "" : "s"} available.`}
+            {intakeState === "loading" && "Import in progress. No background retries will occur."}
+            {intakeState === "denied" && `Import denied: ${sourceError}`}
+            {intakeState === "degraded" && "Source intake unavailable until the authenticated core recovers."}
+            {intakeState === "error" && `Import failed safely: ${sourceError}`}
+          </p>
+          <div className="panel-heading">
+            <strong>Source history</strong>
+            <button type="button" onClick={() => run(() => refreshSources())} disabled={!connection || !program || intakeState === "loading"}>Refresh</button>
+          </div>
+          {sources.length === 0 ? (
+            <p className="hint">The history is empty.</p>
+          ) : (
+            <ol className="source-list">
+              {sources.map((item) => (
+                <li key={item.id}>
+                  <strong>{item.source_kind}</strong>
+                  <span>{item.reference}</span>
+                  <code>{item.content_hash.slice(0, 16)}…</code>
+                </li>
+              ))}
+            </ol>
+          )}
           {source && <dl className="hash"><dt>SHA-256 provenance</dt><dd>{source.content_hash}</dd></dl>}
         </section>
 

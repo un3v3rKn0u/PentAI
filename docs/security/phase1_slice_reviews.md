@@ -126,3 +126,33 @@ executed, decompressed, crawled, or authenticated.
 configuration remains trusted for naming, while public-address checks, address pinning,
 and peer verification constrain SSRF/rebinding. This acceptance covers source intake
 only and does not authorize assessment traffic or claim gateway containment.
+
+## 2026-08-09 — Supervised source-intake UI
+
+**Decision:** Sole-maintainer security review — non-independent<br>
+**Reviewer:** `un3v3rKn0u`<br>
+**Roles held:** author, sole maintainer, Product Owner, Security Lead, repository owner
+
+**Scope reviewed:** Explicit pasted/file/URL intake controls, webview-native file
+selection, pre/post-read bounds, basename-derived media type, source history and
+recovery, loading/empty/denied/degraded/error states, safety copy, tests, and UI build.
+
+**Evidence examined:** complete diff against `main`; confirmation that no filesystem
+path is read or transmitted; approved-extension media mapping and rejection test;
+base64 byte-preservation test; disabled controls during loading or degraded core state;
+explicit-only URL submission; rendered desktop-width layout and accessibility snapshot;
+UI typecheck, unit tests, and production build.
+
+**Findings:** No unresolved material finding. The UI cannot confer authority and core
+validation remains mandatory. File selection transmits only the selected basename and
+bounded bytes. URL acquisition is clearly distinguished from simulated assessment
+traffic and never starts or retries autonomously.
+
+**Limitations and deferred work:** Visual verification used the browser development
+surface with the core intentionally unavailable, proving degraded/recovery presentation
+but not a packaged OS-dialog interaction. Hosted Tauri smoke remains required. Import
+requests are atomic and cannot be paused mid-request; there is no background queue.
+
+**Residual risk accepted:** This is a self-authored, non-independent review. Browser and
+OS file-picker behavior still depends on hosted/platform verification. This acceptance
+does not approve assessment execution or relax any core source validation.

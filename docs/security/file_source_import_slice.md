@@ -32,9 +32,10 @@ invalid PDF signatures, missing Programs, unavailable encryption, or blob-integr
 failure. Rejected content is not recorded as an imported source.
 
 The core never receives or opens a local path, so symlink, device, directory, and
-path-replacement risks are excluded from this boundary. A future Tauri file-picker
-command must read the explicitly selected regular file with its own bounded and
-race-resistant checks before sending bytes to this endpoint.
+path-replacement risks are excluded from this boundary. The supervised UI uses the
+webview's native file chooser and reads the selected `File` bytes, checks the declared
+and actual byte lengths, derives media type from the basename extension, then sends
+only the basename and bytes to this endpoint.
 
 Preview, active-content rendering, document extraction, URL acquisition, and
 target-facing networking remain unavailable.

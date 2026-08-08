@@ -7,7 +7,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
-button, input, textarea { color: inherit; font: inherit; }
+button, input, textarea, select { color: inherit; font: inherit; }
 button {
   border: 1px solid #3a8f76; border-radius: 8px; padding: 9px 13px;
   background: #123b31; cursor: pointer; font-weight: 700;
@@ -40,8 +40,22 @@ button:disabled { cursor: not-allowed; opacity: .38; }
 .panel h2 span { display: inline-grid; place-items: center; width: 25px; height: 25px; margin-right: 8px; border-radius: 50%; background: #1b3c34; color: #72dbb7; font-size: 12px; }
 form { display: grid; gap: 10px; margin-bottom: 18px; }
 label { display: grid; gap: 7px; margin-bottom: 12px; color: #aeb8c5; font-size: 13px; font-weight: 700; }
-input, textarea { width: 100%; border: 1px solid #343d49; border-radius: 8px; background: #0c1016; padding: 10px 11px; line-height: 1.45; }
+input, textarea, select { width: 100%; border: 1px solid #343d49; border-radius: 8px; background: #0c1016; padding: 10px 11px; line-height: 1.45; }
 textarea { resize: vertical; }
+fieldset { border: 1px solid #29323c; border-radius: 10px; padding: 12px; }
+legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
+.mode-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 12px; }
+.mode-row button { background: #111821; border-color: #34404d; }
+.mode-row button.selected { background: #164638; border-color: #55bd99; color: #8aebc9; }
+.intake-state { padding: 9px 11px; border-radius: 8px; background: #111821; color: #94a0ae; font-size: 12px; }
+.intake-state.ready { background: #122d26; color: #7ce0bd; }
+.intake-state.loading { background: #302814; color: #e7c573; }
+.intake-state.denied, .intake-state.error, .intake-state.degraded { background: #35191e; color: #ff9ca9; }
+.source-list { list-style: none; padding: 0; display: grid; gap: 7px; }
+.source-list li { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 7px; background: #0c1016; font-size: 11px; }
+.source-list strong { color: #71d9b5; text-transform: uppercase; font-size: 9px; }
+.source-list span { color: #a3adba; overflow-wrap: anywhere; }
+.source-list code { color: #647283; }
 .editor { min-height: 360px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; }
 .button-row, .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .panel-heading h2 { margin: 0; }
