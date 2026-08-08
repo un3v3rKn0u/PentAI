@@ -43,7 +43,7 @@ it is not an independent approval.
 | Contract compatibility and ownership | Seven schemas plus Approval 1.1 | Yes | Ubuntu Quality | Role owners recorded | Human approval of ownership baseline |
 | Canonicalization | Domain/wildcard/URL/IP/CIDR/port/path | Yes, including Hypothesis | Ubuntu Python CI; branch lifecycle green on three OSes | Engineering only | Independent security approval |
 | Ephemeral launch credential storage | In-memory by design | Yes | Lifecycle smoke on three OSes | ADR engineering acceptance only | Independent approval of ADR |
-| Durable-secret OS credential store | No durable secret exists | Not applicable to launch credential | No | Proposed deferral only | Product Owner and Security Lead approve deferral, or implement future durable-secret proof |
+| Durable-secret OS credential store | No durable secret exists | Not applicable to launch credential | No | Product Owner approved deferral | Security Lead approves deferral, or implement future durable-secret proof |
 | Threat/abuse model | Local transport baseline | Controls linked to tests | Boundary smoke on three OSes | No independent approval | Threat-owner and independent security review |
 | Security invariants | Full owner/evidence/gap mapping | Phase 0 evidence classified | Boundary evidence only | No independent approval | Security Lead plus independent Security Reviewer approval |
 
@@ -78,18 +78,18 @@ verified for the future Phase 1 action pipeline.
 
 | Criterion | Evidence | Owner | Approval status | Blocker |
 |---|---|---|---|---|
-| Every authorization-critical schema has an owner and compatibility policy | `docs/contracts/README.md`; contract validator; wheel resource test | Contract Maintainer and per-schema owner | Role assignment recorded; human baseline approval pending | Product/Security acceptance |
+| Every authorization-critical schema has an owner and compatibility policy | `docs/contracts/README.md`; contract validator; wheel resource test | Contract Maintainer and per-schema owner | Product Owner accepted product baseline; security acceptance pending | Security acceptance |
 | Canonicalizers pass IDNA, wildcard, URL-boundary, CIDR, encoded-path, and IP edge properties | `test_canonicalize.py`; malicious regression fixture; PR #16 Python CI | Policy Maintainer | Engineering verified locally and in CI | Independent review |
 | Local API inaccessible without launch credential | PR #15 auth tests and three-platform packaged smoke | Core Security Maintainer | Engineering accepted | Independent security approval |
 | Threat model has no unowned critical threats | Every local-transport threat has maintainer roles; full invariant matrix assigns roles | Security Lead | Not approved | Threat-owner and independent security review |
 | Security team approves initial invariants | Register and full traceability matrix prepared | Security Lead | Pending | Authentic human approval |
-| Durable-secret credential-store roadmap decision is resolved | ADR explains why ephemeral launch credentials must not be durable | Product Owner and Security Lead | Proposed deferral only | Authentic human approval of deferral |
+| Durable-secret credential-store roadmap decision is resolved | ADR explains why ephemeral launch credentials must not be durable | Product Owner and Security Lead | Product Owner approved; Security Lead pending | Security Lead approval of deferral |
 
 ## Formal decision
 
 Phase 0 remains **blocked at its exit gate**, even when this branch's CI becomes green.
-The remaining gate is documentary governance: authentic Product/Security approval of
-the scope and credential-store deferral, plus independent security approval of the
+The remaining gate is documentary governance: Security Lead approval of the baseline
+and credential-store deferral, plus independent security approval of the
 invariants and local transport boundary. This decision does not claim artifact signing,
 notarization, ActionGrant issuance, gateway enforcement, worker isolation, or any
 target-facing network capability exists.
