@@ -59,6 +59,12 @@ class SystemResolver:
         return tuple(sorted({str(answer[4][0]) for answer in answers}))
 
 
+def _tls_context() -> ssl.SSLContext:
+    context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+
 class PinnedHttpTransport:
     def fetch(self, url: str, pinned_ip: str, timeout_seconds: float) -> FetchResponse:
         parsed = urlsplit(url)
@@ -66,9 +72,7 @@ class PinnedHttpTransport:
         sock = socket.create_connection((pinned_ip, port), timeout=timeout_seconds)
         try:
             if parsed.scheme == "https":
-                sock = ssl.create_default_context().wrap_socket(
-                    sock, server_hostname=parsed.hostname
-                )
+                sock = _tls_context().wrap_socket(sock, server_hostname=parsed.hostname)
             peer_ip = str(sock.getpeername()[0])
             request_target = urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
             host = parsed.hostname or ""

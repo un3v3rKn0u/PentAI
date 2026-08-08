@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ssl
 from dataclasses import dataclass
 
 import pytest
@@ -7,8 +8,13 @@ from pentai_core.url_acquisition import (
     AcquisitionError,
     FetchResponse,
     UrlAcquirer,
+    _tls_context,
     canonicalize_url,
 )
+
+
+def test_tls_context_requires_tls_1_2_or_newer() -> None:
+    assert _tls_context().minimum_version == ssl.TLSVersion.TLSv1_2
 
 
 @dataclass
