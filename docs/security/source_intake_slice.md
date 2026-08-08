@@ -44,10 +44,9 @@ failure, and digest mismatch deny import. Phase 0 placeholder records remain hon
 marked `legacy_missing` after migration.
 
 File payloads are accepted only through the bounded, path-free API documented in
-`file_source_import_slice.md`; the native file-picker UI remains open. URL source kinds
-remain rejected until SSRF-safe acquisition exists. Key rotation, credential-store
+`file_source_import_slice.md`; the native file-picker UI remains open. URL sources use
+the guarded boundary in `url_source_acquisition_slice.md`. Key rotation, credential-store
 backup/restore, and Windows/Linux credential-store verification are also open.
-Therefore the Phase 1 “complete source import” action and vertical demonstration 1
-remain incomplete.
+Therefore the Phase 1 vertical demonstration remains incomplete pending supervised UI.
 
 No target-facing networking or authority is introduced by this slice.

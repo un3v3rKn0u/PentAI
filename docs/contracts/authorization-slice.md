@@ -45,7 +45,8 @@ immutable rows, idempotent repeated imports, and audit linkage. Migration
 `0005_encrypted_source_blobs.sql` distinguishes legacy placeholders from new
 AES-256-GCM encrypted originals. Pasted text is the only accepted acquisition kind in
 this baseline. Bounded file payloads are accepted by the additive local API described
-in `docs/security/file_source_import_slice.md`; URL acquisition remains unsupported.
+in `docs/security/file_source_import_slice.md`. Bounded URL payloads use the separately
+guarded acquisition boundary in `docs/security/url_source_acquisition_slice.md`.
 
 ## Verification
 

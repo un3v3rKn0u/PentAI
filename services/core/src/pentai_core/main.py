@@ -18,6 +18,7 @@ from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.config import Settings, allowed_origins
 from pentai_core.migrate import migrate
 from pentai_core.source_store import EncryptedSourceStore
+from pentai_core.url_acquisition import AcquisitionError, UrlAcquirer
 
 
 class HealthResponse(BaseModel):
@@ -59,12 +60,22 @@ class SourceRequest(StrictRequest):
     source_kind: str = "pasted_text"
     media_type: str = "text/plain"
     source_version: str | None = None
+
+
 class FileSourceRequest(StrictRequest):
     program_id: str
     authority: str
     filename: str
     media_type: str
     content_base64: str = Field(max_length=2_796_204)
+    effective_at: str | None = None
+    source_version: str | None = None
+
+
+class UrlSourceRequest(StrictRequest):
+    program_id: str
+    authority: str
+    url: str = Field(max_length=2048)
     effective_at: str | None = None
     source_version: str | None = None
 
@@ -239,9 +250,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"sources": call(lambda: authorization.list_sources(program_id))}
 
     @app.post("/api/v1/sources/files")
-    def import_file_source(
-        request: FileSourceRequest, http_request: Request
-    ) -> dict[str, Any]:
+    def import_file_source(request: FileSourceRequest, http_request: Request) -> dict[str, Any]:
         actor = principal(http_request)
         return call(
             lambda: authorization.import_file_source(
@@ -255,6 +264,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 actor_id=actor.principal_id,
             )
         )
+
+    @app.post("/api/v1/sources/urls")
+    def import_url_source(request: UrlSourceRequest, http_request: Request) -> dict[str, Any]:
+        actor = principal(http_request)
+
+        def acquire_and_store() -> dict[str, Any]:
+            try:
+                acquired = UrlAcquirer().acquire(request.url)
+            except AcquisitionError as exc:
+                raise DomainError(exc.code, str(exc)) from exc
+            return authorization.import_url_source(
+                request.program_id,
+                authority=request.authority,
+                url=acquired.final_url,
+                content=acquired.content,
+                media_type=acquired.media_type,
+                effective_at=request.effective_at,
+                source_version=request.source_version,
+                actor_id=actor.principal_id,
+            )
+
+        return call(acquire_and_store)
 
     @app.post("/api/v1/manifests")
     def save_manifest(request: ManifestRequest) -> dict[str, Any]:

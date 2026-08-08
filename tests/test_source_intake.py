@@ -115,9 +115,7 @@ class SourceIntakeTests(unittest.TestCase):
             content="Different synthetic source",
         )
         with self.assertRaisesRegex(SourceStoreError, "authentication failed"):
-            EncryptedSourceStore(self.store.root, b"z" * 32).load(
-                str(second["content_hash"])
-            )
+            EncryptedSourceStore(self.store.root, b"z" * 32).load(str(second["content_hash"]))
 
     def test_missing_encryption_key_denies_before_persistence(self) -> None:
         service = AuthorizationService(self.database)
@@ -146,6 +144,7 @@ class SourceIntakeTests(unittest.TestCase):
             EncryptedSourceStore(self.store.root, b"short")
         with self.assertRaisesRegex(SourceStoreError, "does not match provenance"):
             self.store.store(b"synthetic", "0" * 64)
+
     def test_bounded_file_source_is_encrypted_and_audited(self) -> None:
         content = json.dumps({"scope": ["owned.invalid"]}).encode()
         source = self.service.import_file_source(
@@ -163,6 +162,20 @@ class SourceIntakeTests(unittest.TestCase):
         event = self.service.audit_events()[-1]
         self.assertEqual(event["action"], "source.imported")
         self.assertNotIn("owned.invalid", str(event))
+
+    def test_acquired_url_source_is_encrypted_and_audited(self) -> None:
+        content = b"published synthetic rules"
+        source = self.service.import_url_source(
+            self.program["id"],
+            authority="program_page",
+            url="https://example.org/rules",
+            content=content,
+            media_type="text/plain",
+        )
+        self.assertEqual(source["source_kind"], "url")
+        self.assertEqual(source["reference"], "https://example.org/rules")
+        self.assertEqual(self.store.load(str(source["content_hash"])), content)
+        self.assertNotIn("published synthetic rules", str(self.service.audit_events()[-1]))
 
     def test_file_import_rejects_paths_sizes_types_and_malformed_content(self) -> None:
         valid = {
