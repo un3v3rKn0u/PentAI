@@ -7,6 +7,10 @@ source intake, provenance hashing, Manifest v2 validation/versioning, determinis
 Policy IR v1 compilation, exact human approval, immutable activation, ActionIntent
 simulation, and tamper-evident audit. Target-facing network execution is not implemented.
 
+Phase 0 formally passed its exit gate on 2026-08-08 under the documented,
+non-independent sole-maintainer security-review exception. See
+`docs/security/phase0_status.md` for evidence, limitations, and deferred enforcement.
+
 ## Safety boundary
 
 The architecture follows one rule:

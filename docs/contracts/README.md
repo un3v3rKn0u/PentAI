@@ -29,8 +29,11 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 
 The owning role is accountable for semantics and consumers. The Contract Maintainer is
 accountable for compatibility analysis, schema release notes, and version changes.
-Security-critical changes also require the two-approval review policy in
-`GIT_WORKFLOW.md`; authors cannot supply the independent approval.
+Security-critical changes also require the heightened review policy in
+`GIT_WORKFLOW.md`. While PentAI has only one maintainer, the documented
+sole-maintainer exception may replace independence for internal project approval, but
+the review must be recorded as non-independent and cannot satisfy an external
+independent-review requirement.
 
 ## Compatibility
 

@@ -5,7 +5,7 @@
 - **Owners:** Desktop and Core maintainers
 - **Engineering acceptance:** Implemented and merged in PR #15
 - **Security Lead approval:** `un3v3rKn0u`, 2026-08-08
-- **Independent security approval:** Pending before Phase 0 exit
+- **Security review:** Sole-maintainer review approved (non-independent), 2026-08-08
 
 ## Context
 
@@ -51,8 +51,8 @@ bootstrap error. `PENTAI_CORE_EXECUTABLE` is an explicit development-only overri
 is ignored by release builds and is not read by the UI.
 
 Native sidecar build and lifecycle smoke jobs run on Windows, macOS, and Ubuntu CI.
-Production developer signing, notarization where applicable, and independent review
-remain required before a distributable build is approved.
+Production developer signing, notarization where applicable, and release review remain
+required before a distributable build is approved.
 
 Hosted CI evidence is recorded by immutable run URL in the Phase 0 exit-gate record;
 the workflow configuration alone is not cross-platform evidence.
@@ -71,9 +71,9 @@ The broader roadmap item for proving secure storage of future durable secrets is
 therefore a proposed deferral, not a completed item, and requires Product Owner and
 Security Lead approval in `docs/security/phase0_approvals.md`.
 
-Product Owner and Security Lead `un3v3rKn0u` approved that deferral on 2026-08-08. The
-same-role holder is not an independent reviewer, so independent security approval of
-this ADR remains pending.
+Product Owner, Security Lead, and sole-maintainer Security Reviewer `un3v3rKn0u`
+approved that deferral on 2026-08-08. The security review is non-independent and uses
+the documented sole-maintainer exception.
 
 ## Security limitations
 
@@ -88,5 +88,5 @@ platform signing and hardening remain separate release controls.
 - Directly launching the core without a valid credential fails.
 - Standalone UI development requires explicit development-only connection variables.
 - Core startup becomes part of desktop startup and migration failure is fail-closed.
-- ActionGrant or target-network work remains prohibited until cross-platform lifecycle
-  CI passes and the boundary receives independent security review.
+- ActionGrant or target-network work remains prohibited until its Phase 1 enforcing
+  components and verification exist; this Phase 0 approval does not authorize it.

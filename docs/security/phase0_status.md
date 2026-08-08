@@ -2,11 +2,12 @@
 
 **As of:** 2026-08-08<br>
 **Decision owner:** Security Lead<br>
-**Current decision:** Phase 0 does **not** formally pass; independent review pending
+**Current decision:** Phase 0 formally passes under the documented sole-maintainer exception
 
 This record distinguishes implementation, local verification, hosted cross-platform
-verification, and human approval. A merge or green workflow is engineering evidence;
-it is not an independent approval.
+verification, and human approval. A merge or green workflow is engineering evidence,
+not human approval. The recorded security review is non-independent and uses the
+sole-maintainer exception in `GIT_WORKFLOW.md`.
 
 ## Evidence baseline
 
@@ -31,21 +32,26 @@ it is not an independent approval.
   Python/JavaScript CodeQL checks. Its
   [Desktop smoke run](https://github.com/un3v3rKn0u/PentAI/actions/runs/31264656859)
   passed on Windows, macOS, and Ubuntu.
+- PR #17 established the sole-maintainer exception and passed
+  [Quality](https://github.com/un3v3rKn0u/PentAI/actions/runs/31266713098),
+  [CodeQL](https://github.com/un3v3rKn0u/PentAI/actions/runs/31266713080), and
+  [dependency review](https://github.com/un3v3rKn0u/PentAI/actions/runs/31266713063)
+  before merge as `3dbfbed`.
 
 ## Safety-area status
 
 | Safety area | Implemented | Locally verified | Cross-platform verified | Approved | Remaining gate |
 |---|---:|---:|---:|---:|---|
-| Authenticated desktop-to-core bootstrap | Yes | Yes | Windows/macOS/Ubuntu, PR #15 | Security Lead approved | Independent security approval |
-| Packaged core ownership and lifecycle | Yes | Yes on macOS | Windows/macOS/Ubuntu, PR #15 | Security Lead approved | Independent security approval |
+| Authenticated desktop-to-core bootstrap | Yes | Yes | Windows/macOS/Ubuntu, PR #15 | Sole-maintainer security review approved | None for Phase 0 |
+| Packaged core ownership and lifecycle | Yes | Yes on macOS | Windows/macOS/Ubuntu, PR #15 | Sole-maintainer security review approved | None for Phase 0 |
 | Sidecar provenance | SHA-256 before spawn | Yes | Windows/macOS/Ubuntu, PR #15 | No release approval | Developer signing/notarization remains a release control |
-| Authorization vertical slice | Yes | Yes | Ubuntu Quality; desktop boundary on three OSes | Security Lead approved Phase 0 slice | Independent security approval; Phase 1 enforcement deferred |
-| Contract compatibility and ownership | Seven schemas plus Approval 1.1 | Yes | Ubuntu Quality | Product Owner and Security Lead approved | Independent security review |
-| Canonicalization | Domain/wildcard/URL/IP/CIDR/port/path | Yes, including Hypothesis | Ubuntu Python CI; branch lifecycle green on three OSes | Security Lead approved | Independent security approval |
-| Ephemeral launch credential storage | In-memory by design | Yes | Lifecycle smoke on three OSes | Security Lead approved ADR | Independent approval of ADR |
+| Authorization vertical slice | Yes | Yes | Ubuntu Quality; desktop boundary on three OSes | Sole-maintainer review approved Phase 0 slice | Phase 1 enforcement deferred |
+| Contract compatibility and ownership | Seven schemas plus Approval 1.1 | Yes | Ubuntu Quality | Sole-maintainer security review approved | None for Phase 0 |
+| Canonicalization | Domain/wildcard/URL/IP/CIDR/port/path | Yes, including Hypothesis | Ubuntu Python CI; branch lifecycle green on three OSes | Sole-maintainer security review approved | Runtime enforcement remains Phase 1 |
+| Ephemeral launch credential storage | In-memory by design | Yes | Lifecycle smoke on three OSes | Sole-maintainer security review approved ADR | None for Phase 0 |
 | Durable-secret OS credential store | No durable secret exists | Not applicable to launch credential | No | Product Owner and Security Lead approved deferral | None for deferral; future proof remains deferred |
-| Threat/abuse model | Local transport baseline | Controls linked to tests | Boundary smoke on three OSes | Security Lead accepted owner mapping | Independent security review |
-| Security invariants | Full owner/evidence/gap mapping | Phase 0 evidence classified | Boundary evidence only | Security Lead approved | Independent Security Reviewer approval |
+| Threat/abuse model | Local transport baseline | Controls linked to tests | Boundary smoke on three OSes | Sole-maintainer security review approved | Broader system model evolves in Phase 1 |
+| Security invariants | Full owner/evidence/gap mapping | Phase 0 evidence classified | Boundary evidence only | Sole-maintainer security review approved | Deferred rows remain Phase 1 requirements |
 
 ## Local trust-boundary conclusions
 
@@ -68,6 +74,15 @@ schema/migration resource checks passed. `cargo audit` found no vulnerability fa
 and reported 17 allowed unmaintained/unsound transitive warnings; the hosted Rust audit
 also passes. Local results are not cross-platform evidence.
 
+The completion reconciliation reran contract validation, Ruff lint/format checks,
+`pip-audit`, `pnpm audit --audit-level moderate`, and `cargo audit` on 2026-08-08.
+Python and JavaScript reported no known vulnerabilities. Rust reported no
+vulnerability failures and the same 17 allowed maintenance/unsoundness warnings. The
+Git remote separately reports one moderate Dependabot alert on the default branch;
+its private metadata was unavailable to the local/connector session and the local
+audits did not reproduce it. It remains a dependency-maintenance item, not evidence
+that a Phase 0 exit criterion failed; it must be triaged before a production release.
+
 `INV-AUTH-005` is verified only for the Phase 0 local session boundary: an automated
 caller cannot assert an actor ID to approve or activate a policy, and the caller must
 possess the desktop launch credential. That credential proves session possession, not
@@ -78,18 +93,19 @@ verified for the future Phase 1 action pipeline.
 
 | Criterion | Evidence | Owner | Approval status | Blocker |
 |---|---|---|---|---|
-| Every authorization-critical schema has an owner and compatibility policy | `docs/contracts/README.md`; contract validator; wheel resource test | Contract Maintainer and per-schema owner | Product Owner and Security Lead approved | Independent security review required by repository policy |
-| Canonicalizers pass IDNA, wildcard, URL-boundary, CIDR, encoded-path, and IP edge properties | `test_canonicalize.py`; malicious regression fixture; PR #16 Python CI | Policy Maintainer | Security Lead approved engineering evidence | Independent review |
-| Local API inaccessible without launch credential | PR #15 auth tests and three-platform packaged smoke | Core Security Maintainer | Security Lead approved | Independent security approval |
-| Threat model has no unowned critical threats | Every local-transport threat has maintainer roles; full invariant matrix assigns roles | Security Lead | Security Lead accepted owner mapping | Independent security review |
-| Security team approves initial invariants | Register and full traceability matrix prepared | Security Lead | Security Lead approved | Independent Security Reviewer approval required by repository policy |
+| Every authorization-critical schema has an owner and compatibility policy | `docs/contracts/README.md`; contract validator; wheel resource test | Contract Maintainer and per-schema owner | Approved under sole-maintainer exception | None |
+| Canonicalizers pass IDNA, wildcard, URL-boundary, CIDR, encoded-path, and IP edge properties | `test_canonicalize.py`; malicious regression fixture; PR #16 Python CI | Policy Maintainer | Approved under sole-maintainer exception | None for Phase 0; runtime gateway enforcement deferred |
+| Local API inaccessible without launch credential | PR #15 auth tests and three-platform packaged smoke | Core Security Maintainer | Approved under sole-maintainer exception | None |
+| Threat model has no unowned critical threats | Every local-transport threat has maintainer roles; full invariant matrix assigns roles | Security Lead | Approved under sole-maintainer exception | None for Phase 0 |
+| Security team approves initial invariants | Register and full traceability matrix prepared | Security Lead | Security Lead and sole-maintainer Security Reviewer approved | None |
 | Durable-secret credential-store roadmap decision is resolved | ADR explains why ephemeral launch credentials must not be durable | Product Owner and Security Lead | Product Owner and Security Lead approved deferral | None |
 
 ## Formal decision
 
-Phase 0 remains **blocked at its exit gate**. Product Owner and Security Lead approvals
-are complete, but both roles are held by the repository's only reviewer. The remaining
-gate is independent security approval of the invariants, canonicalization, contract
-ownership baseline, threat model, and local transport boundary. This decision does not claim artifact signing,
-notarization, ActionGrant issuance, gateway enforcement, worker isolation, or any
-target-facing network capability exists.
+Phase 0 **formally passes its exit gate** under the sole-maintainer exception approved
+in PR #17. `un3v3rKn0u` completed and recorded a separate non-independent security
+review on 2026-08-08, found no unresolved material Phase 0 security findings, and
+accepted the reduced governance assurance. This decision does not claim artifact
+signing, notarization, ActionGrant issuance, gateway enforcement, worker isolation, or
+any target-facing network capability exists. Those capabilities and their associated
+verification remain deferred and cannot inherit this Phase 0 approval.

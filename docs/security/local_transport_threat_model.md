@@ -3,7 +3,7 @@
 **Owner roles:** Desktop Maintainer and Core Maintainer<br>
 **Engineering acceptance:** Implemented in PR #15<br>
 **Security Lead approval:** `un3v3rKn0u`, 2026-08-08<br>
-**Independent security approval:** Pending
+**Security review:** Sole-maintainer review approved (non-independent), 2026-08-08
 
 ## Scope and assets
 
@@ -24,10 +24,10 @@ audit data, and the ability to keep execution disabled when bootstrap is invalid
 
 | Threat or misuse case | Impact | Control | Remaining work |
 |---|---|---|---|
-| Unrelated local process calls the API | Approval impersonation or policy mutation | Per-launch 256-bit credential on every API route; constant-time validation; packaged lifecycle smoke passed on Windows, macOS, and Ubuntu | Independent review |
+| Unrelated local process calls the API | Approval impersonation or policy mutation | Per-launch 256-bit credential on every API route; constant-time validation; packaged lifecycle smoke passed on Windows, macOS, and Ubuntu | Same-user process hardening remains outside Phase 0 |
 | Caller submits a forged actor ID | False human attribution | Actor authority removed from request models and bound to the authenticated server-side session | Add future OS-user confirmation for stronger human identity |
 | Token leaks through logs, errors, audits, URLs, or persistence | Session takeover | No access log, uniform errors, header transport, in-memory bootstrap, no audit/database storage; packaged output is checked | Platform review of crash reporting and diagnostics |
-| Process occupies or races the selected port | Core substitution or denial of service | Dynamic loopback selection plus credential-authenticated readiness; failed bind/readiness is fatal; collision smoke passed on Windows, macOS, and Ubuntu | Independent review |
+| Process occupies or races the selected port | Core substitution or denial of service | Dynamic loopback selection plus credential-authenticated readiness; failed bind/readiness is fatal; collision smoke passed on Windows, macOS, and Ubuntu | Crash/orphan and additional platform hardening remain future work |
 | Rogue process returns fake readiness | Desktop connects to substituted core | Readiness requires the unpredictable launch credential; packaged sidecar SHA-256 is verified before spawn | Production platform signing |
 | Browser origin abuses CORS | Unauthorized requests from web content | Narrow production origins, narrow methods/headers, bearer credential still required | Validate platform webview origin behavior in packaged tests |
 | Core migration or startup fails | UI operates against partial state | Bounded readiness and fail-closed desktop setup | Add user-safe bootstrap failure screen |
@@ -48,6 +48,7 @@ audit data, and the ability to keep execution disabled when bootstrap is invalid
 
 ## Review gate
 
-The local transport boundary requires independent security approval after packaged
-Windows, macOS, and Ubuntu lifecycle tests pass. This document does not approve
-ActionGrant issuance or target networking.
+The local transport boundary passed its Phase 0 review under the documented
+sole-maintainer exception after packaged Windows, macOS, and Ubuntu lifecycle tests
+passed. The review is non-independent. This document does not approve ActionGrant
+issuance, target networking, production signing, or release.

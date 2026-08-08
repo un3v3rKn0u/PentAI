@@ -1,20 +1,20 @@
 # Phase 0 approval record
 
-**Status:** Product Owner and Security Lead approvals recorded; independent review pending<br>
+**Status:** Approved under the sole-maintainer exception; Phase 0 exit authorized<br>
 **Record owner:** Security Lead<br>
 **Last reconciled:** 2026-08-08
 
-Product Owner and Security Lead approvals are recorded below. Because the same person
-holds both roles and is the repository's only reviewer, neither record is independent
-security approval.
+Product Owner, Security Lead, and sole-maintainer security-review decisions are
+recorded below. The security review is explicitly non-independent and uses the
+exception in `GIT_WORKFLOW.md` because the same person holds all three roles.
 
 | Document / decision | Engineering acceptance | Required approval | Current status |
 |---|---|---|---|
 | MVP requirements v1.0.0: scope, personas, use cases, and non-goals | Implemented baseline reviewed through repository history | Product Owner and Security Lead | Product Owner and Security Lead approved |
-| Security invariant register v1.0.0 and Phase 0 verification/deferment mapping | Test-linked engineering baseline | Security Lead plus independent Security Reviewer | Security Lead approved; independent review pending |
-| ADR 0001: ephemeral per-launch authenticated local transport | Implemented by PR #15; three-platform hosted CI evidence recorded | Desktop Maintainer, Core Maintainer, independent Security Reviewer | Security Lead accepted; independent approval pending |
-| Local transport threat model and abuse cases | Controls implemented and tested by PR #15 | Threat owners and independent Security Reviewer | Security Lead accepted threat ownership; independent review pending |
-| Abuse-case inventory in the local transport threat model | Automated negative tests exist | QA and Security Test Lead, independent Security Reviewer | Pending |
+| Security invariant register v1.0.0 and Phase 0 verification/deferment mapping | Test-linked engineering baseline | Security Lead and Security Reviewer | Approved under sole-maintainer exception; non-independent |
+| ADR 0001: ephemeral per-launch authenticated local transport | Implemented by PR #15; three-platform hosted CI evidence recorded | Desktop Maintainer, Core Maintainer, Security Reviewer | Approved under sole-maintainer exception; non-independent |
+| Local transport threat model and abuse cases | Controls implemented and tested by PR #15 | Threat owners and Security Reviewer | Approved under sole-maintainer exception; non-independent |
+| Abuse-case inventory in the local transport threat model | Automated negative tests exist | QA and Security Test Lead, Security Reviewer | Approved under sole-maintainer exception; non-independent |
 | Durable-secret credential-store Phase 0 deliverable | Ephemeral launch credential deliberately requires no durable store | Product Owner and Security Lead must approve deferral until a durable secret exists | Product Owner and Security Lead approved deferral |
 
 ## Recorded approvals
@@ -64,21 +64,32 @@ security approval.
   security baseline and credential-store deferral within the scope and limitations
   above.
 
-## Prepared approval text
+### Sole-maintainer security review — non-independent — 2026-08-08
 
-The following independent approval text remains **not effective** until an independent
-Security Reviewer supplies identity, role, date, scope, limitations, and evidence
-reviewed:
+- **Reviewer identity:** `un3v3rKn0u`
+- **Roles disclosed:** Security Reviewer, Product Owner, Security Lead, repository
+  owner, change author, and sole maintainer.
+- **Decision:** Approved under the sole-maintainer exception in `GIT_WORKFLOW.md`.
+- **Scope:** Merged PRs #16 and #17; canonicalization implementation and tests;
+  authenticated local API boundary; security invariants and traceability;
+  authorization-critical schemas; ADR 0001; threat and abuse model; credential-store
+  deferral; CI evidence; and the Phase 0 exit-gate matrix.
+- **Evidence reviewed:** Complete PR #16 and #17 changes; the local validation matrix
+  in `phase0_status.md`; passing PR #16 Windows, macOS, and Ubuntu packaged lifecycle
+  jobs; and passing Quality, CodeQL, dependency-review, migration, UI, Python,
+  contract, and Rust checks recorded by those PRs.
+- **Findings:** No unresolved material security findings within the Phase 0 scope.
+- **Independence:** Not independent. The reviewer is the sole maintainer and authored
+  or approved the reviewed work.
+- **Residual risk accepted:** Reduced governance assurance from the absence of a
+  second human reviewer. This exception does not reduce technical test requirements.
+- **Limitations and exclusions:** Deferred Phase 1 enforcement, ActionGrant issuance,
+  gateway enforcement, worker isolation, target-facing networking, artifact signing,
+  notarization, key custody, destructive migration approval, disclosure decisions
+  involving another party, and production release are not approved.
+- **Recorded statement:** `un3v3rKn0u` confirmed the complete sole-maintainer review
+  statement on 2026-08-08 and accepted its disclosed residual governance risk.
 
-> I approve the Phase 0 MVP scope/non-goals, security invariant baseline and
-> traceability mapping, ADR 0001 local-transport decision, local-transport threat and
-> abuse-case model, and the deferral of OS credential-store validation until PentAI
-> introduces a durable secret. This approval covers only the implemented Phase 0 local
-> trust boundary and authorization simulation. It does not approve ActionGrant
-> issuance, target-facing networking, gateway enforcement, worker isolation, artifact
-> signing, notarization, or production release.
-
-Approval records must append: approver name, accountable role, independence from the
-change author, decision date, commit reviewed, CI run URLs, limitations, and any
-follow-up conditions. Engineering acceptance and independent security approval must be
-recorded as separate entries.
+Engineering acceptance, role approval, and this non-independent security review are
+separate records. A future external requirement for independent or dual-control
+approval is not satisfied by this exception.
