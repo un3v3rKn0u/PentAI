@@ -311,6 +311,59 @@ class AuthorizationService:
             actor_id=actor_id,
         )
 
+    def import_url_source(
+        self,
+        program_id: str,
+        *,
+        authority: str,
+        url: str,
+        content: bytes,
+        media_type: str,
+        effective_at: str | None = None,
+        source_version: str | None = None,
+        actor_id: str = "local-session",
+    ) -> dict[str, Any]:
+        if authority not in _SOURCE_AUTHORITIES:
+            raise DomainError("SOURCE_AUTHORITY_INVALID", "source authority is not supported")
+        if not content:
+            raise DomainError("SOURCE_EMPTY", "source content is required")
+        if len(content) > _MAX_SOURCE_FILE_BYTES:
+            raise DomainError("SOURCE_TOO_LARGE", "source response exceeds the 2 MiB limit")
+        normalized_media_type = media_type.strip().lower()
+        if normalized_media_type == "application/pdf":
+            if not content.startswith(b"%PDF-"):
+                raise DomainError("SOURCE_CONTENT_INVALID", "PDF source signature is invalid")
+        else:
+            if normalized_media_type not in _FILE_MEDIA_EXTENSIONS or b"\x00" in content:
+                raise DomainError("SOURCE_CONTENT_INVALID", "source content is invalid")
+            try:
+                decoded = content.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise DomainError("SOURCE_ENCODING_INVALID", "text source must be UTF-8") from exc
+            if normalized_media_type == "application/json":
+                try:
+                    json.loads(decoded)
+                except json.JSONDecodeError as exc:
+                    raise DomainError("SOURCE_CONTENT_INVALID", "JSON source is malformed") from exc
+        if effective_at is not None:
+            try:
+                effective_at = _timestamp(parse_time(effective_at))
+            except ValueError as exc:
+                raise DomainError(
+                    "SOURCE_EFFECTIVE_AT_INVALID", "source effective time is invalid"
+                ) from exc
+        return self._persist_source(
+            program_id,
+            authority=authority,
+            reference=url,
+            content_bytes=content,
+            effective_at=effective_at,
+            source_kind="url",
+            media_type=normalized_media_type,
+            source_version=source_version,
+            actor_id=actor_id,
+        )
+
     def _persist_source(
         self,
         program_id: str,
@@ -427,9 +480,10 @@ class AuthorizationService:
 
     def list_sources(self, program_id: str) -> list[dict[str, Any]]:
         with transaction(self.database_path) as connection:
-            if connection.execute(
-                "SELECT 1 FROM programs WHERE id = ?", (program_id,)
-            ).fetchone() is None:
+            if (
+                connection.execute("SELECT 1 FROM programs WHERE id = ?", (program_id,)).fetchone()
+                is None
+            ):
                 raise DomainError("PROGRAM_NOT_FOUND", "program does not exist")
             rows = connection.execute(
                 """

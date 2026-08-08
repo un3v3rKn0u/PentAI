@@ -92,3 +92,37 @@ URL acquisition, previews, extraction, and active-content rendering remain defer
 **Residual risk accepted:** This is a self-authored, non-independent review. The
 limited assurance and documented format-validation limitations are accepted for this
 internal storage-only slice. It does not authorize target-facing execution.
+
+## 2026-08-08 — Guarded URL-source acquisition
+
+**Decision:** Sole-maintainer security review — non-independent<br>
+**Reviewer:** `un3v3rKn0u`<br>
+**Roles held:** author, sole maintainer, Product Owner, Security Lead, repository owner
+
+**Scope reviewed:** URL canonicalization, resolver answer checks, pinned HTTP(S)
+transport, TLS hostname verification, peer-IP attestation, redirect revalidation,
+response/time/media bounds, encrypted URL provenance, endpoint, tests, and operations
+documentation on `codex/ssrf-resistant-url-acquisition`.
+
+**Evidence examined:** complete diff against merged `main`; negative tests for private,
+loopback, IPv6, mixed and empty DNS answers, peer mismatch, redirect to loopback, HTTPS
+downgrade, unsafe ports and schemes, credentials, fragments, control characters,
+overlong/malformed URLs, oversized bodies, and unapproved media; redirect DNS pinning,
+public IPv6 canonicalization, encrypted persistence, and audit-content tests; full local
+quality, audit, contract, recovery, and wheel-build checks.
+
+**Findings:** No unresolved material finding. Every connection uses a checked and pinned
+address, the observed peer must match that pin, and every redirect repeats the complete
+URL and DNS decision. Missing, mixed, malformed, private, or unverifiable state denies
+before persistence. Acquired content is not emitted into audit events.
+
+**Limitations and deferred work:** The default resolver is the host system resolver;
+dedicated tunnel-resolver identity and OS egress containment belong to the later
+assessment gateway. CNAME-chain metadata is not retained, proxies are not supported,
+and no live external acquisition was performed. Content is stored but not rendered,
+executed, decompressed, crawled, or authenticated.
+
+**Residual risk accepted:** This is a self-authored, non-independent review. Host DNS
+configuration remains trusted for naming, while public-address checks, address pinning,
+and peer verification constrain SSRF/rebinding. This acceptance covers source intake
+only and does not authorize assessment traffic or claim gateway containment.
