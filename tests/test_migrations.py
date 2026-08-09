@@ -26,6 +26,7 @@ class MigrationTests(unittest.TestCase):
                     "0007",
                     "0008",
                     "0009",
+                    "0010",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -50,6 +51,9 @@ class MigrationTests(unittest.TestCase):
                     "outbox",
                     "network_attestations",
                     "destination_authorizations",
+                    "budget_accounts",
+                    "budget_reservations",
+                    "gateway_sessions",
                 }
                 <= tables
             )

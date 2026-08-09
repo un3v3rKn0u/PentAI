@@ -405,3 +405,34 @@ and session closure do not yet exist. Containment invariants remain unverified.
 
 **Residual risk accepted:** This review is self-authored and non-independent and does
 not authorize production or target-facing execution.
+
+## 2026-08-09 — Atomic gateway budget reservations
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Migration `0010`; GatewaySession v1; atomic total-request,
+concurrency, and response-byte reservations; grant/destination/attestation/policy
+bindings; replay denial; immutable lifecycle history; abort, safety, policy, and
+startup recovery integration; audit linkage and race tests.
+
+**Evidence examined:** Two concurrent reservations against a one-connection policy
+produce exactly one prepared session; duplicate grants deny; abort restores only
+reserved counters; health failure aborts sessions and removes capacity; finalized rows
+cannot be resurrected; complete warning-as-error Python and contract checks reported
+with the slice.
+
+**Findings:** Reservation and durable session creation occur in one immediate
+transaction. Any validation, budget, uniqueness, contract, or audit failure rolls back
+counters and rows. Prepared sessions explicitly cannot execute.
+
+**Limitations and deferred work:** Rate token buckets, actual response accounting,
+grant consumption at connection start, sockets, containment, live-session closure, and
+committed reservation transitions remain absent. INV-NET-005 is partially enforced for
+request/concurrency capacity but is not claimed complete.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not authorize production or target-facing execution.

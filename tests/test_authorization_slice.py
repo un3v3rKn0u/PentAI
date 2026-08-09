@@ -360,7 +360,20 @@ class AuthorizationSliceTests(unittest.TestCase):
                 self.assertEqual(raised.exception.code, expected)
 
     def test_network_health_failure_pauses_assessment_and_revokes_authority(self) -> None:
-        _, grant, attestation = self.network_authority()
+        intent, grant, attestation = self.network_authority()
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver=fixture_resolver(("192.0.2.20",)),
+            sni_host="example.test",
+            host_header="example.test",
+            redirect_count=0,
+        )
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
         observers = []
         for endpoint_id, address in (
             ("fixture:egress-a", "192.0.2.10"),
@@ -393,9 +406,22 @@ class AuthorizationSliceTests(unittest.TestCase):
                 "SELECT status FROM network_attestations WHERE attestation_id = ?",
                 (attestation["attestation_id"],),
             ).fetchone()[0]
+            session_status = connection.execute(
+                "SELECT status FROM gateway_sessions WHERE session_id = ?",
+                (session["session_id"],),
+            ).fetchone()[0]
+            account = connection.execute(
+                """
+                SELECT reserved_requests, active_connections FROM budget_accounts
+                WHERE engagement_id = ?
+                """,
+                (self.engagement["id"],),
+            ).fetchone()
         self.assertEqual(state, "paused")
         self.assertIsNotNone(grant_revoked)
         self.assertEqual(attestation_status, "invalidated")
+        self.assertEqual(session_status, "aborted")
+        self.assertEqual(tuple(account), (0, 0))
 
     def test_network_health_refresh_replaces_the_only_valid_attestation(self) -> None:
         _, _, previous = self.network_authority()
@@ -430,6 +456,98 @@ class AuthorizationSliceTests(unittest.TestCase):
                 current["attestation_id"]: "valid",
             },
         )
+
+    def test_gateway_session_reserves_and_releases_budget_without_execution(self) -> None:
+        intent, grant, attestation = self.network_authority()
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver=fixture_resolver(("192.0.2.20",)),
+            sni_host="example.test",
+            host_header="example.test",
+            redirect_count=0,
+        )
+
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
+        self.assertEqual(contract_issues(session, "gateway-session-v1.schema.json"), ())
+        self.assertEqual(session["status"], "prepared")
+        self.assertFalse(session["execution_enabled"])
+        with self.assertRaises(DomainError) as raised:
+            self.service.prepare_gateway_session(
+                grant_id=grant["grant_id"],
+                destination_authorization_id=destination["authorization_id"],
+            )
+        self.assertEqual(raised.exception.code, "GATEWAY_SESSION_REPLAYED")
+
+        result = self.service.abort_gateway_session(
+            session["session_id"], reason="synthetic cancellation"
+        )
+        self.assertEqual(result["status"], "aborted")
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            account = connection.execute(
+                """
+                SELECT reserved_requests, committed_requests, active_connections
+                FROM budget_accounts WHERE engagement_id = ?
+                """,
+                (self.engagement["id"],),
+            ).fetchone()
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "status transition"):
+                connection.execute(
+                    """
+                    UPDATE gateway_sessions SET status = 'prepared', finalized_at = NULL
+                    WHERE session_id = ?
+                    """,
+                    (session["session_id"],),
+                )
+        self.assertEqual(tuple(account), (0, 0, 0))
+
+    def test_concurrent_gateway_reservations_cannot_exceed_connection_budget(self) -> None:
+        first_intent, first_grant, attestation = self.network_authority()
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            policy_hash = connection.execute(
+                """
+                SELECT content_hash FROM policy_bundles
+                WHERE id = (SELECT active_policy_id FROM engagements WHERE id = ?)
+                """,
+                (self.engagement["id"],),
+            ).fetchone()[0]
+        second_intent = intent_for(self.engagement["id"], policy_hash)
+        second_decision = self.service.evaluate_intent(self.engagement["id"], second_intent)
+        second_grant = self.service.mint_action_grant(
+            second_decision["decision_id"], audience="pentai-egress-gateway"
+        )
+        pairs = []
+        for intent, grant, address in (
+            (first_intent, first_grant, "192.0.2.20"),
+            (second_intent, second_grant, "192.0.2.21"),
+        ):
+            destination = self.service.resolve_and_authorize_network_destination(
+                grant_id=grant["grant_id"],
+                attestation_id=attestation["attestation_id"],
+                candidate_url=intent["target"]["canonical_url"],
+                resolver=fixture_resolver((address,)),
+                sni_host="example.test",
+                host_header="example.test",
+                redirect_count=0,
+            )
+            pairs.append((grant["grant_id"], destination["authorization_id"]))
+
+        def reserve(pair: tuple[str, str]) -> str:
+            try:
+                self.service.prepare_gateway_session(
+                    grant_id=pair[0], destination_authorization_id=pair[1]
+                )
+            except DomainError as exc:
+                return exc.code
+            return "prepared"
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = sorted(executor.map(reserve, pairs))
+        self.assertEqual(outcomes, ["BUDGET_EXHAUSTED", "prepared"])
 
     def test_exact_request_is_allowed_and_deterministic(self) -> None:
         _, bundle = self.activate()
