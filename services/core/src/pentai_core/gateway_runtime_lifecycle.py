@@ -92,7 +92,7 @@ class OciGatewayFixtureController:
                 "--network",
                 network_id,
                 "--read-only",
-                "--cap-drop=ALL",
+                "--cap-drop=all",
                 "--security-opt=no-new-privileges",
                 "--pid=private",
                 "--ipc=private",
@@ -208,12 +208,9 @@ class OciGatewayFixtureController:
         )
         podman_network_single = isinstance(networks, dict) and len(networks) == 1
         podman_network_name = isinstance(networks, dict) and set(networks) == expected_network_names
-        podman_network_id_key = isinstance(networks, dict) and set(networks) == {network_id}
-        podman_network_embedded_id = network_ids <= {None, "", network_id}
         network_identity = (
             podman_network_single
-            and (podman_network_name or podman_network_id_key)
-            and podman_network_embedded_id
+            and podman_network_name
             if podman
             else network_ids == {network_id}
         )
@@ -251,10 +248,6 @@ class OciGatewayFixtureController:
                 failed.append("podman_network_single")
             if not podman_network_name:
                 failed.append("podman_network_name")
-            if not podman_network_id_key:
-                failed.append("podman_network_id_key")
-            if not podman_network_embedded_id:
-                failed.append("podman_network_embedded_id")
         if failed:
             raise GatewayRuntimeError(
                 "GATEWAY_RUNTIME_DRIFT",

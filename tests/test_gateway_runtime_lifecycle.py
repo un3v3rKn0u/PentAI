@@ -318,7 +318,7 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
         launch = executor.calls[0]
         for required in (
             "--read-only",
-            "--cap-drop=ALL",
+            "--cap-drop=all",
             "--security-opt=no-new-privileges",
             "--pid=private",
             "--ipc=private",
