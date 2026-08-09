@@ -377,3 +377,31 @@ absent. No network invariant is claimed fully verified.
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not approve production use, external targets, or target-facing networking.
+
+## 2026-08-09 — Network health kill-switch checkpoint
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Attestation replacement, route/source/resolver identity-change
+detection, observer failure handling, durable assessment pause, grant revocation,
+revocation-epoch increment, attestation invalidation, audit linkage, and tests.
+
+**Evidence examined:** Two-endpoint disagreement produces the original diagnostic,
+pauses the active assessment, revokes its unused grant, and invalidates its current
+attestation. Successful refresh leaves only one valid attestation. Full warning-as-error
+Python checks are reported with the slice.
+
+**Findings:** A failed network-health checkpoint cannot preserve usable runtime
+authority. Human resume cannot restore an invalidated attestation or revoked grant.
+No external network activity or execution path was added.
+
+**Limitations and deferred work:** Refresh is synchronously invoked; continuous
+scheduling, OS change notification, production observations, live gateway sessions,
+and session closure do not yet exist. Containment invariants remain unverified.
+
+**Residual risk accepted:** This review is self-authored and non-independent and does
+not authorize production or target-facing execution.
