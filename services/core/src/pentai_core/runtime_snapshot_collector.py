@@ -30,6 +30,18 @@ class BoundedCommandExecutor(Protocol):
     ) -> CommandResult: ...
 
 
+@dataclass(frozen=True)
+class NetworkConformanceResult:
+    network_id: str
+    direct_egress_blocked: bool
+    external_dns_blocked: bool
+    ipv6_blocked: bool
+
+
+class NetworkConformanceVerifier(Protocol):
+    def verify(self, network_id: str) -> NetworkConformanceResult: ...
+
+
 class LocalBoundedCommandExecutor:
     def __init__(self, executable: Path) -> None:
         resolved = executable.resolve(strict=True)
@@ -47,7 +59,7 @@ class LocalBoundedCommandExecutor:
         if (
             not argv
             or str(Path(argv[0]).resolve()) != self._executable
-            or len(argv) > 16
+            or len(argv) > 32
             or any(not item or len(item) > 256 or "\x00" in item for item in argv)
         ):
             raise SnapshotCollectionError("RUNTIME_COMMAND_INVALID", "runtime command is invalid")
@@ -118,6 +130,7 @@ class OciRuntimeSnapshotCollector:
         gateway_network_id: str,
         pentai_instance_id: str,
         executor: BoundedCommandExecutor,
+        network_conformance: NetworkConformanceVerifier,
     ) -> None:
         if runtime not in {"docker", "podman"}:
             raise SnapshotCollectionError("RUNTIME_UNSUPPORTED", "runtime is unsupported")
@@ -134,6 +147,7 @@ class OciRuntimeSnapshotCollector:
         self._gateway_network_id = gateway_network_id
         self._pentai_instance_id = pentai_instance_id
         self._executor = executor
+        self._network_conformance = network_conformance
 
     def inspect_runtime(self) -> RuntimeSnapshot:
         document = self._run_json(self._info_command())
@@ -212,6 +226,27 @@ class OciRuntimeSnapshotCollector:
         if not safe_network:
             raise SnapshotCollectionError(
                 "NETWORK_ISOLATION_INVALID", "gateway network isolation is invalid"
+            )
+        try:
+            conformance = self._network_conformance.verify(self._gateway_network_id)
+        except Exception as exc:
+            raise SnapshotCollectionError(
+                "NETWORK_CONFORMANCE_FAILED", "gateway network conformance failed"
+            ) from exc
+        if conformance.network_id != self._gateway_network_id:
+            raise SnapshotCollectionError(
+                "NETWORK_CONFORMANCE_MISMATCH", "gateway network conformance identity changed"
+            )
+        if not all(
+            value is True
+            for value in (
+                conformance.direct_egress_blocked,
+                conformance.external_dns_blocked,
+                conformance.ipv6_blocked,
+            )
+        ):
+            raise SnapshotCollectionError(
+                "NETWORK_CONFORMANCE_UNSAFE", "gateway network bypass probe failed"
             )
         return GatewayNetworkSnapshot(
             network_id=self._gateway_network_id,

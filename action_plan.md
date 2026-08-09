@@ -339,9 +339,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     sessions. A typed trusted-inspector boundary now produces attestations only when
     every runtime and managed-network measurement passes. Production Docker/Podman
     collection now uses fixed bounded inspection commands with exact runtime/network
-    identity and PentAI ownership-label checks. Cross-platform runtime verification,
-    actual launch/enforcement, continuous health checks, termination, and platform
-    bypass verification remain required before this item can be completed.
+    identity and PentAI ownership-label checks. Managed internal-network provisioning
+    now refuses unowned or ambiguous resources, and safe snapshots additionally require
+    direct-egress, external-DNS, and IPv6 conformance evidence for the exact network.
+    Cross-platform rootless verification, actual gateway/worker launch, continuous
+    health checks, termination, and the complete platform bypass matrix remain required
+    before this item can be completed.
 - [ ] Implement structured command templates; reject arbitrary free-form flags.
 - [ ] Build adapter health checks, timeout handling, output limits, and typed parsers.
 - [ ] Deliver an initial low-risk official adapter set, recommended:

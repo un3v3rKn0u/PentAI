@@ -528,3 +528,36 @@ launch, and termination remain absent. Isolation invariants are not claimed veri
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not approve production use, worker execution, or target-facing networking.
+
+## 2026-08-09 — Managed gateway network and conformance gate
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without worker or target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Idempotent Docker/Podman internal-network provisioning, ownership
+and identity validation, non-destructive failure handling, pinned local conformance
+probe command, strict probe output, and mandatory collector conformance evidence.
+
+**Evidence examined:** Ambiguous, unowned, externally routed, IPv6-enabled, malformed,
+failed, raced, or unverifiable networks deny provisioning. Probe image mutability,
+identity mismatch, invalid types/output, nonzero exit, excessive output, and any
+successful bypass deny safe snapshot production. Fixed commands use bounded synthetic
+TEST-NET destinations only.
+
+**Findings:** The preceding collector treated internal metadata and labels as sufficient
+to set DNS and direct-egress controls true. This slice closes that assurance gap by
+requiring independent live probe evidence. No caller without a conformance verifier can
+construct the collector.
+
+**Limitations and deferred work:** The local Docker daemon is version 29.6.2 but did
+not report rootless mode, so no network was created and no live probe was launched.
+Docker/Podman command behavior remains fixture-tested. A reviewed pinned probe image,
+rootless cross-platform runs, gateway and firewall setup, continuous probes, worker
+termination, and the full bypass matrix remain absent. Isolation invariants are not
+claimed verified.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not approve production use, worker execution, or target-facing networking.

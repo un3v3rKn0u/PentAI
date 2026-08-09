@@ -38,13 +38,13 @@ the adapter and leaves containment attestation and worker execution unavailable.
 ## Assurance boundary and deferred work
 
 Management labels bind the observed network to expected local PentAI configuration;
-they do not prove firewall behavior against a compromised runtime or local
-administrator. Internal-network and label inspection also does not replace live direct
-socket, alternate proxy, DNS, IPv4, IPv6, raw-route, runtime-socket, mount, IPC, and
-resource-exhaustion tests.
+they do not prove firewall behavior. `OciRuntimeSnapshotCollector` therefore requires
+an injected conformance verifier and denies the snapshot unless direct egress, external
+DNS, and IPv6 bypass probes all report blocked for the exact network identity. See
+`docs/security/managed_gateway_network.md`.
 
-Fixture parsers were tested for Docker and Podman, but no local daemon was invoked and
-no cross-platform runtime output was verified in this slice. Platform collectors,
-managed-network creation, continuous reinspection, live sandbox probes, worker launch,
-and termination remain required. INV-NET-001, INV-NET-003, INV-NET-004, INV-ISO-001,
-and INV-ISO-003 are not claimed verified.
+Fixture parsers were tested for Docker and Podman. The local Docker daemon was inspected
+but was not rootless, so network creation and live probes were correctly withheld.
+Cross-platform rootless runtime output, continuous reinspection, live sandbox probes,
+worker launch, and termination remain required. INV-NET-001, INV-NET-003, INV-NET-004,
+INV-ISO-001, and INV-ISO-003 are not claimed verified.
