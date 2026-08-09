@@ -37,8 +37,13 @@ jobs:
           cargo build --locked --release --target x86_64-unknown-linux-musl --manifest-path tools/network-probe/Cargo.toml
       - name: Confirm static Linux artifact
         run: |
-          file tools/network-probe/target/x86_64-unknown-linux-musl/release/pentai-network-probe
-          file tools/network-probe/target/x86_64-unknown-linux-musl/release/pentai-network-probe | grep -F "statically linked"
+          probe=tools/network-probe/target/x86_64-unknown-linux-musl/release/pentai-network-probe
+          file "$probe"
+          readelf --program-headers "$probe"
+          if readelf --program-headers "$probe" | grep -Fq INTERP; then
+            echo "Probe unexpectedly requires a dynamic program interpreter"
+            exit 1
+          fi
       - name: Run rootless containment probes using only TEST-NET destinations
         env:
           PYTHONPATH: services/core/src:packages/policy/src
