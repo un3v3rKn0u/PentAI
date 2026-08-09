@@ -197,17 +197,24 @@ class OciGatewayFixtureController:
             and cpu_period > 0
             and cpu_quota * 4 <= cpu_period
         )
+        podman = self._runtime == "podman"
+        podman_effective_empty = document.get("EffectiveCaps") == []
+        podman_bounding_empty = document.get("BoundingCaps") == []
         capabilities_dropped = (
-            document.get("EffectiveCaps") == []
-            and document.get("BoundingCaps") == []
-            if self._runtime == "podman"
+            podman_effective_empty and podman_bounding_empty
+            if podman
             else isinstance(cap_drop, list)
             and any(str(item).lower() == "all" for item in cap_drop)
         )
+        podman_network_single = isinstance(networks, dict) and len(networks) == 1
+        podman_network_name = isinstance(networks, dict) and set(networks) == expected_network_names
+        podman_network_id_key = isinstance(networks, dict) and set(networks) == {network_id}
+        podman_network_embedded_id = network_ids <= {None, "", network_id}
         network_identity = (
-            set(networks) in (expected_network_names, {network_id})
-            and network_ids <= {None, "", network_id}
-            if self._runtime == "podman" and isinstance(networks, dict)
+            podman_network_single
+            and (podman_network_name or podman_network_id_key)
+            and podman_network_embedded_id
+            if podman
             else network_ids == {network_id}
         )
         checks = {
@@ -234,6 +241,20 @@ class OciGatewayFixtureController:
             and labels.get("com.pentai.runtime-id") == runtime_id,
         }
         failed = sorted(name for name, passed in checks.items() if not passed)
+        if podman and not capabilities_dropped:
+            if not podman_effective_empty:
+                failed.append("podman_effective_caps_empty")
+            if not podman_bounding_empty:
+                failed.append("podman_bounding_caps_empty")
+        if podman and not network_identity:
+            if not podman_network_single:
+                failed.append("podman_network_single")
+            if not podman_network_name:
+                failed.append("podman_network_name")
+            if not podman_network_id_key:
+                failed.append("podman_network_id_key")
+            if not podman_network_embedded_id:
+                failed.append("podman_network_embedded_id")
         if failed:
             raise GatewayRuntimeError(
                 "GATEWAY_RUNTIME_DRIFT",
