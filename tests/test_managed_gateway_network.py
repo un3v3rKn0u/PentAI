@@ -61,6 +61,24 @@ def inspected(**updates: object) -> CommandResult:
     return encoded(document)
 
 
+def podman_inspected(**updates: object) -> CommandResult:
+    document: dict[str, object] = {
+        "id": NETWORK_ID,
+        "name": NAME,
+        "internal": True,
+        "ipv6_enabled": False,
+        "labels": {
+            "com.pentai.managed": "true",
+            "com.pentai.network-role": "worker-gateway",
+            "com.pentai.direct-egress": "deny",
+            "com.pentai.external-dns": "deny",
+            "com.pentai.instance-id": INSTANCE,
+        },
+    }
+    document.update(updates)
+    return encoded(document)
+
+
 @dataclass
 class FixtureExecutor:
     responses: list[CommandResult]
@@ -146,8 +164,15 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
         self.assertIn("com.pentai.instance-id=" + INSTANCE, command)
         self.assertEqual(command[-1], NAME)
 
-    def test_podman_network_creation_disables_dns(self) -> None:
-        executor = FixtureExecutor([CommandResult(0, b""), CommandResult(1, b"")])
+    def test_podman_network_creation_uses_runtime_specific_identity_and_filter(self) -> None:
+        executor = FixtureExecutor(
+            [
+                CommandResult(0, b""),
+                CommandResult(0, NAME.encode()),
+                encoded({"id": NETWORK_ID, "name": NAME}),
+                podman_inspected(),
+            ]
+        )
         provisioned = ManagedGatewayNetworkProvisioner(
             runtime="podman",
             executable=Path("/usr/local/bin/podman"),
@@ -155,8 +180,9 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
             pentai_instance_id=INSTANCE,
             executor=executor,
         )
-        with self.assertRaises(SnapshotCollectionError):
-            provisioned.ensure()
+        result = provisioned.ensure()
+        self.assertEqual(result.network_id, NETWORK_ID)
+        self.assertEqual(executor.calls[0][0][4], "name=" + NAME)
         self.assertIn("--disable-dns", executor.calls[1][0])
 
     def test_ambiguous_unowned_and_unsafe_networks_deny(self) -> None:

@@ -106,16 +106,20 @@ class ManagedGatewayNetworkProvisioner:
             raise SnapshotCollectionError(
                 "NETWORK_CREATE_FAILED", "managed network creation failed"
             )
-        network_id = result.stdout.decode(errors="strict").strip()
-        if not _IDENTIFIER.fullmatch(network_id):
+        created_identity = result.stdout.decode(errors="strict").strip()
+        if not _IDENTIFIER.fullmatch(created_identity):
             raise SnapshotCollectionError(
                 "NETWORK_CREATE_INVALID", "runtime returned an invalid network"
             )
         observed = self._list_networks()
-        if observed != [network_id]:
+        expected_create_output = (
+            self._network_name if self._runtime == "podman" else observed[0] if observed else ""
+        )
+        if len(observed) != 1 or created_identity != expected_create_output:
             raise SnapshotCollectionError(
                 "NETWORK_CREATE_UNVERIFIED", "created network was not verified"
             )
+        network_id = observed[0]
         self._verify_network(network_id)
         return ManagedNetworkResult(network_id, True)
 
@@ -183,7 +187,11 @@ class ManagedGatewayNetworkProvisioner:
                 "network",
                 "ls",
                 "--filter",
-                f"name=^{self._network_name}$",
+                (
+                    f"name=^{self._network_name}$"
+                    if self._runtime == "docker"
+                    else f"name={self._network_name}"
+                ),
                 "--format",
                 template,
             ),
