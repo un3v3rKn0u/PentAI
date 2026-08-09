@@ -121,6 +121,8 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("POST", "/api/v1/policy-decisions"),
         ("POST", "/api/v1/action-grants"),
         ("POST", "/api/v1/action-grants/consume"),
+        ("POST", "/api/v1/safety-state"),
+        ("POST", "/api/v1/engagements/unknown/safety-state"),
     ],
 )
 def test_every_api_route_rejects_missing_credentials(
@@ -164,6 +166,21 @@ def test_correct_credential_reaches_protected_readiness(
     )
     assert response.status_code == 200
     assert response.json() == {"status": "ready", "execution_enabled": False}
+
+
+def test_startup_safety_state_is_durably_paused(
+    authenticated_client: tuple[FastAPI, str],
+) -> None:
+    app, credential = authenticated_client
+    response = app_request(
+        app,
+        "GET",
+        "/api/v1/safety-state",
+        authorization=f"Bearer {credential}",
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "paused"
+    assert response.json()["execution_enabled"] is False
 
 
 def test_shutdown_requires_authentication_and_sets_server_signal(

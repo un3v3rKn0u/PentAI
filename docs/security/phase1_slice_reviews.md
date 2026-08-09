@@ -283,3 +283,35 @@ The verifier result is not permission to bypass any of those controls.
 **Residual risk accepted:** This review is self-authored and non-independent. It is
 accepted only for local grant issuance and consumption with no networking. Independent
 review remains the preferred assurance upgrade before production or external use.
+
+## 2026-08-09 — Durable safety control plane
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+development with no target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Additive migration `0008`; durable global pause and emergency
+stop; assessment pause/resume; revocation-epoch invalidation; startup stale-grant
+revocation; audit linkage; authenticated API and supervised UI states.
+
+**Evidence examined:** Missing reason and invalid-state denial, restart recovery,
+explicit two-stage global/assessment resume, revoked-policy resume denial, emergency
+stop, stale grant consumption, epoch invalidation, migration integrity, and repository
+quality checks reported with the slice.
+
+**Findings:** Safety state is stored independently of UI state. Pause, stop, and
+startup recovery revoke outstanding grants and increment affected assessment epochs
+inside the same write transaction. Resume is explicit and cannot revive an expired,
+revoked, missing, or unverifiable policy. No operation in this slice opens a socket or
+enables execution.
+
+**Limitations and deferred work:** Route failure and public-IP kill switches, clock
+attestation, controlled DNS, redirect reauthorization, worker containment, and gateway
+session termination remain prerequisites for target-facing HTTP(S). Startup recovery
+cannot validate those absent controls and therefore never enables execution.
+
+**Residual risk accepted:** This is a self-authored, non-independent review for local
+synthetic development only. It is not production approval, release authorization, or
+external assurance.

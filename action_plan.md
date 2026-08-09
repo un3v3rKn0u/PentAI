@@ -255,7 +255,7 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [ ] Build the first gateway supporting HTTP(S), controlled DNS, redirects, and rate enforcement.
 - [ ] Create an isolated HTTP/browser worker with no direct outbound route.
 - [ ] Implement source-IP attestation and approved-IP comparison.
-- [ ] Implement global and assessment-level pause, stop, and grant revocation.
+- [x] Implement global and assessment-level pause, stop, and grant revocation.
 - [ ] Implement route failure and public-IP change kill switches.
 - [ ] Reauthorize DNS answers, redirects, SNI/Host, port, and protocol changes.
 
@@ -265,7 +265,7 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [ ] Add leases, heartbeats, checkpoints, retries, fencing, idempotency, outbox, and dead letters.
 - [ ] Create an append-only hash-chained audit ledger.
 - [ ] Link every execution to its intent, decision, policy rules, grant, tool version, and outputs.
-- [ ] Build recovery startup that revokes stale grants before reclaiming tasks.
+- [x] Build recovery startup that revokes stale grants before reclaiming tasks.
 
 ### 6.7 Actions: evidence, findings, reports, and UI
 

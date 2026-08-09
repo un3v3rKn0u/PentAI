@@ -14,12 +14,14 @@ type WorkflowState =
   | "invalid"
   | "awaiting approval"
   | "active"
+  | "paused"
   | "rejected"
   | "revoked"
   | "expired";
 
 type SourceMode = "pasted_text" | "file" | "url";
 type IntakeState = "empty" | "ready" | "loading" | "denied" | "degraded" | "error";
+type SafetyState = "loading" | "active" | "paused" | "stopped" | "error";
 
 const maxSourceBytes = 2 * 1024 * 1024;
 
@@ -230,6 +232,8 @@ export function App() {
   const [audit, setAudit] = useState<Json>({ events: [], verification: { valid: true } });
   const [intentUrl, setIntentUrl] = useState("https://example.test/api/items");
   const [state, setState] = useState<WorkflowState>("draft");
+  const [safetyState, setSafetyState] = useState<SafetyState>("loading");
+  const [safetyReason, setSafetyReason] = useState("Explicit supervised safety control");
   const [error, setError] = useState("");
 
   const canImport = Boolean(program);
@@ -281,6 +285,44 @@ export function App() {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "REQUEST_FAILED");
     }
+  }
+
+  useEffect(() => {
+    if (!connection) return;
+    let active = true;
+    coreRequest(connection, "/safety-state")
+      .then((result) => {
+        if (active) setSafetyState(result.status as SafetyState);
+      })
+      .catch(() => {
+        if (active) setSafetyState("error");
+      });
+    return () => { active = false; };
+  }, [connection]);
+
+  async function changeGlobalSafety(status: "active" | "paused" | "stopped") {
+    await run(async () => {
+      const result = await request("/safety-state", { status, reason: safetyReason });
+      setSafetyState(result.status);
+      if (status !== "active" && engagement) setState("paused");
+      setGrant(null);
+      setGrantStatus(status === "active" ? "not issued" : `revoked by global ${status}`);
+      await refreshAudit();
+    });
+  }
+
+  async function changeAssessmentSafety(status: "active" | "paused") {
+    if (!engagement) return;
+    await run(async () => {
+      await request(`/engagements/${engagement.id}/safety-state`, {
+        status,
+        reason: safetyReason
+      });
+      setState(status === "active" ? "active" : "paused");
+      setGrant(null);
+      setGrantStatus(status === "active" ? "not issued" : "revoked by assessment pause");
+      await refreshAudit();
+    });
   }
 
   async function createProgram(event: FormEvent) {
@@ -508,9 +550,20 @@ export function App() {
         <span className={`state-pill ${statusClass}`}>{state}</span>
       </header>
 
-      <section className="safety-banner">
-        <strong>Supervised authorization; no target execution</strong>
-        <span>Signed grants may be issued and consumed locally, but no gateway or worker can use them yet.</span>
+      <section className={`safety-banner safety-${safetyState}`} aria-live="polite">
+        <div>
+          <strong>Global safety: {safetyState}</strong>
+          <span>Supervised authorization only; no gateway or target execution exists.</span>
+        </div>
+        <label>
+          Safety reason
+          <input value={safetyReason} onChange={(event) => setSafetyReason(event.target.value)} />
+        </label>
+        <div className="button-row">
+          <button onClick={() => changeGlobalSafety("active")} disabled={!connection || safetyState === "active"}>Resume global</button>
+          <button onClick={() => changeGlobalSafety("paused")} disabled={!connection || safetyState === "paused"}>Pause all</button>
+          <button className="danger" onClick={() => changeGlobalSafety("stopped")} disabled={!connection || safetyState === "stopped"}>Emergency stop</button>
+        </div>
       </section>
 
       {!connection && (
@@ -689,8 +742,12 @@ export function App() {
 
         <section className="panel">
           <h2><span>4</span> ActionIntent simulator</h2>
+          <div className="button-row assessment-safety">
+            <button onClick={() => changeAssessmentSafety("active")} disabled={!connection || !engagement || safetyState !== "active"}>Resume assessment</button>
+            <button onClick={() => changeAssessmentSafety("paused")} disabled={!connection || !engagement}>Pause assessment</button>
+          </div>
           <label>Canonical HTTPS URL<input value={intentUrl} onChange={(event) => setIntentUrl(event.target.value)} /></label>
-          <button onClick={simulate} disabled={!connection || state !== "active"}>Evaluate intent</button>
+          <button onClick={simulate} disabled={!connection || state !== "active" || safetyState !== "active"}>Evaluate intent</button>
           {decision && (
             <div className={`decision ${decision.outcome}`}>
               <strong>{decision.outcome}</strong>
@@ -728,7 +785,7 @@ export function App() {
       </div>
 
       <footer className="state-key" aria-label="Policy state legend">
-        {["draft", "invalid", "awaiting approval", "active", "rejected", "revoked", "expired"].map((item) => (
+        {["draft", "invalid", "awaiting approval", "active", "paused", "rejected", "revoked", "expired"].map((item) => (
           <span key={item} className={item === state ? "current" : ""}>{item}</span>
         ))}
       </footer>

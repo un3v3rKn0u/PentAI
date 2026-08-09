@@ -53,6 +53,22 @@ Migration `0007_action_grants.sql` adds immutable intent and grant ledgers plus 
 consumption/revocation state. It is additive: earlier records and APIs remain intact,
 and older application code ignores the new tables after rollback.
 
+## Durable safety control plane
+
+Migration `0008_safety_control_plane.sql` adds a non-deletable singleton global state
+with `active`, `paused`, and `stopped` states and a monotonic generation. Every core
+startup fails closed to `paused`, revokes unused grants, pauses active assessments,
+increments their revocation epochs, and records a linked audit event. Global pause or
+stop performs the same invalidation atomically. Assessment pause invalidates only that
+assessment; resume requires an explicit authenticated human request, active global
+state, and a current, unrevoked, unexpired, verifiable signed policy.
+
+Policy evaluation, grant minting, and grant consumption all require the applicable
+safety state to be active. Missing or malformed state denies. The API never enables
+network execution: `execution_enabled` and `network_attested` remain false. Rolling
+back application code leaves the additive state and audit history intact; operators
+must not drop the migration to bypass a pause.
+
 ## Manifest v2 field provenance and history
 
 Manifest v2 requires `field_provenance` for scope, techniques, operational limits,
