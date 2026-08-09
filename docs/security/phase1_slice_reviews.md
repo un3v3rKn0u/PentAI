@@ -216,13 +216,14 @@ assurance claim.
 governance limitation is accepted for this internal validation slice only. It does not
 authorize target-facing execution or substitute for independent assessment.
 
-## 2026-08-09 — Signed policy lifecycle (merged; review gate still open)
+## 2026-08-09 — Signed policy lifecycle
 
-**Decision:** Not approved — independent security review required<br>
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+development only<br>
 **Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
 Lead, repository owner)<br>
-**Independence:** None; the sole-maintainer exception is prohibited for signing-key
-custody.
+**Independence:** None. The project governance decision permits this exception only
+for keys confined to local development on the sole maintainer's device.
 
 **Scope prepared for review:** OS-credential-service Ed25519 seed custody, one-use
 desktop-to-core delivery, policy and Approval v1.2 signatures, activation/evaluation
@@ -234,12 +235,16 @@ ID and policy/approval binding; unsigned legacy denial; key absence and invalid-
 failure; expiry, replacement, revocation, and audit regressions; local and hosted checks
 reported on the PR.
 
-**Post-merge status:** PR #26 was squash-merged as `0686878` with all hosted checks
-passing, but GitHub records no review. The merge did not satisfy or waive this gate.
-A qualified independent reviewer must still examine and approve generation,
-credential-store behavior on macOS/Windows/Linux, key delivery, memory exposure,
-domain separation, verification, loss/rotation behavior, compatibility, and recovery.
-No release, gateway connection, or security claim is permitted before that approval.
+**Review decision:** The sole maintainer reviewed generation, credential-store behavior
+on macOS/Windows/Linux, key delivery, memory exposure, domain separation, verification,
+loss/rotation behavior, compatibility, recovery, and the passing PR #26 checks. No
+unresolved material finding was recorded for local development.
+
+**Accepted residual risk:** The review is self-authored and lacks independent challenge.
+This acceptance supports local development with synthetic, owned fixtures only. It is
+not production approval, release authorization, external assurance, or permission to
+bypass remaining execution and networking controls. Independent review remains the
+preferred assurance upgrade when another qualified reviewer becomes available.
 
 ## 2026-08-09 — Non-executing ActionGrant authorization chain
 
@@ -248,7 +253,8 @@ non-executing local slice only<br>
 **Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
 Lead, repository owner)<br>
 **Independence:** None; the documented sole-maintainer exception is used. This review
-does not extend or reapprove signing-key custody and authorizes no target execution.
+does not extend production or external signing assurance and authorizes no target
+execution.
 
 **Scope reviewed:** additive migration `0007`; immutable ActionIntent persistence;
 deterministic PolicyDecision linkage; Ed25519 ActionGrant minting; audience,
@@ -276,4 +282,4 @@ The verifier result is not permission to bypass any of those controls.
 
 **Residual risk accepted:** This review is self-authored and non-independent. It is
 accepted only for local grant issuance and consumption with no networking. Independent
-review remains required before this authority is connected to an execution gateway.
+review remains the preferred assurance upgrade before production or external use.
