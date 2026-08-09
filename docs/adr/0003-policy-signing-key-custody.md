@@ -1,10 +1,10 @@
 # ADR 0003: Local policy-signing key custody
 
-- **Status:** Proposed — independent security approval required
+- **Status:** Accepted for local development — non-independent sole-maintainer review
 - **Date:** 2026-08-09
 - **Decision owner:** Security Lead
-- **Approval constraint:** `GIT_WORKFLOW.md` forbids the sole-maintainer exception for
-  signing-key custody.
+- **Approval scope:** Local development on the sole maintainer's device only. This is
+  not independent approval and provides no production, release, or external assurance.
 
 ## Context
 
@@ -12,7 +12,7 @@ Phase 1 requires active policies and human approvals to be cryptographically ver
 The existing transactional SHA-256 attestation linked database fields but was not a
 signature and could not establish possession of a signing key.
 
-## Proposed decision
+## Decision
 
 The desktop creates a 32-byte Ed25519 seed using the operating-system CSPRNG only when
 the credential service definitively reports no existing entry. It stores that seed as
@@ -39,7 +39,12 @@ Rolling back application code does not remove the credential or signed records.
 
 ## Review gate
 
-This ADR and its implementation must not be merged or described as approved until a
-qualified independent security reviewer accepts key generation, storage, delivery,
-domain separation, verification, loss behavior, and cross-platform credential-service
-evidence. The sole-maintainer review exception is not applicable.
+The sole maintainer accepts this decision for local development under the documented
+non-independent exception in `GIT_WORKFLOW.md` and ADR 0004. The reviewed scope covers
+key generation, storage, delivery, domain separation, verification, loss behavior,
+and cross-platform credential-service checks from PR #26.
+
+This acceptance must never be described as independent. Production or release signing,
+distribution, external assurance, and any third-party independence requirement remain
+blocked pending a qualified independent review. Target-facing execution remains
+separately gated by the execution and networking invariants.

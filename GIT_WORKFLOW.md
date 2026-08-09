@@ -359,11 +359,18 @@ review and must never be described as one.
    an independent approval. GitHub self-approval, if unavailable or prohibited, may
    be represented by a dated approval record committed to the repository and linked
    from the pull request.
-6. Do not use the exception for signing/notarization key custody, production release
-   authorization, destructive migration approval, disclosure decisions involving
-   another party, or any external requirement that expressly mandates independent or
-   dual control. Those items remain blocked until the required reviewer exists.
-7. Re-evaluate this exception when another regular maintainer or qualified security
+6. The exception may cover signing-key custody only for local development when all of
+   the following are true: keys remain on the sole maintainer's device; no production,
+   release, distribution, customer, or third-party signing authority is involved; the
+   review is labeled non-independent; local-only scope and accepted risk are recorded;
+   and all technical checks pass. This exception does not satisfy an external
+   independence or dual-control requirement.
+7. Do not use the exception for production or release signing/notarization key custody,
+   production release authorization, destructive migration approval, disclosure
+   decisions involving another party, or any external requirement that expressly
+   mandates independent or dual control. Those items remain blocked until the required
+   reviewer exists.
+8. Re-evaluate this exception when another regular maintainer or qualified security
    reviewer becomes available. From that point, the normal independent-review and
    approval requirements apply to new security-critical changes.
 
@@ -371,6 +378,13 @@ Use of this exception reduces assurance but permits a formal project decision wh
 the alternative is an impossible approval condition. The sole maintainer explicitly
 accepts that residual governance risk for the reviewed scope; technical or product
 risks still require their own documented treatment.
+
+For avoidance of doubt, “local development” is an assurance classification, not a
+bypass around technical controls. It permits development and testing with synthetic,
+owned local fixtures. Target-facing work still requires every applicable product
+invariant, gateway containment control, negative bypass test, and Phase exit gate.
+The rationale and accepted risk are recorded in
+`docs/adr/0004-local-development-review-assurance.md`.
 
 ### Merge strategy
 
