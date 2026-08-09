@@ -496,3 +496,35 @@ sandbox conformance tests remain absent. Isolation invariants are not claimed ve
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not approve production use, worker execution, or target-facing networking.
+
+## 2026-08-09 — Bounded OCI runtime snapshot collector
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without worker or target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Fixed Docker/Podman information and network-inspection commands,
+trusted executable checks, timeout/output/argument limits, strict JSON parsing,
+runtime/network identity binding, PentAI ownership labels, typed snapshot conversion,
+and attestor integration.
+
+**Evidence examined:** Command templates cannot be supplied by consumers; option-like
+and oversized identifiers deny construction; wrong runtime/network identities,
+unsupported versions, non-rootless mode, unavailable limits, missing ownership labels,
+external networks, IPv6, nonzero exits, malformed/multiple/oversized JSON, command
+changes, and invalid bounds fail closed. Synthetic Docker and Podman success paths emit
+typed snapshots and a contract-valid non-executing attestation.
+
+**Findings:** The collector adds no launch or network effect. Diagnostics suppress raw
+runtime output. Exact management labels bind observations to the configured PentAI
+instance but do not independently prove firewall behavior.
+
+**Limitations and deferred work:** No daemon was invoked. Docker/Podman output remains
+fixture-verified rather than cross-platform verified. Managed-network creation,
+firewall enforcement, live bypass/conformance probes, continuous reinspection, worker
+launch, and termination remain absent. Isolation invariants are not claimed verified.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not approve production use, worker execution, or target-facing networking.
