@@ -7,7 +7,7 @@ from uuid import UUID, uuid5
 from pentai_policy.canonicalize import canonicalize_url
 from pentai_policy.document import content_hash
 
-COMPILER_VERSION = "1.0.0"
+COMPILER_VERSION = "1.1.0"
 _NAMESPACE = UUID("825e6af6-8030-43c2-8968-933d894b14b5")
 
 
@@ -38,16 +38,21 @@ def compile_manifest(manifest: dict[str, Any], manifest_hash: str) -> dict[str, 
                 "port": target["port"],
                 "path": target["path"],
             }
-            specificity = 4000 + len(str(target["path"]))
+            specificity = 5000 + len(str(target["path"]))
         elif asset["type"] in {"domain", "wildcard_domain"}:
             matcher = {
                 "value": asset["canonical_value"],
                 "include_apex": bool(asset.get("include_apex", False)),
             }
-            specificity = 3000 + len(asset["canonical_value"].split("."))
+            specificity = (4000 if asset["type"] == "domain" else 3000) + len(
+                asset["canonical_value"].split(".")
+            )
+        elif asset["type"] == "cidr":
+            matcher = {"value": asset["canonical_value"]}
+            specificity = 2000 + int(asset["canonical_value"].split("/")[1])
         else:
             matcher = {"value": asset["canonical_value"]}
-            specificity = 2000
+            specificity = 4000
         rule_seed = {
             "asset_id": asset["asset_id"],
             "effect": asset["effect"],

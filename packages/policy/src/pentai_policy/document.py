@@ -118,6 +118,11 @@ _CAPABILITY_METHOD = {
 }
 
 
+def _path_contains(parent: str, child: str) -> bool:
+    parent = parent.rstrip("/") or "/"
+    return parent == "/" or child == parent or child.startswith(parent + "/")
+
+
 def validate_and_canonicalize_manifest(
     candidate: dict[str, Any],
     *,
@@ -176,6 +181,7 @@ def validate_and_canonicalize_manifest(
     if not isinstance(sources, list) or not sources:
         issues.append(ValidationIssue("PROVENANCE_MISSING", "/sources", "at least one source"))
     else:
+        seen_source_ids: set[str] = set()
         for index, source in enumerate(sources):
             if not isinstance(source, dict):
                 issues.append(
@@ -192,6 +198,15 @@ def validate_and_canonicalize_manifest(
                 )
                 continue
             source_ids.add(source_id)
+            if source_id in seen_source_ids:
+                issues.append(
+                    ValidationIssue(
+                        "PROVENANCE_AMBIGUOUS",
+                        f"/sources/{index}/source_id",
+                        "a source may be declared only once",
+                    )
+                )
+            seen_source_ids.add(source_id)
             if source_hashes is not None and source_hashes.get(source_id) != digest:
                 issues.append(
                     ValidationIssue(
@@ -247,7 +262,9 @@ def validate_and_canonicalize_manifest(
         )
     else:
         canonical_assets: list[dict[str, Any]] = []
-        seen: dict[tuple[str, str], str] = {}
+        seen: dict[tuple[str, str], tuple[str, int]] = {}
+        asset_ids: set[str] = set()
+        allowed_ipv6 = False
         for index, asset in enumerate(assets):
             path = f"/scope/assets/{index}"
             if not isinstance(asset, dict):
@@ -265,21 +282,53 @@ def validate_and_canonicalize_manifest(
             asset_type = asset.get("type")
             raw = asset.get("canonical_value")
             try:
+                asset_id = str(asset.get("asset_id"))
+                if asset_id in asset_ids:
+                    issues.append(
+                        ValidationIssue(
+                            "CONTRADICTORY_RULES", f"{path}/asset_id", "asset id must be unique"
+                        )
+                    )
+                asset_ids.add(asset_id)
                 if not isinstance(raw, str):
                     raise CanonicalizationError("canonical value must be a string")
                 if asset_type == "domain":
                     canonical = canonicalize_domain(raw)
+                    if "include_apex" in asset:
+                        issues.append(
+                            ValidationIssue(
+                                "ASSET_INVALID",
+                                f"{path}/include_apex",
+                                "include_apex is valid only for wildcard domains",
+                            )
+                        )
                 elif asset_type == "wildcard_domain":
                     canonical = canonicalize_wildcard_domain(raw)
+                    if "include_apex" not in asset:
+                        issues.append(
+                            ValidationIssue(
+                                "ASSET_AMBIGUOUS",
+                                f"{path}/include_apex",
+                                "wildcard apex behavior must be explicit",
+                            )
+                        )
                 elif asset_type == "url":
-                    canonical = str(canonicalize_url(raw)["canonical_url"])
+                    canonical_url = canonicalize_url(raw)
+                    canonical = str(canonical_url["canonical_url"])
                 elif asset_type in {"ipv4", "ipv6"}:
                     result = canonicalize_ip(raw)
                     if result["family"] != asset_type:
                         raise CanonicalizationError("IP family does not match asset type")
                     canonical = result["value"]
+                    allowed_ipv6 = allowed_ipv6 or (
+                        asset_type == "ipv6" and asset.get("effect") == "allow"
+                    )
                 elif asset_type == "cidr":
-                    canonical = str(canonicalize_cidr(raw)["canonical"])
+                    cidr = canonicalize_cidr(raw)
+                    canonical = str(cidr["canonical"])
+                    allowed_ipv6 = allowed_ipv6 or (
+                        cidr["family"] == "ipv6" and asset.get("effect") == "allow"
+                    )
                 else:
                     raise CanonicalizationError("unsupported asset type")
                 normalized = deepcopy(asset)
@@ -291,16 +340,75 @@ def validate_and_canonicalize_manifest(
                 normalized["denied_paths"] = sorted(
                     {canonicalize_path(item) for item in normalized.get("denied_paths", [])}
                 )
+                if normalized.get("effect") == "allow" and not normalized["allowed_ports"]:
+                    issues.append(
+                        ValidationIssue(
+                            "PORT_AUTHORITY_MISSING",
+                            f"{path}/allowed_ports",
+                            "allow rules must explicitly authorize at least one port",
+                        )
+                    )
+                if (
+                    normalized.get("effect") == "allow"
+                    and normalized.get("ownership_verified") is not True
+                ):
+                    issues.append(
+                        ValidationIssue(
+                            "OWNERSHIP_UNVERIFIED",
+                            f"{path}/ownership_verified",
+                            "allow rules require explicit ownership verification",
+                        )
+                    )
+                overlap = set(normalized["allowed_paths"]) & set(normalized["denied_paths"])
+                if overlap:
+                    issues.append(
+                        ValidationIssue(
+                            "CONTRADICTORY_RULES",
+                            path,
+                            "paths cannot be both allowed and denied: "
+                            + ", ".join(sorted(overlap)),
+                        )
+                    )
+                if asset_type == "url":
+                    url_port_value = canonical_url["port"]
+                    if not isinstance(url_port_value, int):
+                        raise CanonicalizationError("URL effective port is invalid")
+                    url_port = url_port_value
+                    if (
+                        normalized.get("effect") == "allow"
+                        and url_port not in normalized["allowed_ports"]
+                    ):
+                        issues.append(
+                            ValidationIssue(
+                                "CONTRADICTORY_RULES",
+                                f"{path}/allowed_ports",
+                                "URL effective port must be explicitly allowed",
+                            )
+                        )
+                    base_path = str(canonical_url["path"])
+                    if any(
+                        not _path_contains(base_path, allowed_path)
+                        for allowed_path in normalized["allowed_paths"]
+                    ):
+                        issues.append(
+                            ValidationIssue(
+                                "SCOPE_AMBIGUOUS",
+                                f"{path}/allowed_paths",
+                                "URL allowed paths cannot broaden its canonical base path",
+                            )
+                        )
                 asset_key = (str(asset_type), canonical)
                 previous = seen.get(asset_key)
                 effect = normalized.get("effect")
-                if previous is not None and previous != effect:
+                if previous is not None:
                     issues.append(
                         ValidationIssue(
-                            "CONTRADICTORY_RULES", path, "same asset is both allowed and denied"
+                            "CONTRADICTORY_RULES",
+                            path,
+                            f"duplicates asset declared at /scope/assets/{previous[1]}",
                         )
                     )
-                seen[asset_key] = str(effect)
+                seen[asset_key] = (str(effect), index)
                 canonical_assets.append(normalized)
             except (CanonicalizationError, TypeError) as exc:
                 issues.append(ValidationIssue("ASSET_INVALID", path, str(exc)))
@@ -313,6 +421,15 @@ def validate_and_canonicalize_manifest(
                     item["effect"],
                     item["asset_id"],
                 ),
+            )
+        network = document.get("network")
+        if allowed_ipv6 and isinstance(network, dict) and network.get("ipv6_mode") == "disabled":
+            issues.append(
+                ValidationIssue(
+                    "CONTRADICTORY_RULES",
+                    "/network/ipv6_mode",
+                    "IPv6 scope cannot be allowed while IPv6 is disabled",
+                )
             )
 
     techniques = document.get("techniques")
@@ -355,6 +472,14 @@ def validate_and_canonicalize_manifest(
                     f"unsupported capabilities: {', '.join(unsupported)}",
                 )
             )
+        if not allowed:
+            issues.append(
+                ValidationIssue(
+                    "TECHNIQUES_INCOMPLETE",
+                    "/techniques/allowed_capabilities",
+                    "at least one explicitly allowed capability is required",
+                )
+            )
         methods = set(techniques.get("allowed_http_methods", []))
         for capability in allowed:
             if _CAPABILITY_METHOD.get(capability) not in methods:
@@ -395,6 +520,50 @@ def validate_and_canonicalize_manifest(
                         "must be > 0",
                     )
                 )
+        global_rps = limits.get("requests_per_second")
+        host_rps = limits.get("per_host_requests_per_second")
+        if isinstance(global_rps, (int, float)) and isinstance(host_rps, (int, float)):
+            if host_rps > global_rps:
+                issues.append(
+                    ValidationIssue(
+                        "LIMITS_INVALID",
+                        "/operational_limits/per_host_requests_per_second",
+                        "per-host rate cannot exceed the global rate",
+                    )
+                )
+
+    controls = document.get("agent_controls")
+    if isinstance(limits, dict) and isinstance(controls, dict):
+        runtime = limits.get("maximum_runtime_minutes")
+        agent_runtime = controls.get("maximum_runtime_minutes")
+        if isinstance(runtime, (int, float)) and isinstance(agent_runtime, (int, float)):
+            if agent_runtime > runtime:
+                issues.append(
+                    ValidationIssue(
+                        "LIMITS_INVALID",
+                        "/agent_controls/maximum_runtime_minutes",
+                        "agent runtime cannot exceed the engagement runtime limit",
+                    )
+                )
+
+    network = document.get("network")
+    if isinstance(network, dict):
+        if network.get("ipv6_mode") == "disabled" and network.get("registered_source_ipv6"):
+            issues.append(
+                ValidationIssue(
+                    "CONTRADICTORY_RULES",
+                    "/network/registered_source_ipv6",
+                    "registered IPv6 identities require approved_only IPv6 mode",
+                )
+            )
+        if network.get("dns_mode") == "approved_resolver" and not network.get("approved_resolvers"):
+            issues.append(
+                ValidationIssue(
+                    "NETWORK_CONSTRAINTS_INCOMPLETE",
+                    "/network/approved_resolvers",
+                    "approved_resolver mode requires at least one resolver",
+                )
+            )
 
     engagement = document.get("engagement")
     if isinstance(engagement, dict):

@@ -183,6 +183,12 @@ class AuthorizationSliceTests(unittest.TestCase):
         version = self.service.save_manifest(self.engagement["id"], self.manifest)
         self.assertTrue(version["valid"], version["issues"])
         bundle = self.service.compile_policy(version["id"])
+        self.assertEqual(bundle["policy"]["compiler"]["version"], "1.1.0")
+        with sqlite3.connect(self.database) as connection:
+            stored_version = connection.execute(
+                "SELECT compiler_version FROM policy_bundles WHERE id = ?", (bundle["id"],)
+            ).fetchone()[0]
+        self.assertEqual(stored_version, "1.1.0")
         self.service.approve_policy(bundle["id"], approver_id="human-reviewer")
         self.service.activate_policy(bundle["id"], actor_id="human-reviewer")
         return version, bundle
@@ -480,6 +486,116 @@ class AuthorizationSliceTests(unittest.TestCase):
         with self.assertRaises(DomainError) as raised:
             self.service.compile_policy(version["id"])
         self.assertEqual(raised.exception.code, "CONTRADICTORY_RULES")
+
+    def test_ambiguous_asset_authority_and_duplicate_matchers_fail_closed(self) -> None:
+        cases: list[tuple[dict[str, object], str]] = []
+
+        no_ports = copy.deepcopy(self.manifest)
+        no_ports["scope"]["assets"][0]["allowed_ports"] = []
+        cases.append((no_ports, "PORT_AUTHORITY_MISSING"))
+
+        no_ownership = copy.deepcopy(self.manifest)
+        no_ownership["scope"]["assets"][0]["ownership_verified"] = False
+        cases.append((no_ownership, "OWNERSHIP_UNVERIFIED"))
+
+        wildcard = copy.deepcopy(self.manifest)
+        wildcard["scope"]["assets"][0].update(
+            {"type": "wildcard_domain", "canonical_value": "*.example.test"}
+        )
+        cases.append((wildcard, "ASSET_AMBIGUOUS"))
+
+        duplicate = copy.deepcopy(self.manifest)
+        repeated = copy.deepcopy(duplicate["scope"]["assets"][0])
+        repeated["asset_id"] = str(uuid4())
+        duplicate["scope"]["assets"].append(repeated)
+        cases.append((duplicate, "CONTRADICTORY_RULES"))
+
+        for candidate, expected in cases:
+            version = self.service.save_manifest(self.engagement["id"], candidate)
+            self.assertFalse(version["valid"])
+            self.assertIn(expected, {issue["code"] for issue in version["issues"]})
+            with self.assertRaises(DomainError):
+                self.service.compile_policy(version["id"])
+
+    def test_url_port_and_path_cannot_broaden_canonical_authority(self) -> None:
+        candidate = copy.deepcopy(self.manifest)
+        candidate["scope"]["assets"][0].update(
+            {
+                "type": "url",
+                "canonical_value": "https://example.test/api",
+                "allowed_ports": [8443],
+                "allowed_paths": ["/"],
+            }
+        )
+        version = self.service.save_manifest(self.engagement["id"], candidate)
+        codes = {issue["code"] for issue in version["issues"]}
+        self.assertFalse(version["valid"])
+        self.assertEqual(codes & {"CONTRADICTORY_RULES", "SCOPE_AMBIGUOUS"}, codes)
+        self.assertEqual(codes, {"CONTRADICTORY_RULES", "SCOPE_AMBIGUOUS"})
+
+    def test_limit_and_network_relationships_are_complete_and_consistent(self) -> None:
+        candidate = copy.deepcopy(self.manifest)
+        candidate["operational_limits"]["per_host_requests_per_second"] = 2
+        candidate["agent_controls"]["maximum_runtime_minutes"] = 31
+        candidate["network"].update(
+            {
+                "dns_mode": "approved_resolver",
+                "registered_source_ipv6": ["2001:db8::1"],
+            }
+        )
+        version = self.service.save_manifest(self.engagement["id"], candidate)
+        self.assertFalse(version["valid"])
+        codes = [issue["code"] for issue in version["issues"]]
+        self.assertEqual(codes.count("LIMITS_INVALID"), 2)
+        self.assertIn("CONTRADICTORY_RULES", codes)
+        self.assertIn("NETWORK_CONSTRAINTS_INCOMPLETE", codes)
+
+    def test_manifest_requires_an_explicitly_allowed_capability(self) -> None:
+        candidate = copy.deepcopy(self.manifest)
+        candidate["techniques"]["allowed_capabilities"] = []
+        candidate["techniques"]["allowed_http_methods"] = []
+        version = self.service.save_manifest(self.engagement["id"], candidate)
+        self.assertFalse(version["valid"])
+        self.assertIn("TECHNIQUES_INCOMPLETE", {item["code"] for item in version["issues"]})
+
+    def test_typed_matcher_specificity_is_deterministic(self) -> None:
+        candidate = copy.deepcopy(self.manifest)
+        source_id = self.source["id"]
+        candidate["scope"]["assets"] = [
+            {
+                "asset_id": str(uuid4()),
+                "effect": "deny",
+                "type": "cidr",
+                "canonical_value": "192.0.2.0/24",
+                "allowed_ports": [443],
+                "source_reference": source_id,
+            },
+            {
+                "asset_id": str(uuid4()),
+                "effect": "allow",
+                "type": "ipv4",
+                "canonical_value": "192.0.2.10",
+                "allowed_ports": [443],
+                "allowed_paths": ["/api"],
+                "ownership_verified": True,
+                "source_reference": source_id,
+            },
+        ]
+        version = self.service.save_manifest(self.engagement["id"], candidate)
+        self.assertTrue(version["valid"], version["issues"])
+        bundle = self.service.compile_policy(version["id"])
+        self.service.approve_policy(bundle["id"], approver_id="human-reviewer")
+        self.service.activate_policy(bundle["id"], actor_id="human-reviewer")
+        exact = intent_for(self.engagement["id"], bundle["content_hash"], "https://192.0.2.10/api")
+        other = intent_for(self.engagement["id"], bundle["content_hash"], "https://192.0.2.11/api")
+        self.assertEqual(
+            self.service.evaluate_intent(self.engagement["id"], exact)["reason_codes"],
+            ["EXPLICIT_ALLOW"],
+        )
+        self.assertEqual(
+            self.service.evaluate_intent(self.engagement["id"], other)["reason_codes"],
+            ["EXPLICIT_DENY"],
+        )
 
     def test_audit_chain_covers_lifecycle_and_detects_tampering(self) -> None:
         _, bundle = self.activate()
