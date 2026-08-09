@@ -326,6 +326,24 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
             self.assertIn(required, launch)
         self.assertNotIn("--privileged", launch)
 
+    def test_oci_drift_diagnostics_name_controls_without_values(self) -> None:
+        inspected = {
+            "Id": CONTAINER,
+            "State": {"Running": True},
+            "Config": {"User": "0", "Labels": {}},
+            "HostConfig": {},
+            "NetworkSettings": {"Networks": {}},
+        }
+        controller = OciGatewayFixtureController(
+            executable=OCI,
+            executor=FixtureExecutor([CommandResult(0, json.dumps(inspected).encode())]),
+        )
+        with self.assertRaises(GatewayRuntimeError) as raised:
+            controller.verify("runtime-1", CONTAINER, NETWORK_ID)
+        self.assertIn("network_identity", str(raised.exception))
+        self.assertIn("non_root_user", str(raised.exception))
+        self.assertNotIn(NETWORK_ID, str(raised.exception))
+
     def test_authorization_safety_adapter_pauses_owning_assessment(self) -> None:
         with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute("PRAGMA foreign_keys = OFF")

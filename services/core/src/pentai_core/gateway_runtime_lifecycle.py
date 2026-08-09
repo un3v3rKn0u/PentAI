@@ -136,10 +136,12 @@ class OciGatewayFixtureController:
         state = document.get("State")
         config = document.get("Config")
         host = document.get("HostConfig")
-        labels = config.get("Labels") if isinstance(config, dict) else None
-        cap_drop = host.get("CapDrop") if isinstance(host, dict) else None
-        security_options = host.get("SecurityOpt") if isinstance(host, dict) else None
-        binds = host.get("Binds") if isinstance(host, dict) else None
+        host_document = host if isinstance(host, dict) else {}
+        config_document = config if isinstance(config, dict) else {}
+        labels = config_document.get("Labels")
+        cap_drop = host_document.get("CapDrop")
+        security_options = host_document.get("SecurityOpt")
+        binds = host_document.get("Binds")
         network_settings = document.get("NetworkSettings")
         networks = (
             network_settings.get("Networks") if isinstance(network_settings, dict) else None
@@ -153,9 +155,9 @@ class OciGatewayFixtureController:
             if isinstance(networks, dict)
             else set()
         )
-        nano_cpus = host.get("NanoCpus") if isinstance(host, dict) else None
-        cpu_quota = host.get("CpuQuota") if isinstance(host, dict) else None
-        cpu_period = host.get("CpuPeriod") if isinstance(host, dict) else None
+        nano_cpus = host_document.get("NanoCpus")
+        cpu_quota = host_document.get("CpuQuota")
+        cpu_period = host_document.get("CpuPeriod")
         cpu_limited = nano_cpus == 250_000_000 or (
             isinstance(cpu_quota, int)
             and isinstance(cpu_period, int)
@@ -163,33 +165,36 @@ class OciGatewayFixtureController:
             and cpu_period > 0
             and cpu_quota * 4 <= cpu_period
         )
-        unsafe = (
-            document.get("Id") != container_id
-            or not isinstance(state, dict)
-            or state.get("Running") is not True
-            or not isinstance(host, dict)
-            or network_ids != {network_id}
-            or host.get("ReadonlyRootfs") is not True
-            or host.get("Privileged") is not False
-            or host.get("PidMode") not in ("", None)
-            or host.get("IpcMode") not in ("", "private", None)
-            or host.get("PidsLimit") != 16
-            or host.get("Memory") != 33_554_432
-            or not cpu_limited
-            or not isinstance(cap_drop, list)
-            or not any(str(item).lower() == "all" for item in cap_drop)
-            or not isinstance(security_options, list)
-            or not any("no-new-privileges" in str(item) for item in security_options)
-            or binds not in (None, [])
-            or not isinstance(config, dict)
-            or config.get("User") not in ("65532", "65532:65532")
-            or not isinstance(labels, dict)
-            or labels.get("com.pentai.managed") != "true"
-            or labels.get("com.pentai.runtime-role") != "gateway-fixture"
-            or labels.get("com.pentai.runtime-id") != runtime_id
-        )
-        if unsafe:
-            raise GatewayRuntimeError("GATEWAY_RUNTIME_DRIFT", "gateway containment changed")
+        checks = {
+            "container_identity": document.get("Id") == container_id,
+            "running": isinstance(state, dict) and state.get("Running") is True,
+            "host_config": isinstance(host, dict),
+            "network_identity": network_ids == {network_id},
+            "read_only_root": host_document.get("ReadonlyRootfs") is True,
+            "non_privileged": host_document.get("Privileged") is False,
+            "private_pid": host_document.get("PidMode") in ("", None),
+            "private_ipc": host_document.get("IpcMode") in ("", "private", None),
+            "pid_limit": host_document.get("PidsLimit") == 16,
+            "memory_limit": host_document.get("Memory") == 33_554_432,
+            "cpu_limit": cpu_limited,
+            "capabilities_dropped": isinstance(cap_drop, list)
+            and any(str(item).lower() == "all" for item in cap_drop),
+            "no_new_privileges": isinstance(security_options, list)
+            and any("no-new-privileges" in str(item) for item in security_options),
+            "no_binds": binds in (None, []),
+            "config": isinstance(config, dict),
+            "non_root_user": config_document.get("User") in ("65532", "65532:65532"),
+            "labels": isinstance(labels, dict)
+            and labels.get("com.pentai.managed") == "true"
+            and labels.get("com.pentai.runtime-role") == "gateway-fixture"
+            and labels.get("com.pentai.runtime-id") == runtime_id,
+        }
+        failed = sorted(name for name, passed in checks.items() if not passed)
+        if failed:
+            raise GatewayRuntimeError(
+                "GATEWAY_RUNTIME_DRIFT",
+                "gateway containment changed: " + ",".join(failed),
+            )
 
     def terminate(self, runtime_id: str, container_id: str | None) -> None:
         if not _IDENTIFIER.fullmatch(runtime_id):
