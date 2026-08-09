@@ -263,9 +263,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     pauses authority on drift, and retries failed termination during startup recovery.
     The hosted Linux rootless Podman workflow verifies live sentinel launch, kernel
     capability masks, monitoring, explicit termination, and startup recovery.
-    Core startup now owns injected recovery, watchdog health, degraded readiness, and
-    idempotent shutdown cleanup. Production OCI composition, controlled DNS, outbound
-    gateway networking, and HTTP effects remain required.
+    Core startup now owns strict opt-in OCI composition, recovery, watchdog health,
+    degraded readiness, and idempotent shutdown cleanup. The hosted rootless harness
+    simulates abrupt process loss and proves composed restart cleanup without enabling
+    execution. Controlled DNS, outbound gateway networking, and HTTP effects remain
+    required.
 - [ ] Create an isolated HTTP/browser worker with no direct outbound route.
 - [ ] Implement source-IP attestation and approved-IP comparison.
 - [x] Implement global and assessment-level pause, stop, and grant revocation.

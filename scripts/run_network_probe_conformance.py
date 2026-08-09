@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -14,6 +16,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from pentai_core.config import Settings
+from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
 from pentai_core.gateway_runtime_lifecycle import (
     GatewayRuntimeLifecycle,
     LinuxProcCapabilityMonitor,
@@ -40,9 +44,22 @@ _ROOT = Path(__file__).resolve().parents[1]
 @dataclass
 class HarnessSafety:
     calls: list[tuple[str, str]] = field(default_factory=list)
+    global_calls: list[tuple[str, str, str]] = field(default_factory=list)
 
     def halt(self, session_id: str, reason: str) -> None:
         self.calls.append((session_id, reason))
+
+    def set_global_safety(
+        self, *, status: str, reason: str, actor_id: str
+    ) -> dict[str, Any]:
+        self.global_calls.append((status, reason, actor_id))
+        return {}
+
+    def set_assessment_safety(
+        self, engagement_id: str, *, status: str, reason: str, actor_id: str
+    ) -> dict[str, Any]:
+        self.calls.append((engagement_id, reason))
+        return {}
 
 
 @dataclass
@@ -218,15 +235,103 @@ def _run_gateway_lifecycle(
         )
         lifecycle.check(str(first["runtime_id"]))
         lifecycle.terminate(str(first["runtime_id"]), reason="hosted lifecycle verification")
-        lifecycle.launch(
-            session=sessions[1], containment=attestor.measure(), image_digest=image_digest
+        crash = multiprocessing.get_context("spawn").Process(
+            target=_launch_then_crash,
+            args=(
+                runtime,
+                str(executable),
+                str(database),
+                runtime_instance_id,
+                network_id,
+                image_digest,
+                sessions[1],
+            ),
         )
-        if lifecycle.recover() != 1:
+        crash.start()
+        crash.join(30)
+        if crash.is_alive():
+            crash.terminate()
+            crash.join(5)
             raise SnapshotCollectionError(
-                "GATEWAY_RECOVERY_FAILED", "gateway startup recovery did not terminate fixture"
+                "GATEWAY_CRASH_HARNESS_TIMEOUT", "crash fixture did not exit"
             )
-    if len(safety.calls) != 2:
+        if crash.exitcode != 0:
+            raise SnapshotCollectionError(
+                "GATEWAY_CRASH_HARNESS_FAILED", "crash fixture failed before restart"
+            )
+        restart_safety = HarnessSafety()
+        supervisor = compose_gateway_runtime_supervisor(
+            settings=Settings(
+                environment="test",
+                database_path=database,
+                test_mode=True,
+                gateway_runtime_enabled=True,
+                gateway_runtime=runtime,
+                gateway_runtime_executable=executable,
+                gateway_runtime_instance_id=runtime_instance_id,
+                gateway_network_id=network_id,
+                gateway_probe_image_digest=image_digest,
+                gateway_instance_id="conformance-fixture",
+                gateway_watchdog_interval_seconds=0.1,
+            ),
+            safety_control=restart_safety,
+        )
+        supervisor.start()
+        status = supervisor.status()
+        if status["status"] != "ready" or status["recovered_instances"] != 1:
+            raise SnapshotCollectionError(
+                "GATEWAY_RECOVERY_FAILED", "composed startup did not recover crash fixture"
+            )
+        supervisor.stop()
+        if restart_safety.calls != [("conformance-engagement", "startup recovery")]:
+            raise SnapshotCollectionError(
+                "GATEWAY_SAFETY_FAILED", "recovery did not pause the owning assessment"
+            )
+        if restart_safety.global_calls:
+            raise SnapshotCollectionError(
+                "GATEWAY_SAFETY_FAILED", "successful recovery unexpectedly paused globally"
+            )
+    if len(safety.calls) != 1:
         raise SnapshotCollectionError("GATEWAY_SAFETY_FAILED", "safety handler was not invoked")
+
+
+def _launch_then_crash(
+    runtime: str,
+    executable_value: str,
+    database_value: str,
+    runtime_instance_id: str,
+    network_id: str,
+    image_digest: str,
+    session: dict[str, Any],
+) -> None:
+    executable = Path(executable_value)
+    executor = LocalBoundedCommandExecutor(executable)
+    probe = OciNetworkConformanceProbe(
+        executable=executable, probe_image_digest=image_digest, executor=executor
+    )
+    collector = OciRuntimeSnapshotCollector(
+        runtime=runtime,
+        executable=executable,
+        runtime_instance_id=runtime_instance_id,
+        gateway_network_id=network_id,
+        pentai_instance_id="conformance-fixture",
+        executor=executor,
+        network_conformance=probe,
+    )
+    attestor = RuntimeContainmentAttestor(collector)
+    lifecycle = GatewayRuntimeLifecycle(
+        database_path=Path(database_value),
+        controller=OciGatewayFixtureController(
+            runtime=runtime,
+            executable=executable,
+            executor=executor,
+            capability_monitor=LinuxProcCapabilityMonitor() if runtime == "podman" else None,
+        ),
+        monitor=HarnessMonitor(attestor),
+        safety=HarnessSafety(),
+    )
+    lifecycle.launch(session=session, containment=attestor.measure(), image_digest=image_digest)
+    os._exit(0)
 
 
 def _insert_fixture_session(database: Path) -> dict[str, Any]:
@@ -247,6 +352,20 @@ def _insert_fixture_session(database: Path) -> dict[str, Any]:
     connection = sqlite3.connect(database)
     try:
         connection.execute("PRAGMA foreign_keys = OFF")
+        connection.execute(
+            """INSERT INTO budget_reservations(
+            reservation_id, engagement_id, policy_bundle_id, grant_id,
+            destination_authorization_id, request_count, response_bytes_limit,
+            status, reserved_at
+            ) VALUES (?, 'conformance-engagement', 'conformance-policy', ?, ?,
+            1, 4096, 'reserved', ?)""",
+            (
+                session["reservation_id"],
+                session["grant_id"],
+                session["destination_authorization_id"],
+                session["prepared_at"],
+            ),
+        )
         connection.execute(
             """INSERT INTO gateway_sessions(
             session_id, reservation_id, grant_id, attestation_id,
