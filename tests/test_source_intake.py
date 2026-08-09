@@ -5,6 +5,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -86,7 +87,7 @@ class SourceIntakeTests(unittest.TestCase):
 
     def test_source_rows_are_immutable(self) -> None:
         source = self.import_source()
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
                 connection.execute(
                     "UPDATE source_documents SET authority = 'internal_note' WHERE id = ?",
