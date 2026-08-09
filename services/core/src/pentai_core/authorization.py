@@ -682,12 +682,13 @@ class AuthorizationService:
                         INSERT INTO policy_bundles(
                             id, engagement_id, manifest_version_id, schema_version,
                             compiler_version, policy_json, content_hash
-                        ) VALUES (?, ?, ?, '1.0.0', '1.0.0', ?, ?)
+                        ) VALUES (?, ?, ?, '1.0.0', ?, ?, ?)
                         """,
                         (
                             policy_id,
                             row["engagement_id"],
                             manifest_version_id,
+                            policy["compiler"]["version"],
                             canonical_json(policy),
                             policy["content_hash"],
                         ),

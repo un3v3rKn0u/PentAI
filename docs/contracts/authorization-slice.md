@@ -47,6 +47,16 @@ them under the strengthened contract. The API lists history newest-first and com
 engagement-bound deterministic diffs across authorization-bearing sections. There is
 no destructive down migration; rolling back code retains the additive columns/data.
 
+Policy compiler `1.1.0` strengthens the existing Policy IR v1 semantics without
+changing its JSON shape. Allow assets require explicit ownership verification and at
+least one allowed port; wildcard assets require an explicit apex decision; URL paths
+cannot broaden their canonical base; duplicate typed assets and contradictory path,
+IPv6, DNS, rate, or runtime constraints fail validation. At least one capability must
+be explicitly allowed. Matcher specificity orders URL, exact host/address, wildcard,
+and CIDR rules deterministically, with CIDR prefix length contributing specificity.
+Previously compiled Policy IR remains readable, but manifests relying on implicit
+authority must be corrected and compiled with `1.1.0` before later activation.
+
 Phase 1 migration `0004_source_provenance.sql` strengthens the persisted source side
 of this binding with normalized source kind, media type, optional source version,
 immutable rows, idempotent repeated imports, and audit linkage. Migration

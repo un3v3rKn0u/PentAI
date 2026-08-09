@@ -232,8 +232,8 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [x] Store source authority, timestamps, effective dates, hashes, and encrypted originals.
 - [ ] Build the full intake UI from `design_intake_workflow.md`.
 - [x] Implement draft manifest editing with field-level provenance.
-- [ ] Add deterministic completeness, conflict, expiration, and contradiction checks.
-- [ ] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
+- [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
+- [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
 - [ ] Build policy compilation, deterministic decision evaluation, signing, activation, revocation, and version history.
 - [ ] Build typed, expiring approvals and activation workflow.
 - [x] Build semantic diffs for scope, techniques, limits, and reporting terms.

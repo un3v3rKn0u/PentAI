@@ -185,3 +185,33 @@ structured form editor for every manifest field. Pre-upgrade manifests are visib
 **Residual risk accepted:** This is a self-authored, non-independent review. The
 strengthened schema intentionally fails closed for legacy compilation. This acceptance
 does not authorize target-facing execution or satisfy independent review.
+
+## 2026-08-09 — Deterministic manifest validation and typed matchers
+
+**Decision:** Sole-maintainer security review — non-independent<br>
+**Reviewer:** `un3v3rKn0u`<br>
+**Roles held:** author, sole maintainer, Product Owner, Security Lead, repository owner
+
+**Scope reviewed:** Manifest semantic validation, compiler v1.1 matcher specificity,
+negative/default-deny behavior, compatibility, tests, contracts, and documentation on
+`feature/deterministic-manifest-validation`.
+
+**Evidence examined:** complete diff against `main`; explicit wildcard apex, port,
+ownership, capability, URL base-path, duplicate asset/source, path conflict, IPv6,
+resolver, rate, runtime, and validity checks; exact-IP versus CIDR precedence test;
+deterministic compilation and existing authorization regression suite; all repository
+quality and hosted checks reported with the slice.
+
+**Findings:** No unresolved material finding. Missing or contradictory authority is
+retained as a diagnosable invalid manifest version and cannot compile. Matcher ordering
+is deterministic and deny precedence remains effective at equal specificity.
+
+**Limitations and deferred work:** Validation does not prove external asset ownership;
+it requires the human-authored manifest to record that verification and bind it to an
+authoritative source. Runtime DNS/redirect/address reauthorization remains a gateway
+responsibility. Existing compiler v1.0 policies remain readable but receive no new
+assurance claim.
+
+**Residual risk accepted:** This is a self-authored, non-independent review. Its
+governance limitation is accepted for this internal validation slice only. It does not
+authorize target-facing execution or substitute for independent assessment.

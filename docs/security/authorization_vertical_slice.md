@@ -69,7 +69,16 @@ PolicyDecision v1 reason codes used by this slice:
 Manifest/compiler validation uses stable codes including `AUTHORIZATION_AMBIGUOUS`,
 `AUTHORIZATION_EXPIRED`, `AUTHORIZATION_NOT_YET_VALID`, `CONTRADICTORY_RULES`,
 `UNSUPPORTED_CAPABILITY`, `LIMITS_INVALID`, `PROVENANCE_MISSING`,
-`PROVENANCE_HASH_MISMATCH`, and `ASSET_INVALID`.
+`PROVENANCE_HASH_MISMATCH`, `PROVENANCE_AMBIGUOUS`, `ASSET_INVALID`,
+`ASSET_AMBIGUOUS`, `PORT_AUTHORITY_MISSING`, `OWNERSHIP_UNVERIFIED`,
+`SCOPE_AMBIGUOUS`, `TECHNIQUES_INCOMPLETE`, and `NETWORK_CONSTRAINTS_INCOMPLETE`.
+
+Compiler v1.1 assigns type-aware specificity: URL rules are narrower than exact
+domain/IP rules, exact domains are narrower than wildcard domains, and longer CIDR
+prefixes are narrower than shorter prefixes. Runtime evaluation still gathers all
+matches at the greatest specificity and applies deny precedence there. This lets a
+reviewed exact exception override a broader range rule while an equal-specificity deny
+always wins.
 
 ## Audit verification
 
