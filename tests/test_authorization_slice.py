@@ -197,6 +197,153 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.service.activate_policy(bundle["id"], actor_id="human-reviewer")
         return version, bundle
 
+    def network_authority(
+        self,
+    ) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+        self.manifest["network"]["registered_source_ipv4"] = ["192.0.2.10"]
+        _, bundle = self.activate()
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        decision = self.service.evaluate_intent(self.engagement["id"], intent)
+        grant = self.service.mint_action_grant(
+            decision["decision_id"], audience="pentai-egress-gateway"
+        )
+        attestation = {
+            "schema_version": "1.0.0",
+            "attestation_id": str(uuid4()),
+            "assessment_id": self.engagement["id"],
+            "policy_hash": bundle["content_hash"],
+            "route_profile_id": "synthetic-route",
+            "source_ipv4": "192.0.2.10",
+            "resolver_mode": "tunnel_resolver",
+            "resolver_id": "fixture:controlled-dns",
+            "observations": ["fixture:egress-a", "fixture:egress-b"],
+            "observed_at": timestamp(timedelta(seconds=-1)),
+            "expires_at": timestamp(timedelta(minutes=1)),
+        }
+        self.service.record_network_attestation(attestation, attestor_id="fixture-attestor")
+        return intent, grant, attestation
+
+    def test_network_destination_authorization_pins_fixture_dns_without_executing(self) -> None:
+        intent, grant, attestation = self.network_authority()
+
+        result = self.service.authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            addresses=["192.0.2.20"],
+            cname_chain=["example.test"],
+            sni_host="example.test",
+            host_header="example.test",
+            redirect_count=0,
+        )
+
+        self.assertEqual(result["outcome"], "allow")
+        self.assertEqual(result["reason_codes"], ["DESTINATION_AUTHORIZED"])
+        self.assertEqual(result["pinned_addresses"], ["192.0.2.20"])
+        self.assertFalse(result["execution_enabled"])
+        with sqlite3.connect(self.database) as connection:
+            self.assertIsNone(
+                connection.execute(
+                    "SELECT used_at FROM action_grants WHERE grant_id = ?",
+                    (grant["grant_id"],),
+                ).fetchone()[0]
+            )
+
+        rebound = self.service.authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            addresses=["192.0.2.21"],
+            cname_chain=["example.test"],
+            sni_host="example.test",
+            host_header="example.test",
+            redirect_count=0,
+        )
+        self.assertEqual(rebound["outcome"], "deny")
+        self.assertIn("DNS_REBINDING", rebound["reason_codes"])
+
+    def test_network_destination_default_denies_special_ipv6_and_host_mismatch(self) -> None:
+        intent, grant, attestation = self.network_authority()
+        cases = (
+            (["127.0.0.1"], "example.test", "DNS_SPECIAL_ADDRESS"),
+            (["2001:db8::20"], "example.test", "IPV6_DENIED"),
+            (["192.0.2.20"], "other.test", "SNI_HOST_MISMATCH"),
+        )
+        for addresses, sni_host, expected in cases:
+            with self.subTest(expected=expected):
+                result = self.service.authorize_network_destination(
+                    grant_id=grant["grant_id"],
+                    attestation_id=attestation["attestation_id"],
+                    candidate_url=intent["target"]["canonical_url"],
+                    addresses=addresses,
+                    cname_chain=[],
+                    sni_host=sni_host,
+                    host_header="example.test",
+                    redirect_count=0,
+                )
+                self.assertEqual(result["outcome"], "deny")
+                self.assertIn(expected, result["reason_codes"])
+                self.assertEqual(result["pinned_addresses"], [])
+
+    def test_network_attestation_is_invalidated_by_pause(self) -> None:
+        intent, grant, attestation = self.network_authority()
+        self.service.set_assessment_safety(
+            self.engagement["id"], status="paused", reason="operator pause", actor_id="reviewer"
+        )
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.authorize_network_destination(
+                grant_id=grant["grant_id"],
+                attestation_id=attestation["attestation_id"],
+                candidate_url=intent["target"]["canonical_url"],
+                addresses=["192.0.2.20"],
+                cname_chain=[],
+                sni_host="example.test",
+                host_header="example.test",
+                redirect_count=0,
+            )
+        self.assertEqual(raised.exception.code, "NETWORK_AUTHORIZATION_DENIED")
+        with sqlite3.connect(self.database) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT status FROM network_attestations WHERE attestation_id = ?",
+                    (attestation["attestation_id"],),
+                ).fetchone()[0],
+                "invalidated",
+            )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "status transition"):
+                connection.execute(
+                    """
+                    UPDATE network_attestations
+                    SET status = 'valid', invalidated_at = NULL
+                    WHERE attestation_id = ?
+                    """,
+                    (attestation["attestation_id"],),
+                )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "cannot be deleted"):
+                connection.execute(
+                    "DELETE FROM network_attestations WHERE attestation_id = ?",
+                    (attestation["attestation_id"],),
+                )
+
+    def test_network_attestation_denies_route_source_and_resolver_mismatch(self) -> None:
+        _, _, attestation = self.network_authority()
+        cases = (
+            ("route_profile_id", "other-route", "ROUTE_MISMATCH"),
+            ("source_ipv4", "192.0.2.99", "SOURCE_IP_MISMATCH"),
+            ("resolver_mode", "approved_resolver", "DNS_INVALID"),
+        )
+        for field, value, expected in cases:
+            with self.subTest(expected=expected):
+                invalid = copy.deepcopy(attestation)
+                invalid["attestation_id"] = str(uuid4())
+                invalid[field] = value
+                with self.assertRaises(DomainError) as raised:
+                    self.service.record_network_attestation(
+                        invalid, attestor_id="fixture-attestor"
+                    )
+                self.assertEqual(raised.exception.code, expected)
+
     def test_exact_request_is_allowed_and_deterministic(self) -> None:
         _, bundle = self.activate()
         intent = intent_for(self.engagement["id"], bundle["content_hash"])

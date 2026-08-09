@@ -12,6 +12,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   Version 1.2 uses Ed25519 over the canonical document; v1.1 transactional
   attestations remain historical and cannot activate newly signed policy.
 - `action-grant-v1.schema.json` — short-lived, signed, single-use execution authority.
+- `network-attestation-v1.schema.json` — measured route and source identity bound to
+  one active policy.
+- `destination-decision-v1.schema.json` — immutable, non-executing DNS and destination
+  reauthorization result.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review
@@ -24,6 +28,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | PolicyDecision v1 | Policy Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | Approval v1.1 | Core Security Maintainer | Contract Maintainer | Product Safety Lead, independent Security Reviewer |
 | ActionGrant v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
+| NetworkAttestation v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
+| DestinationDecision v1 | Gateway Maintainer | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
 | Canonical Types v1 | Policy Maintainer | Contract Maintainer | Gateway Maintainer, independent Security Reviewer |
 
 The owning role is accountable for semantics and consumers. The Contract Maintainer is

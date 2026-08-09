@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/destination-decision-v1.schema.json",
+  "title": "PentAI DestinationDecision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "authorization_id", "grant_id", "attestation_id", "outcome", "reason_codes", "candidate", "pinned_addresses", "created_at", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "authorization_id": {"type": "string", "format": "uuid"},
+    "grant_id": {"type": "string", "format": "uuid"},
+    "attestation_id": {"type": "string", "format": "uuid"},
+    "outcome": {"enum": ["allow", "deny"]},
+    "reason_codes": {"type": "array", "minItems": 1, "items": {"enum": ["DESTINATION_AUTHORIZED", "ATTESTATION_INVALID", "ROUTE_MISMATCH", "SOURCE_IP_MISMATCH", "DNS_INVALID", "DNS_SPECIAL_ADDRESS", "DNS_REBINDING", "IPV6_DENIED", "CNAME_OUT_OF_SCOPE", "REDIRECT_DENIED", "SNI_HOST_MISMATCH", "PORT_DENIED", "PROTOCOL_DENIED", "GRANT_INVALID"]}},
+    "candidate": {"type": "object"},
+    "pinned_addresses": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "created_at": {"type": "string", "format": "date-time"},
+    "execution_enabled": {"const": false}
+  }
+}
