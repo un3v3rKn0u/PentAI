@@ -25,6 +25,10 @@ DNS, create sockets, contact targets, or perform HTTP/HTTPS requests.
 - Programs begin `draft` and become `active` only with an active engagement policy.
 - Engagements move from `draft` to `active`; revocation changes the state to `revoked`
   and increments the revocation epoch.
+- Core startup, global pause/stop, and assessment pause revoke unused grants before
+  any explicit human resume. Startup always returns the global state to `paused`.
+- Assessment resume requires active global safety plus a current, signed, unrevoked,
+  unexpired policy. A global resume never resumes assessments automatically.
 - A manifest is eligible for compilation only when schema/semantic checks, source
   provenance, validity, canonical scope, supported capabilities, limits, and unresolved
   questions all pass.
@@ -115,3 +119,5 @@ cargo test --manifest-path apps/desktop/Cargo.toml
 - Grant minting does not yet reserve rate, concurrency, or total-request budgets.
 - Live route/DNS/source-IP attestation and controlled HTTP/HTTPS execution remain
   deliberately deferred. Grants cannot bypass those future runtime checks.
+- Startup recovery currently validates authorization state only. Future network work
+  must additionally attest route, resolver, and source identity before resume.

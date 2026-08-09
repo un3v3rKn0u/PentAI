@@ -15,7 +15,7 @@ class MigrationTests(unittest.TestCase):
             database = Path(directory) / "pentai.db"
             self.assertEqual(
                 migrate(database),
-                ["0001", "0002", "0003", "0004", "0005", "0006", "0007"],
+                ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008"],
             )
             self.assertEqual(migrate(database), [])
             with sqlite3.connect(database) as connection:
@@ -34,6 +34,7 @@ class MigrationTests(unittest.TestCase):
                     "policy_evaluations",
                     "action_intents",
                     "action_grants",
+                    "safety_state",
                     "audit_events",
                     "outbox",
                 }

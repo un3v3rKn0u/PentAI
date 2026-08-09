@@ -1131,6 +1131,13 @@ class AuthorizationService:
             ).fetchone()
             if engagement is None or engagement["active_policy_id"] is None:
                 raise DomainError("POLICY_INACTIVE", "engagement has no active policy")
+            if engagement["status"] != "active":
+                raise DomainError("ASSESSMENT_PAUSED", "assessment is not active")
+            global_state = connection.execute(
+                "SELECT global_status FROM safety_state WHERE singleton_id = 1"
+            ).fetchone()
+            if global_state is None or global_state["global_status"] != "active":
+                raise DomainError("GLOBAL_SAFETY_PAUSED", "global safety state is not active")
             policy = connection.execute(
                 "SELECT * FROM policy_bundles WHERE id = ?", (engagement["active_policy_id"],)
             ).fetchone()
@@ -1254,11 +1261,13 @@ class AuthorizationService:
                 SELECT pe.*, ai.intent_hash, ai.idempotency_key,
                        p.content_hash AS policy_hash,
                        p.policy_json, p.activated_at, p.revoked_at,
-                       e.active_policy_id, e.revocation_epoch, e.status AS engagement_status
+                       e.active_policy_id, e.revocation_epoch, e.status AS engagement_status,
+                       s.global_status
                 FROM policy_evaluations pe
                 JOIN action_intents ai ON ai.intent_id = pe.intent_id
                 JOIN policy_bundles p ON p.id = pe.policy_bundle_id
                 JOIN engagements e ON e.id = pe.engagement_id
+                CROSS JOIN safety_state s
                 WHERE pe.decision_id = ?
                 """,
                 (decision_id,),
@@ -1284,6 +1293,7 @@ class AuthorizationService:
                 or row["activated_at"] is None
                 or row["revoked_at"] is not None
                 or row["engagement_status"] != "active"
+                or row["global_status"] != "active"
                 or policy_signature.get("algorithm") != "Ed25519"
                 or not self.policy_signer.verify(
                     f"pentai-policy-v1:{row['policy_hash']}".encode("ascii"),
@@ -1427,11 +1437,13 @@ class AuthorizationService:
                 SELECT ag.*, ai.intent_json, ai.intent_hash,
                        e.active_policy_id, e.revocation_epoch AS current_revocation_epoch,
                        e.status AS engagement_status,
-                       p.activated_at, p.revoked_at AS policy_revoked_at
+                       p.activated_at, p.revoked_at AS policy_revoked_at,
+                       s.global_status
                 FROM action_grants ag
                 JOIN action_intents ai ON ai.intent_id = ag.intent_id
                 JOIN engagements e ON e.id = ag.engagement_id
                 JOIN policy_bundles p ON p.id = ag.policy_bundle_id
+                CROSS JOIN safety_state s
                 WHERE ag.grant_id = ?
                 """,
                 (grant["grant_id"],),
@@ -1468,6 +1480,7 @@ class AuthorizationService:
                 or row["activated_at"] is None
                 or row["policy_revoked_at"] is not None
                 or row["engagement_status"] != "active"
+                or row["global_status"] != "active"
                 or grant["revocation_epoch"] != row["current_revocation_epoch"]
             ):
                 raise DomainError("GRANT_REVOKED", "grant authority is no longer active")
@@ -1501,6 +1514,197 @@ class AuthorizationService:
                 "consumed_at": consumed_at,
                 "policy_hash": grant["policy_hash"],
             }
+
+    def safety_state(self) -> dict[str, Any]:
+        with transaction(self.database_path) as connection:
+            row = connection.execute("SELECT * FROM safety_state WHERE singleton_id = 1").fetchone()
+        if row is None:
+            raise DomainError("SAFETY_STATE_MISSING", "durable safety state is unavailable")
+        return {
+            "status": row["global_status"],
+            "reason": row["reason"],
+            "generation": row["generation"],
+            "updated_at": row["updated_at"],
+            "updated_by": row["updated_by"],
+            "network_attested": False,
+            "execution_enabled": False,
+        }
+
+    def recover_startup(self) -> dict[str, Any]:
+        recovered_at = _timestamp()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            revoked = connection.execute(
+                """
+                UPDATE action_grants SET revoked_at = ?
+                WHERE used_at IS NULL AND revoked_at IS NULL
+                """,
+                (recovered_at,),
+            ).rowcount
+            affected = connection.execute(
+                """
+                UPDATE engagements
+                SET status = 'paused', revocation_epoch = revocation_epoch + 1
+                WHERE status = 'active'
+                """
+            ).rowcount
+            connection.execute(
+                """
+                UPDATE safety_state
+                SET global_status = 'paused', reason = 'startup recovery requires human resume',
+                    generation = generation + 1, updated_at = ?, updated_by = 'startup-recovery'
+                WHERE singleton_id = 1
+                """,
+                (recovered_at,),
+            )
+            self._audit(
+                connection,
+                action="safety.startup_recovery",
+                subject_type="safety_state",
+                subject_id="global",
+                actor_type="service",
+                actor_id="startup-recovery",
+                data={"revoked_grants": revoked, "paused_assessments": affected},
+                occurred_at=recovered_at,
+            )
+        return {"status": "paused", "revoked_grants": revoked, "paused_assessments": affected}
+
+    def set_global_safety(self, *, status: str, reason: str, actor_id: str) -> dict[str, Any]:
+        if status not in {"active", "paused", "stopped"}:
+            raise DomainError("SAFETY_STATE_INVALID", "global safety state is invalid")
+        if not reason.strip():
+            raise DomainError("SAFETY_REASON_REQUIRED", "safety reason is required")
+        changed_at = _timestamp()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            revoked = 0
+            affected = 0
+            if status in {"paused", "stopped"}:
+                revoked = connection.execute(
+                    """
+                    UPDATE action_grants SET revoked_at = ?
+                    WHERE used_at IS NULL AND revoked_at IS NULL
+                    """,
+                    (changed_at,),
+                ).rowcount
+                affected = connection.execute(
+                    """
+                    UPDATE engagements
+                    SET status = 'paused', revocation_epoch = revocation_epoch + 1
+                    WHERE status = 'active'
+                    """
+                ).rowcount
+            connection.execute(
+                """
+                UPDATE safety_state
+                SET global_status = ?, reason = ?, generation = generation + 1,
+                    updated_at = ?, updated_by = ? WHERE singleton_id = 1
+                """,
+                (status, reason.strip(), changed_at, actor_id),
+            )
+            self._audit(
+                connection,
+                action=f"safety.global_{status}",
+                subject_type="safety_state",
+                subject_id="global",
+                actor_type="human",
+                actor_id=actor_id,
+                data={
+                    "reason": reason.strip(),
+                    "revoked_grants": revoked,
+                    "paused_assessments": affected,
+                },
+                occurred_at=changed_at,
+            )
+        return self.safety_state()
+
+    def set_assessment_safety(
+        self, engagement_id: str, *, status: str, reason: str, actor_id: str
+    ) -> dict[str, Any]:
+        if status not in {"active", "paused"}:
+            raise DomainError("ASSESSMENT_STATE_INVALID", "assessment safety state is invalid")
+        if not reason.strip():
+            raise DomainError("SAFETY_REASON_REQUIRED", "safety reason is required")
+        changed_at = _timestamp()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            engagement = connection.execute(
+                "SELECT * FROM engagements WHERE id = ?", (engagement_id,)
+            ).fetchone()
+            if engagement is None:
+                raise DomainError("ENGAGEMENT_NOT_FOUND", "engagement does not exist")
+            global_state = connection.execute(
+                "SELECT global_status FROM safety_state WHERE singleton_id = 1"
+            ).fetchone()
+            if status == "active" and (
+                global_state is None
+                or global_state["global_status"] != "active"
+                or engagement["active_policy_id"] is None
+            ):
+                raise DomainError("SAFETY_RESUME_DENIED", "assessment cannot safely resume")
+            if status == "active":
+                policy = connection.execute(
+                    "SELECT * FROM policy_bundles WHERE id = ?",
+                    (engagement["active_policy_id"],),
+                ).fetchone()
+                if (
+                    policy is None
+                    or policy["activated_at"] is None
+                    or policy["revoked_at"] is not None
+                ):
+                    raise DomainError("SAFETY_RESUME_DENIED", "assessment policy is not active")
+                try:
+                    policy_document = json.loads(policy["policy_json"])
+                    signature = policy_document.get("signature", {})
+                    policy_expired = parse_time(
+                        policy_document["validity"]["not_after"]
+                    ) <= parse_time(changed_at)
+                except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                    raise DomainError(
+                        "SAFETY_RESUME_DENIED", "assessment policy is malformed"
+                    ) from None
+                if (
+                    policy_expired
+                    or self.policy_signer is None
+                    or signature.get("algorithm") != "Ed25519"
+                    or not self.policy_signer.verify(
+                        f"pentai-policy-v1:{policy['content_hash']}".encode("ascii"),
+                        str(signature.get("value", "")),
+                        str(signature.get("key_id", "")),
+                    )
+                ):
+                    raise DomainError("SAFETY_RESUME_DENIED", "assessment policy is unverifiable")
+            revoked = 0
+            if status == "paused":
+                revoked = connection.execute(
+                    """
+                    UPDATE action_grants SET revoked_at = ?
+                    WHERE engagement_id = ? AND used_at IS NULL AND revoked_at IS NULL
+                    """,
+                    (changed_at, engagement_id),
+                ).rowcount
+                connection.execute(
+                    """
+                    UPDATE engagements SET status = 'paused',
+                        revocation_epoch = revocation_epoch + 1 WHERE id = ?
+                    """,
+                    (engagement_id,),
+                )
+            else:
+                connection.execute(
+                    "UPDATE engagements SET status = 'active' WHERE id = ?", (engagement_id,)
+                )
+            self._audit(
+                connection,
+                action=f"safety.assessment_{status}",
+                subject_type="engagement",
+                subject_id=engagement_id,
+                actor_type="human",
+                actor_id=actor_id,
+                data={"reason": reason.strip(), "revoked_grants": revoked},
+                occurred_at=changed_at,
+            )
+        return {"id": engagement_id, "status": status, "changed_at": changed_at}
 
     def audit_events(self) -> list[dict[str, Any]]:
         with transaction(self.database_path) as connection:
