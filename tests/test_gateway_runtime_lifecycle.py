@@ -354,6 +354,7 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
             "Id": CONTAINER,
             "State": {"Running": True},
             "EffectiveCaps": [],
+            "BoundingCaps": [],
             "Config": {
                 "User": "65532:65532",
                 "Labels": {

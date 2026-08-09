@@ -198,15 +198,14 @@ class OciGatewayFixtureController:
             and cpu_quota * 4 <= cpu_period
         )
         capabilities_dropped = (
-            isinstance(cap_drop, list)
-            and bool(cap_drop)
-            and document.get("EffectiveCaps") == []
+            document.get("EffectiveCaps") == []
+            and document.get("BoundingCaps") == []
             if self._runtime == "podman"
             else isinstance(cap_drop, list)
             and any(str(item).lower() == "all" for item in cap_drop)
         )
         network_identity = (
-            set(networks) == expected_network_names
+            set(networks) in (expected_network_names, {network_id})
             and network_ids <= {None, "", network_id}
             if self._runtime == "podman" and isinstance(networks, dict)
             else network_ids == {network_id}
