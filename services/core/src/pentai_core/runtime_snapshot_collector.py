@@ -36,6 +36,10 @@ class NetworkConformanceResult:
     direct_egress_blocked: bool
     external_dns_blocked: bool
     ipv6_blocked: bool
+    runtime_socket_blocked: bool
+    host_mounts_blocked: bool
+    host_namespaces_blocked: bool
+    resource_limits_enforced: bool
 
 
 class NetworkConformanceVerifier(Protocol):
@@ -171,8 +175,8 @@ class OciRuntimeSnapshotCollector:
                 version_document.get("Version") if isinstance(version_document, dict) else None
             )
             security = host.get("security")
-            rootless = host.get("rootless") is True
-            limits = isinstance(security, dict) and security.get("rootless") is True
+            rootless = isinstance(security, dict) and security.get("rootless") is True
+            limits = rootless
         if observed_id != self._runtime_instance_id:
             raise SnapshotCollectionError("RUNTIME_IDENTITY_MISMATCH", "runtime identity changed")
         minimum = (24, 0) if self._runtime == "docker" else (4, 6)
@@ -243,6 +247,10 @@ class OciRuntimeSnapshotCollector:
                 conformance.direct_egress_blocked,
                 conformance.external_dns_blocked,
                 conformance.ipv6_blocked,
+                conformance.runtime_socket_blocked,
+                conformance.host_mounts_blocked,
+                conformance.host_namespaces_blocked,
+                conformance.resource_limits_enforced,
             )
         ):
             raise SnapshotCollectionError(

@@ -341,8 +341,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     collection now uses fixed bounded inspection commands with exact runtime/network
     identity and PentAI ownership-label checks. Managed internal-network provisioning
     now refuses unowned or ambiguous resources, and safe snapshots additionally require
-    direct-egress, external-DNS, and IPv6 conformance evidence for the exact network.
-    Cross-platform rootless verification, actual gateway/worker launch, continuous
+    direct-egress, external-DNS, IPv6, runtime-socket, host-mount, host-PID-namespace,
+    and resource-limit conformance evidence for the exact network. A dependency-free
+    `scratch` probe image is now built locally and invoked by its SHA-256 image ID; its
+    CI harness refuses non-rootless runtimes and uses only TEST-NET destinations.
+    Hosted Linux rootless verification, cross-platform rootless verification, actual
+    gateway/worker launch, continuous
     health checks, termination, and the complete platform bypass matrix remain required
     before this item can be completed.
 - [ ] Implement structured command templates; reject arbitrary free-form flags.
