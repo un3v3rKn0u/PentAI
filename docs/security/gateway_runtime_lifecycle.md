@@ -8,6 +8,8 @@ internal network, performs no DNS or HTTP work, and keeps `execution_enabled: fa
 
 Each runtime is bound to one prepared gateway session, one short-lived containment
 attestation, one runtime instance, one managed network, and one SHA-256 image identity.
+Podman runtime identity uses its machine ID when exposed and otherwise its validated
+host name; the selected value is re-observed on every containment measurement.
 The database records `launching` before the external effect, records the container ID
 before verification, and retains immutable terminal history. Launching, running, and
 terminal transitions are appended transactionally to the existing hash-chained audit

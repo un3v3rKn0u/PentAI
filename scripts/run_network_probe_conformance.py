@@ -30,6 +30,7 @@ from pentai_core.runtime_snapshot_collector import (
     LocalBoundedCommandExecutor,
     OciRuntimeSnapshotCollector,
     SnapshotCollectionError,
+    runtime_instance_identity,
 )
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -176,12 +177,8 @@ def _run_gateway_lifecycle(
     )
     try:
         document = json.loads(info.stdout)
-        if runtime == "podman":
-            host = document["host"]
-            runtime_instance_id = str(host["machineId"])
-        else:
-            runtime_instance_id = str(document["ID"])
-    except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        runtime_instance_id = runtime_instance_identity(runtime, document)
+    except (TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SnapshotCollectionError(
             "RUNTIME_IDENTITY_INVALID", "runtime identity is unavailable"
         ) from exc

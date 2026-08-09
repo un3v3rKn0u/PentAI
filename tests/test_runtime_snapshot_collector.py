@@ -12,6 +12,7 @@ from pentai_core.runtime_snapshot_collector import (
     NetworkConformanceResult,
     OciRuntimeSnapshotCollector,
     SnapshotCollectionError,
+    runtime_instance_identity,
 )
 
 DOCKER = Path("/usr/local/bin/docker")
@@ -170,6 +171,17 @@ class RuntimeSnapshotCollectorTests(unittest.TestCase):
                 ),
             ],
         )
+
+    def test_podman_runtime_identity_uses_bounded_hostname_fallback(self) -> None:
+        self.assertEqual(
+            runtime_instance_identity(
+                "podman", {"host": {"hostname": "hosted-runner-1"}}
+            ),
+            "hosted-runner-1",
+        )
+        for document in ({"host": {}}, {"host": {"hostname": "unsafe/host"}}, {}):
+            with self.subTest(document=document), self.assertRaises(SnapshotCollectionError):
+                runtime_instance_identity("podman", document)
 
     def test_runtime_identity_rootless_limits_and_version_fail_closed(self) -> None:
         cases = (
