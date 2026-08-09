@@ -46,8 +46,8 @@ DNS transport, listening socket, request execution, redirect handling, response 
 or worker attachment. Core startup now owns explicitly configured recovery, watchdog
 monitoring, degraded readiness, and shutdown cleanup. Configuration is disabled by
 default and fails closed unless every runtime, executable, instance, network, and
-pinned-image identity is valid. The Linux rootless Podman workflow is configured to
-verify sentinel launch, exact internal-network attachment, zero kernel capability masks,
+pinned-image identity is valid. PR #47's Linux rootless Podman workflow verified
+sentinel launch, exact internal-network attachment, zero kernel capability masks,
 repeated monitoring, explicit termination, abrupt process-loss recovery through the
-production composition factory, and safe shutdown. Its updated hosted result, other
-operating systems, and production deployment remain unverified.
+production composition factory, owning-assessment safety pause, and safe shutdown.
+Other operating systems and production deployment remain unverified.
