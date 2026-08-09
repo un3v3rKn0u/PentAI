@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import shutil
 import tempfile
 import uuid
@@ -14,6 +13,7 @@ from pathlib import Path
 from pentai_core.managed_gateway_network import (
     ManagedGatewayNetworkProvisioner,
     OciNetworkConformanceProbe,
+    normalize_oci_image_digest,
     require_rootless_runtime,
 )
 from pentai_core.runtime_snapshot_collector import (
@@ -21,7 +21,6 @@ from pentai_core.runtime_snapshot_collector import (
     SnapshotCollectionError,
 )
 
-_DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
 _ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -71,11 +70,17 @@ def main() -> int:
             timeout_seconds=5,
             max_output_bytes=4096,
         )
-        digest = digest_result.stdout.decode(errors="strict").strip()
-        if digest_result.returncode != 0 or not _DIGEST.fullmatch(digest):
+        if digest_result.returncode != 0:
             raise SnapshotCollectionError(
                 "PROBE_DIGEST_INVALID", "runtime did not return an immutable image digest"
             )
+        try:
+            observed_digest = digest_result.stdout.decode(errors="strict").strip()
+            digest = normalize_oci_image_digest(observed_digest)
+        except (UnicodeDecodeError, SnapshotCollectionError) as exc:
+            raise SnapshotCollectionError(
+                "PROBE_DIGEST_INVALID", "runtime did not return an immutable image digest"
+            ) from exc
 
         provisioner = ManagedGatewayNetworkProvisioner(
             runtime=arguments.runtime,

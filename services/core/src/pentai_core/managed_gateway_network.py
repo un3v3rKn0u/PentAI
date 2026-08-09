@@ -14,12 +14,21 @@ from pentai_core.runtime_snapshot_collector import (
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
+_RAW_SHA256 = re.compile(r"^[a-f0-9]{64}$")
 
 
 @dataclass(frozen=True)
 class ManagedNetworkResult:
     network_id: str
     created: bool
+
+
+def normalize_oci_image_digest(value: str) -> str:
+    if _DIGEST.fullmatch(value):
+        return value
+    if _RAW_SHA256.fullmatch(value):
+        return f"sha256:{value}"
+    raise SnapshotCollectionError("PROBE_DIGEST_INVALID", "image digest is invalid")
 
 
 def require_rootless_runtime(

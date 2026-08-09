@@ -8,6 +8,7 @@ from pathlib import Path
 from pentai_core.managed_gateway_network import (
     ManagedGatewayNetworkProvisioner,
     OciNetworkConformanceProbe,
+    normalize_oci_image_digest,
     require_rootless_runtime,
 )
 from pentai_core.runtime_snapshot_collector import CommandResult, SnapshotCollectionError
@@ -83,6 +84,14 @@ def provisioner(executor: FixtureExecutor) -> ManagedGatewayNetworkProvisioner:
 
 
 class ManagedGatewayNetworkTests(unittest.TestCase):
+    def test_image_digest_normalizes_strict_docker_and_podman_forms(self) -> None:
+        raw = "a" * 64
+        self.assertEqual(normalize_oci_image_digest(raw), "sha256:" + raw)
+        self.assertEqual(normalize_oci_image_digest("sha256:" + raw), "sha256:" + raw)
+        for invalid in ("", "a" * 63, "A" * 64, "sha512:" + raw, " sha256:" + raw):
+            with self.subTest(invalid=invalid), self.assertRaises(SnapshotCollectionError):
+                normalize_oci_image_digest(invalid)
+
     def test_rootless_runtime_gate_requires_explicit_valid_evidence(self) -> None:
         accepted = (
             ("docker", DOCKER, {"SecurityOptions": ["name=rootless"]}),
