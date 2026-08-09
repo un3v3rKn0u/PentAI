@@ -86,7 +86,11 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
     def test_rootless_runtime_gate_requires_explicit_valid_evidence(self) -> None:
         accepted = (
             ("docker", DOCKER, {"SecurityOptions": ["name=rootless"]}),
-            ("podman", Path("/usr/bin/podman"), {"host": {"rootless": True}}),
+            (
+                "podman",
+                Path("/usr/bin/podman"),
+                {"host": {"security": {"rootless": True}}},
+            ),
         )
         for runtime, executable, document in accepted:
             with self.subTest(runtime=runtime):
@@ -98,7 +102,8 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
 
         denied = (
             ("docker", encoded({"SecurityOptions": ["name=seccomp"]})),
-            ("podman", encoded({"host": {"rootless": False}})),
+            ("podman", encoded({"host": {"security": {"rootless": False}}})),
+            ("podman", encoded({"host": {"rootless": True}})),
             ("docker", CommandResult(0, b"not-json")),
             ("docker", CommandResult(1, b"")),
         )

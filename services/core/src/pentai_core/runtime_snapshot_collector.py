@@ -175,8 +175,8 @@ class OciRuntimeSnapshotCollector:
                 version_document.get("Version") if isinstance(version_document, dict) else None
             )
             security = host.get("security")
-            rootless = host.get("rootless") is True
-            limits = isinstance(security, dict) and security.get("rootless") is True
+            rootless = isinstance(security, dict) and security.get("rootless") is True
+            limits = rootless
         if observed_id != self._runtime_instance_id:
             raise SnapshotCollectionError("RUNTIME_IDENTITY_MISMATCH", "runtime identity changed")
         minimum = (24, 0) if self._runtime == "docker" else (4, 6)

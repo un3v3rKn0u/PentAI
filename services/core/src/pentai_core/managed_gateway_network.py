@@ -50,7 +50,8 @@ def require_rootless_runtime(
         )
     else:
         host = document.get("host")
-        rootless = isinstance(host, dict) and host.get("rootless") is True
+        security = host.get("security") if isinstance(host, dict) else None
+        rootless = isinstance(security, dict) and security.get("rootless") is True
     if not rootless:
         raise SnapshotCollectionError("RUNTIME_ROOTLESS_REQUIRED", "runtime is not rootless")
 

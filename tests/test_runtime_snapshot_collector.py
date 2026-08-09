@@ -130,7 +130,6 @@ class RuntimeSnapshotCollectorTests(unittest.TestCase):
                     {
                         "host": {
                             "machineId": INSTANCE,
-                            "rootless": True,
                             "security": {"rootless": True},
                         },
                         "version": {"Version": "5.6.0"},
