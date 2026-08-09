@@ -71,10 +71,15 @@ class AuthorizationSafetyHandler:
 
 
 class OciGatewayFixtureController:
-    def __init__(self, *, executable: Path, executor: BoundedCommandExecutor) -> None:
+    def __init__(
+        self, *, runtime: str, executable: Path, executor: BoundedCommandExecutor
+    ) -> None:
+        if runtime not in {"docker", "podman"}:
+            raise GatewayRuntimeError("RUNTIME_UNSUPPORTED", "runtime is unsupported")
         if not executable.is_absolute():
             raise GatewayRuntimeError("RUNTIME_EXECUTABLE_UNTRUSTED", "runtime is untrusted")
         self._executable = str(executable)
+        self._runtime = runtime
         self._executor = executor
 
     def launch(self, runtime_id: str, network_id: str, image_digest: str) -> str:
@@ -89,6 +94,8 @@ class OciGatewayFixtureController:
                 "--read-only",
                 "--cap-drop=ALL",
                 "--security-opt=no-new-privileges",
+                "--pid=private",
+                "--ipc=private",
                 "--pids-limit=16",
                 "--memory=32m",
                 "--cpus=0.25",
@@ -155,6 +162,31 @@ class OciGatewayFixtureController:
             if isinstance(networks, dict)
             else set()
         )
+        expected_network_names: set[str] | None = None
+        if self._runtime == "podman":
+            network_result = self._executor.execute(
+                (self._executable, "network", "inspect", "--format", "json", network_id),
+                timeout_seconds=5,
+                max_output_bytes=65_536,
+            )
+            try:
+                network_document = json.loads(network_result.stdout)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise GatewayRuntimeError(
+                    "GATEWAY_INSPECTION_FAILED", "gateway network inspection failed"
+                ) from exc
+            if isinstance(network_document, list) and len(network_document) == 1:
+                network_document = network_document[0]
+            if (
+                network_result.returncode != 0
+                or not isinstance(network_document, dict)
+                or network_document.get("id") != network_id
+                or not isinstance(network_document.get("name"), str)
+            ):
+                raise GatewayRuntimeError(
+                    "GATEWAY_INSPECTION_FAILED", "gateway network inspection failed"
+                )
+            expected_network_names = {str(network_document["name"])}
         nano_cpus = host_document.get("NanoCpus")
         cpu_quota = host_document.get("CpuQuota")
         cpu_period = host_document.get("CpuPeriod")
@@ -165,20 +197,33 @@ class OciGatewayFixtureController:
             and cpu_period > 0
             and cpu_quota * 4 <= cpu_period
         )
+        capabilities_dropped = (
+            isinstance(cap_drop, list)
+            and bool(cap_drop)
+            and document.get("EffectiveCaps") == []
+            if self._runtime == "podman"
+            else isinstance(cap_drop, list)
+            and any(str(item).lower() == "all" for item in cap_drop)
+        )
+        network_identity = (
+            set(networks) == expected_network_names
+            and network_ids <= {None, "", network_id}
+            if self._runtime == "podman" and isinstance(networks, dict)
+            else network_ids == {network_id}
+        )
         checks = {
             "container_identity": document.get("Id") == container_id,
             "running": isinstance(state, dict) and state.get("Running") is True,
             "host_config": isinstance(host, dict),
-            "network_identity": network_ids == {network_id},
+            "network_identity": network_identity,
             "read_only_root": host_document.get("ReadonlyRootfs") is True,
             "non_privileged": host_document.get("Privileged") is False,
-            "private_pid": host_document.get("PidMode") in ("", None),
+            "private_pid": host_document.get("PidMode") in ("", "private", None),
             "private_ipc": host_document.get("IpcMode") in ("", "private", None),
             "pid_limit": host_document.get("PidsLimit") == 16,
             "memory_limit": host_document.get("Memory") == 33_554_432,
             "cpu_limit": cpu_limited,
-            "capabilities_dropped": isinstance(cap_drop, list)
-            and any(str(item).lower() == "all" for item in cap_drop),
+            "capabilities_dropped": capabilities_dropped,
             "no_new_privileges": isinstance(security_options, list)
             and any("no-new-privileges" in str(item) for item in security_options),
             "no_binds": binds in (None, []),
@@ -203,8 +248,12 @@ class OciGatewayFixtureController:
             return
         if not _CONTAINER_ID.fullmatch(container_id):
             raise GatewayRuntimeError("GATEWAY_RUNTIME_INVALID", "container identity is invalid")
+        command = [self._executable, "rm", "--force"]
+        if self._runtime == "podman":
+            command.append("--time=0")
+        command.append(container_id)
         result = self._executor.execute(
-            (self._executable, "rm", "--force", container_id),
+            tuple(command),
             timeout_seconds=10,
             max_output_bytes=4096,
         )

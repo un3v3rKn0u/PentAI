@@ -195,7 +195,9 @@ def _run_gateway_lifecycle(
         network_conformance=probe,
     )
     attestor = RuntimeContainmentAttestor(collector)
-    controller = OciGatewayFixtureController(executable=executable, executor=executor)
+    controller = OciGatewayFixtureController(
+        runtime=runtime, executable=executable, executor=executor
+    )
     safety = HarnessSafety()
     with tempfile.TemporaryDirectory(prefix="pentai-gateway-lifecycle-") as temporary:
         database = Path(temporary) / "lifecycle.db"

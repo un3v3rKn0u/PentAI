@@ -310,7 +310,9 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
         executor = FixtureExecutor(
             [CommandResult(0, CONTAINER.encode()), CommandResult(0, json.dumps(inspected).encode())]
         )
-        controller = OciGatewayFixtureController(executable=OCI, executor=executor)
+        controller = OciGatewayFixtureController(
+            runtime="docker", executable=OCI, executor=executor
+        )
         container_id = controller.launch("runtime-1", NETWORK_ID, IMAGE)
         controller.verify("runtime-1", container_id, NETWORK_ID)
         launch = executor.calls[0]
@@ -318,6 +320,8 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
             "--read-only",
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
+            "--pid=private",
+            "--ipc=private",
             "--pids-limit=16",
             "--memory=32m",
             "--cpus=0.25",
@@ -335,6 +339,7 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
             "NetworkSettings": {"Networks": {}},
         }
         controller = OciGatewayFixtureController(
+            runtime="docker",
             executable=OCI,
             executor=FixtureExecutor([CommandResult(0, json.dumps(inspected).encode())]),
         )
@@ -343,6 +348,56 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
         self.assertIn("network_identity", str(raised.exception))
         self.assertIn("non_root_user", str(raised.exception))
         self.assertNotIn(NETWORK_ID, str(raised.exception))
+
+    def test_podman_verification_uses_effective_caps_and_exact_network_name(self) -> None:
+        inspected = {
+            "Id": CONTAINER,
+            "State": {"Running": True},
+            "EffectiveCaps": [],
+            "Config": {
+                "User": "65532:65532",
+                "Labels": {
+                    "com.pentai.managed": "true",
+                    "com.pentai.runtime-role": "gateway-fixture",
+                    "com.pentai.runtime-id": "runtime-1",
+                },
+            },
+            "HostConfig": {
+                "ReadonlyRootfs": True,
+                "Privileged": False,
+                "PidMode": "private",
+                "IpcMode": "private",
+                "PidsLimit": 16,
+                "Memory": 33_554_432,
+                "CpuQuota": 25_000,
+                "CpuPeriod": 100_000,
+                "CapDrop": ["CAP_SYS_ADMIN", "CAP_NET_ADMIN"],
+                "SecurityOpt": ["no-new-privileges"],
+                "Binds": [],
+            },
+            "NetworkSettings": {
+                "Networks": {"fixture-name": {"NetworkID": ""}}
+            },
+        }
+        executor = FixtureExecutor(
+            [
+                CommandResult(0, json.dumps(inspected).encode()),
+                CommandResult(
+                    0,
+                    json.dumps({"id": NETWORK_ID, "name": "fixture-name"}).encode(),
+                ),
+                CommandResult(0, CONTAINER.encode()),
+            ]
+        )
+        controller = OciGatewayFixtureController(
+            runtime="podman", executable=OCI, executor=executor
+        )
+        controller.verify("runtime-1", CONTAINER, NETWORK_ID)
+        controller.terminate("runtime-1", CONTAINER)
+        self.assertEqual(
+            executor.calls[-1],
+            (str(OCI), "rm", "--force", "--time=0", CONTAINER),
+        )
 
     def test_authorization_safety_adapter_pauses_owning_assessment(self) -> None:
         with closing(sqlite3.connect(self.database)) as connection, connection:
