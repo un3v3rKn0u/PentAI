@@ -22,6 +22,17 @@ future-dated, expired, or reports any missing control. Required measurements inc
 - enforceable CPU, memory, and process limits and temporary-only mounts;
 - a gateway-only internal network with direct egress, external DNS, and IPv6 disabled.
 
+`RuntimeContainmentAttestor` is the trusted producer boundary. It accepts only typed
+snapshots from an injected `RuntimeInspector`, requires every runtime and managed-network
+control, converts successful measurements into the versioned contract, and validates
+the result again before returning it. Inspection exceptions fail closed and diagnostics
+do not include raw runtime output.
+
+The inspector is an internal privileged adapter, not a worker or plugin extension
+point. Production implementations must use fixed runtime operations, authenticate the
+runtime instance and PentAI-managed network, bound all output, and must not accept
+commands or flags from AI, UI, manifests, plugins, or workers.
+
 Launch plans require an immutable SHA-256 image digest, bounded argument vector, fixed
 resource limits, and `execution_enabled: false`. Free-form shell evaluation is not a
 consumer of this contract.
@@ -35,7 +46,7 @@ unchanged. This slice adds no database migration or persisted runtime authority.
 
 ## Deferred verification
 
-Actual Docker/Podman discovery, trusted runtime measurement, container launch,
+Actual Docker/Podman discovery and snapshot collection, container launch,
 gateway-network construction, host firewall enforcement, runtime re-attestation,
 worker termination, and platform-specific escape/bypass probes remain deferred. Until
 those exist and pass, INV-NET-001, INV-NET-003, INV-NET-004, INV-ISO-001, and
