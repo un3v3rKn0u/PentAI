@@ -1600,6 +1600,14 @@ class AuthorizationService:
                 raise DomainError(str(exc), "network attestation was denied") from None
             connection.execute(
                 """
+                UPDATE network_attestations
+                SET status = 'invalidated', invalidated_at = ?
+                WHERE engagement_id = ? AND status = 'valid'
+                """,
+                (attestation["observed_at"], attestation["assessment_id"]),
+            )
+            connection.execute(
+                """
                 INSERT INTO network_attestations(
                     attestation_id, engagement_id, policy_bundle_id, policy_hash,
                     route_profile_id, source_ipv4, source_ipv6, resolver_mode, resolver_id,
@@ -1638,29 +1646,60 @@ class AuthorizationService:
         attestor: NetworkAttestor,
         attestor_id: str,
     ) -> dict[str, Any]:
-        with transaction(self.database_path) as connection:
-            row = connection.execute(
-                """
-                SELECT p.content_hash
-                FROM engagements e
-                JOIN policy_bundles p ON p.id = e.active_policy_id
-                CROSS JOIN safety_state s
-                WHERE e.id = ? AND e.status = 'active'
-                  AND p.activated_at IS NOT NULL AND p.revoked_at IS NULL
-                  AND s.global_status = 'active'
-                """,
-                (engagement_id,),
-            ).fetchone()
-        if row is None:
-            raise DomainError("ATTESTATION_INVALID", "assessment policy is inactive")
         try:
+            with transaction(self.database_path) as connection:
+                row = connection.execute(
+                    """
+                    SELECT p.content_hash, na.route_profile_id, na.source_ipv4,
+                           na.source_ipv6, na.resolver_mode, na.resolver_id
+                    FROM engagements e
+                    JOIN policy_bundles p ON p.id = e.active_policy_id
+                    CROSS JOIN safety_state s
+                    LEFT JOIN network_attestations na ON na.attestation_id = (
+                        SELECT current.attestation_id FROM network_attestations current
+                        WHERE current.engagement_id = e.id AND current.status = 'valid'
+                        ORDER BY current.observed_at DESC, current.attestation_id DESC LIMIT 1
+                    )
+                    WHERE e.id = ? AND e.status = 'active'
+                      AND p.activated_at IS NOT NULL AND p.revoked_at IS NULL
+                      AND s.global_status = 'active'
+                    """,
+                    (engagement_id,),
+                ).fetchone()
+            if row is None:
+                raise DomainError("ATTESTATION_INVALID", "assessment policy is inactive")
             attestation = attestor.measure(
                 assessment_id=engagement_id,
                 policy_hash=row["content_hash"],
             )
+            if row["route_profile_id"] is not None and any(
+                attestation.get(field) != row[field]
+                for field in (
+                    "route_profile_id",
+                    "source_ipv4",
+                    "source_ipv6",
+                    "resolver_mode",
+                    "resolver_id",
+                )
+            ):
+                raise DomainError(
+                    "NETWORK_IDENTITY_CHANGED", "network identity changed during assessment"
+                )
+            return self.record_network_attestation(attestation, attestor_id=attestor_id)
         except AttestationError as exc:
-            raise DomainError(exc.code, "network attestation failed") from exc
-        return self.record_network_attestation(attestation, attestor_id=attestor_id)
+            failure = DomainError(exc.code, "network attestation failed")
+        except DomainError as exc:
+            failure = exc
+        try:
+            self.set_assessment_safety(
+                engagement_id,
+                status="paused",
+                reason=f"network health failure: {failure.code}",
+                actor_id=attestor_id,
+            )
+        except DomainError:
+            pass
+        raise failure
 
     def resolve_and_authorize_network_destination(
         self,

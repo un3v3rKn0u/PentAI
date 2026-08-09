@@ -359,6 +359,78 @@ class AuthorizationSliceTests(unittest.TestCase):
                     )
                 self.assertEqual(raised.exception.code, expected)
 
+    def test_network_health_failure_pauses_assessment_and_revokes_authority(self) -> None:
+        _, grant, attestation = self.network_authority()
+        observers = []
+        for endpoint_id, address in (
+            ("fixture:egress-a", "192.0.2.10"),
+            ("fixture:egress-b", "192.0.2.11"),
+        ):
+            observer = Mock()
+            observer.observe.return_value = SourceObservation(endpoint_id, address)
+            observers.append(observer)
+        route_inspector = Mock()
+        route_inspector.inspect.return_value = RouteSnapshot(
+            "synthetic-route", "tunnel_resolver", "fixture:controlled-dns"
+        )
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.attest_network(
+                self.engagement["id"],
+                attestor=NetworkAttestor(tuple(observers), route_inspector),
+                attestor_id="network-monitor",
+            )
+        self.assertEqual(raised.exception.code, "ATTESTATION_DISAGREEMENT")
+
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            state = connection.execute(
+                "SELECT status FROM engagements WHERE id = ?", (self.engagement["id"],)
+            ).fetchone()[0]
+            grant_revoked = connection.execute(
+                "SELECT revoked_at FROM action_grants WHERE grant_id = ?", (grant["grant_id"],)
+            ).fetchone()[0]
+            attestation_status = connection.execute(
+                "SELECT status FROM network_attestations WHERE attestation_id = ?",
+                (attestation["attestation_id"],),
+            ).fetchone()[0]
+        self.assertEqual(state, "paused")
+        self.assertIsNotNone(grant_revoked)
+        self.assertEqual(attestation_status, "invalidated")
+
+    def test_network_health_refresh_replaces_the_only_valid_attestation(self) -> None:
+        _, _, previous = self.network_authority()
+        observers = []
+        for endpoint_id in ("fixture:egress-a", "fixture:egress-b"):
+            observer = Mock()
+            observer.observe.return_value = SourceObservation(endpoint_id, "192.0.2.10")
+            observers.append(observer)
+        route_inspector = Mock()
+        route_inspector.inspect.return_value = RouteSnapshot(
+            "synthetic-route", "tunnel_resolver", "fixture:controlled-dns"
+        )
+
+        current = self.service.attest_network(
+            self.engagement["id"],
+            attestor=NetworkAttestor(tuple(observers), route_inspector),
+            attestor_id="network-monitor",
+        )
+
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            rows = connection.execute(
+                """
+                SELECT attestation_id, status FROM network_attestations
+                WHERE engagement_id = ? ORDER BY observed_at, attestation_id
+                """,
+                (self.engagement["id"],),
+            ).fetchall()
+        self.assertEqual(
+            {row[0]: row[1] for row in rows},
+            {
+                previous["attestation_id"]: "invalidated",
+                current["attestation_id"]: "valid",
+            },
+        )
+
     def test_exact_request_is_allowed_and_deterministic(self) -> None:
         _, bundle = self.activate()
         intent = intent_for(self.engagement["id"], bundle["content_hash"])
