@@ -163,6 +163,8 @@ class OciGatewayFixtureController:
             else set()
         )
         expected_network_names: set[str] | None = None
+        podman_effective_caps: object = None
+        podman_bounding_caps: object = None
         if self._runtime == "podman":
             network_result = self._executor.execute(
                 (self._executable, "network", "inspect", "--format", "json", network_id),
@@ -187,6 +189,31 @@ class OciGatewayFixtureController:
                     "GATEWAY_INSPECTION_FAILED", "gateway network inspection failed"
                 )
             expected_network_names = {str(network_document["name"])}
+            capability_documents: list[object] = []
+            for field in ("EffectiveCaps", "BoundingCaps"):
+                capability_result = self._executor.execute(
+                    (
+                        self._executable,
+                        "inspect",
+                        "--format",
+                        f"{{{{json .{field}}}}}",
+                        container_id,
+                    ),
+                    timeout_seconds=5,
+                    max_output_bytes=4096,
+                )
+                try:
+                    capability_document = json.loads(capability_result.stdout)
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise GatewayRuntimeError(
+                        "GATEWAY_INSPECTION_FAILED", "capability inspection failed"
+                    ) from exc
+                if capability_result.returncode != 0:
+                    raise GatewayRuntimeError(
+                        "GATEWAY_INSPECTION_FAILED", "capability inspection failed"
+                    )
+                capability_documents.append(capability_document)
+            podman_effective_caps, podman_bounding_caps = capability_documents
         nano_cpus = host_document.get("NanoCpus")
         cpu_quota = host_document.get("CpuQuota")
         cpu_period = host_document.get("CpuPeriod")
@@ -198,8 +225,8 @@ class OciGatewayFixtureController:
             and cpu_quota * 4 <= cpu_period
         )
         podman = self._runtime == "podman"
-        podman_effective_empty = document.get("EffectiveCaps") == []
-        podman_bounding_empty = document.get("BoundingCaps") == []
+        podman_effective_empty = podman_effective_caps == []
+        podman_bounding_empty = podman_bounding_caps == []
         capabilities_dropped = (
             podman_effective_empty and podman_bounding_empty
             if podman

@@ -387,6 +387,8 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
                     0,
                     json.dumps({"id": NETWORK_ID, "name": "fixture-name"}).encode(),
                 ),
+                CommandResult(0, b"[]"),
+                CommandResult(0, b"[]"),
                 CommandResult(0, CONTAINER.encode()),
             ]
         )
