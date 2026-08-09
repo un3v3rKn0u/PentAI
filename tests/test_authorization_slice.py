@@ -345,6 +345,100 @@ class AuthorizationSliceTests(unittest.TestCase):
                     (grant["grant_id"],),
                 )
 
+    def test_startup_recovery_revokes_grants_and_requires_explicit_resume(self) -> None:
+        _, bundle = self.activate()
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        decision = self.service.evaluate_intent(self.engagement["id"], intent)
+        grant = self.service.mint_action_grant(decision["decision_id"])
+
+        recovered = self.service.recover_startup()
+        self.assertEqual(recovered["status"], "paused")
+        self.assertEqual(recovered["revoked_grants"], 1)
+        self.assertEqual(self.service.safety_state()["status"], "paused")
+        with self.assertRaises(DomainError) as raised:
+            self.service.consume_action_grant(
+                grant, intent, audience="pentai-execution-broker"
+            )
+        self.assertEqual(raised.exception.code, "GRANT_REVOKED")
+        with self.assertRaises(DomainError) as raised:
+            self.service.set_assessment_safety(
+                self.engagement["id"],
+                status="active",
+                reason="synthetic resume",
+                actor_id="human-reviewer",
+            )
+        self.assertEqual(raised.exception.code, "SAFETY_RESUME_DENIED")
+
+        self.service.set_global_safety(
+            status="active", reason="human recovery review complete", actor_id="human-reviewer"
+        )
+        resumed = self.service.set_assessment_safety(
+            self.engagement["id"],
+            status="active",
+            reason="human recovery review complete",
+            actor_id="human-reviewer",
+        )
+        self.assertEqual(resumed["status"], "active")
+
+        recovered_again = self.service.recover_startup()
+        self.assertEqual(recovered_again["revoked_grants"], 0)
+        self.service.set_global_safety(
+            status="active", reason="review revoked policy path", actor_id="human-reviewer"
+        )
+        self.service.revoke_policy(
+            bundle["id"], actor_id="human-reviewer", reason="synthetic revocation"
+        )
+        with self.assertRaises(DomainError) as raised:
+            self.service.set_assessment_safety(
+                self.engagement["id"],
+                status="active",
+                reason="must not resume revoked policy",
+                actor_id="human-reviewer",
+            )
+        self.assertEqual(raised.exception.code, "SAFETY_RESUME_DENIED")
+
+    def test_emergency_stop_is_durable_and_invalidates_all_epochs(self) -> None:
+        _, bundle = self.activate()
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        decision = self.service.evaluate_intent(self.engagement["id"], intent)
+        before = self.service.mint_action_grant(decision["decision_id"])
+        stopped = self.service.set_global_safety(
+            status="stopped", reason="synthetic emergency", actor_id="human-reviewer"
+        )
+        self.assertEqual(stopped["status"], "stopped")
+        with sqlite3.connect(self.database) as connection:
+            epoch = connection.execute(
+                "SELECT revocation_epoch FROM engagements WHERE id = ?",
+                (self.engagement["id"],),
+            ).fetchone()[0]
+        self.assertGreater(epoch, before["revocation_epoch"])
+        with self.assertRaises(DomainError) as raised:
+            self.service.evaluate_intent(self.engagement["id"], intent)
+        self.assertEqual(raised.exception.code, "ASSESSMENT_PAUSED")
+        self.assertTrue(self.service.verify_audit_chain()["valid"])
+
+    def test_safety_controls_reject_invalid_state_and_missing_reason(self) -> None:
+        with self.assertRaises(DomainError) as raised:
+            self.service.set_global_safety(
+                status="running", reason="invalid state", actor_id="human-reviewer"
+            )
+        self.assertEqual(raised.exception.code, "SAFETY_STATE_INVALID")
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.set_global_safety(
+                status="paused", reason="   ", actor_id="human-reviewer"
+            )
+        self.assertEqual(raised.exception.code, "SAFETY_REASON_REQUIRED")
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.set_assessment_safety(
+                self.engagement["id"],
+                status="stopped",
+                reason="unsupported assessment state",
+                actor_id="human-reviewer",
+            )
+        self.assertEqual(raised.exception.code, "ASSESSMENT_STATE_INVALID")
+
     def test_ambiguous_altered_expired_and_out_of_scope_deny(self) -> None:
         _, bundle = self.activate()
         policy = bundle["policy"]

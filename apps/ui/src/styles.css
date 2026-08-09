@@ -25,13 +25,21 @@ button:disabled { cursor: not-allowed; opacity: .38; }
 .eyebrow { color: #68dab3 !important; text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 800; }
 .state-pill { padding: 7px 11px; border: 1px solid #48505d; border-radius: 999px; text-transform: uppercase; font-size: 11px; font-weight: 900; white-space: nowrap; }
 .state-pill.active { background: #153e32; color: #79e6bf; border-color: #3f9b7c; }
+.state-pill.paused { background: #46351b; color: #ffd386; border-color: #8a692f; }
 .state-pill.invalid, .state-pill.rejected, .state-pill.revoked, .state-pill.expired { background: #401d24; color: #ff9ba9; border-color: #8e3c49; }
 .state-pill.awaiting-approval { background: #46351b; color: #ffd386; border-color: #8a692f; }
 .safety-banner {
-  max-width: 1400px; margin: 0 auto 18px; padding: 12px 15px; display: flex; gap: 14px;
+  max-width: 1400px; margin: 0 auto 18px; padding: 12px 15px; display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(240px, .8fr) auto; align-items: end; gap: 14px;
   border: 1px solid #665029; border-radius: 10px; background: #241d13; color: #d9c497;
 }
-.safety-banner span { color: #aa9c80; }
+.safety-banner div:first-child { display: grid; gap: 5px; }
+.safety-banner span { color: #aa9c80; font-size: 12px; }
+.safety-banner label { margin: 0; }
+.safety-banner.safety-active { border-color: #3f806d; background: #132820; }
+.safety-banner.safety-stopped, .safety-banner.safety-error { border-color: #8e3c49; background: #35191e; }
+button.danger { border-color: #9b4351; background: #491e26; }
+.assessment-safety { margin-bottom: 14px; }
 .error { max-width: 1400px; margin: 0 auto 18px; padding: 10px 13px; border-radius: 8px; background: #3b181e; color: #ff9aa8; }
 .workflow-grid { max-width: 1400px; margin: auto; display: grid; grid-template-columns: minmax(280px, .8fr) minmax(420px, 1.2fr); gap: 16px; }
 .panel { border: 1px solid #252c36; border-radius: 14px; background: rgba(17, 22, 29, .94); padding: 20px; min-width: 0; }
@@ -85,5 +93,5 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
   .workflow-grid { grid-template-columns: 1fr; }
   .panel.wide { grid-column: auto; }
   .hero { flex-direction: column; }
-  .safety-banner { flex-direction: column; gap: 3px; }
+  .safety-banner { grid-template-columns: 1fr; }
 }

@@ -112,6 +112,11 @@ class GrantConsumptionRequest(StrictRequest):
     audience: str
 
 
+class SafetyRequest(StrictRequest):
+    status: str
+    reason: str = Field(min_length=1, max_length=500)
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -154,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     authorization = AuthorizationService(
         runtime.database_path, source_store=source_store, policy_signer=signer
     )
+    authorization.recover_startup()
     app = FastAPI(
         title="PentAI Local Core",
         version=__version__,
@@ -213,12 +219,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/v1/safety-state")
     def safety_state() -> dict[str, object]:
-        return {
-            "active_policy": None,
-            "network_attested": False,
-            "execution_enabled": False,
-            "reason": "Phase 0 scaffold: target execution is not implemented",
-        }
+        return authorization.safety_state()
+
+    @app.post("/api/v1/safety-state")
+    def set_safety_state(change: SafetyRequest, request: Request) -> dict[str, Any]:
+        actor = principal(request)
+        return call(
+            lambda: authorization.set_global_safety(
+                status=change.status, reason=change.reason, actor_id=actor.principal_id
+            )
+        )
+
+    @app.post("/api/v1/engagements/{engagement_id}/safety-state")
+    def set_assessment_safety(
+        engagement_id: str, change: SafetyRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return call(
+            lambda: authorization.set_assessment_safety(
+                engagement_id,
+                status=change.status,
+                reason=change.reason,
+                actor_id=actor.principal_id,
+            )
+        )
 
     @app.post("/api/v1/programs")
     def create_program(request: ProgramRequest, http_request: Request) -> dict[str, Any]:
