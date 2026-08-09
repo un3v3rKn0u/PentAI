@@ -10,7 +10,9 @@ from typing import Any
 from uuid import uuid4
 
 from pentai_policy import (
+    CanonicalizationError,
     canonical_json,
+    canonicalize_url,
     compile_manifest,
     content_hash,
     evaluate,
@@ -18,7 +20,9 @@ from pentai_policy import (
 )
 from pentai_policy.document import contract_issues, parse_time
 
+from pentai_core.controlled_dns import ControlledDnsError, ControlledResolver
 from pentai_core.database import transaction
+from pentai_core.network_attestation import AttestationError, NetworkAttestor
 from pentai_core.network_control import authorize_destination, validate_attestation
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
@@ -1627,7 +1631,87 @@ class AuthorizationService:
             )
         return {**attestation, "status": "valid", "execution_enabled": False}
 
-    def authorize_network_destination(
+    def attest_network(
+        self,
+        engagement_id: str,
+        *,
+        attestor: NetworkAttestor,
+        attestor_id: str,
+    ) -> dict[str, Any]:
+        with transaction(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT p.content_hash
+                FROM engagements e
+                JOIN policy_bundles p ON p.id = e.active_policy_id
+                CROSS JOIN safety_state s
+                WHERE e.id = ? AND e.status = 'active'
+                  AND p.activated_at IS NOT NULL AND p.revoked_at IS NULL
+                  AND s.global_status = 'active'
+                """,
+                (engagement_id,),
+            ).fetchone()
+        if row is None:
+            raise DomainError("ATTESTATION_INVALID", "assessment policy is inactive")
+        try:
+            attestation = attestor.measure(
+                assessment_id=engagement_id,
+                policy_hash=row["content_hash"],
+            )
+        except AttestationError as exc:
+            raise DomainError(exc.code, "network attestation failed") from exc
+        return self.record_network_attestation(attestation, attestor_id=attestor_id)
+
+    def resolve_and_authorize_network_destination(
+        self,
+        *,
+        grant_id: str,
+        attestation_id: str,
+        candidate_url: str,
+        resolver: ControlledResolver,
+        sni_host: str,
+        host_header: str,
+        redirect_count: int,
+    ) -> dict[str, Any]:
+        with transaction(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT resolver_mode, resolver_id
+                FROM network_attestations WHERE attestation_id = ? AND status = 'valid'
+                """,
+                (attestation_id,),
+            ).fetchone()
+        if row is None:
+            raise DomainError("NETWORK_AUTHORIZATION_DENIED", "network attestation is inactive")
+        try:
+            candidate = canonicalize_url(candidate_url)
+            host = candidate["host"]
+            port = candidate["port"]
+            if not isinstance(host, dict) or not isinstance(port, int):
+                raise TypeError
+            answer = resolver.resolve(
+                str(host["value"]),
+                port,
+                attestation={
+                    "resolver_mode": row["resolver_mode"],
+                    "resolver_id": row["resolver_id"],
+                },
+            )
+        except (CanonicalizationError, KeyError, TypeError, ValueError) as exc:
+            code = exc.code if isinstance(exc, ControlledDnsError) else "DNS_INVALID"
+            raise DomainError(code, "controlled DNS resolution failed") from exc
+        return self._authorize_network_destination(
+            grant_id=grant_id,
+            attestation_id=attestation_id,
+            candidate_url=candidate_url,
+            addresses=list(answer.addresses),
+            cname_chain=list(answer.cname_chain),
+            sni_host=sni_host,
+            host_header=host_header,
+            redirect_count=redirect_count,
+        )
+
+    def _authorize_network_destination(
         self,
         *,
         grant_id: str,
