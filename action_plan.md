@@ -261,8 +261,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     before the external effect, binds the container to fresh containment evidence and
     the exact prepared session/network/image, re-inspects fixed isolation controls,
     pauses authority on drift, and retries failed termination during startup recovery.
-    Application wiring, hosted live sentinel verification, controlled DNS, outbound
-    gateway networking, and HTTP effects remain required.
+    The hosted Linux rootless Podman workflow verifies live sentinel launch, kernel
+    capability masks, monitoring, explicit termination, and startup recovery.
+    Application wiring, controlled DNS, outbound gateway networking, and HTTP effects
+    remain required.
 - [ ] Create an isolated HTTP/browser worker with no direct outbound route.
 - [ ] Implement source-IP attestation and approved-IP comparison.
 - [x] Implement global and assessment-level pause, stop, and grant revocation.

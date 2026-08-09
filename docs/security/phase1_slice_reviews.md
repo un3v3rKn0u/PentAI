@@ -625,11 +625,16 @@ inspection so a crash or cleanup failure leaves a recoverable durable identity.
 Termination failure remains fail-closed and retryable rather than being finalized as
 success. Runtime records and their authority bindings cannot be deleted or rewritten.
 
-**Limitations and deferred work:** Tests use synthetic runtime responses. The local
-Docker daemon is rootful and was not used. Hosted rootless sentinel launch/inspection/
-termination, application-startup watchdog wiring, controlled DNS transport, outbound
-gateway networking, HTTP sockets, redirect handling, worker attachment, and continuous
-production scheduling remain absent. Target-facing execution is still prohibited.
+**Hosted evidence:** PR #44's Linux rootless Podman workflow passed live sentinel
+launch, exact internal-network attachment, kernel verification that inheritable,
+permitted, effective, bounding, and ambient capability masks were zero, repeated
+containment monitoring, explicit termination, and startup-recovery termination.
+
+**Limitations and deferred work:** The local Docker daemon is rootful and was not used.
+Application-startup watchdog wiring, controlled DNS transport, outbound gateway
+networking, HTTP sockets, redirect handling, worker attachment, and continuous
+production scheduling remain absent. Other operating systems and production deployment
+were not containment-verified. Target-facing execution is still prohibited.
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not approve production use, worker execution, or target-facing networking.
