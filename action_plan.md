@@ -333,6 +333,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [ ] Freeze plugin manifest v1 and capability naming conventions.
 - [ ] Build plugin verification for signature, digest, SDK compatibility, permissions, and SBOM.
 - [ ] Implement rootless container execution with read-only root, dropped capabilities, resource limits, temporary mounts, and gateway-only networking.
+  - Non-executing WorkerContainmentAttestation v1 and WorkerLaunchSpec v1 preflight
+    contracts now fail closed on missing controls, stale measurements, mutable image
+    identity, unbounded commands/resources, runtime-socket access, and inactive gateway
+    sessions. Trusted runtime measurement, actual launch/enforcement, continuous health
+    checks, termination, and platform bypass verification remain required before this
+    item can be completed.
 - [ ] Implement structured command templates; reject arbitrary free-form flags.
 - [ ] Build adapter health checks, timeout handling, output limits, and typed parsers.
 - [ ] Deliver an initial low-risk official adapter set, recommended:

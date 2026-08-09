@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/worker-containment-attestation-v1.schema.json",
+  "title": "PentAI WorkerContainmentAttestation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "attestation_id", "runtime", "runtime_instance_id", "rootless", "read_only_root", "capabilities_dropped", "no_new_privileges", "host_pid_disabled", "host_ipc_disabled", "host_network_disabled", "runtime_socket_mounted", "resource_limits_supported", "temporary_mounts_only", "gateway_network_id", "direct_egress_disabled", "external_dns_disabled", "ipv6_disabled", "observed_at", "expires_at"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "attestation_id": {"type": "string", "format": "uuid"},
+    "runtime": {"enum": ["docker", "podman"]},
+    "runtime_instance_id": {"type": "string", "minLength": 1},
+    "rootless": {"const": true},
+    "read_only_root": {"const": true},
+    "capabilities_dropped": {"const": true},
+    "no_new_privileges": {"const": true},
+    "host_pid_disabled": {"const": true},
+    "host_ipc_disabled": {"const": true},
+    "host_network_disabled": {"const": true},
+    "runtime_socket_mounted": {"const": false},
+    "resource_limits_supported": {"const": true},
+    "temporary_mounts_only": {"const": true},
+    "gateway_network_id": {"type": "string", "minLength": 1},
+    "direct_egress_disabled": {"const": true},
+    "external_dns_disabled": {"const": true},
+    "ipv6_disabled": {"const": true},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  }
+}
