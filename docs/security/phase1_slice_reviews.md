@@ -465,3 +465,34 @@ isolation invariants are therefore not claimed verified.
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not approve production use, worker execution, or target-facing networking.
+
+## 2026-08-09 — Trusted runtime containment measurement boundary
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without worker or target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Typed runtime and gateway-network snapshots, trusted inspector
+boundary, short-lived attestation production, failure diagnostics, and exhaustive
+control-denial tests.
+
+**Evidence examined:** Each rootless, filesystem, privilege, namespace, resource,
+temporary-mount, runtime-socket, internal-network, gateway-route, DNS, and IPv6
+measurement fails closed independently. Inspection exceptions, unsupported runtimes,
+missing identities, and invalid lifetimes deny attestation production. Successful
+output validates against WorkerContainmentAttestation v1.
+
+**Findings:** Raw dictionaries from untrusted consumers cannot directly enter this
+producer. The deterministic attestor emits a contract only from typed measurements and
+does not expose raw inspector errors. No process, container, or network operation was
+added.
+
+**Limitations and deferred work:** Tests use synthetic inspectors. Production
+Docker/Podman CLI or API collection, runtime-instance authentication, managed-network
+ownership verification, bounded raw-output parsing, continuous inspection, and live
+sandbox conformance tests remain absent. Isolation invariants are not claimed verified.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not approve production use, worker execution, or target-facing networking.
