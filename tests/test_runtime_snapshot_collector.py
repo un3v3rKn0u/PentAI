@@ -9,6 +9,7 @@ from pentai_core.runtime_containment import RuntimeContainmentAttestor
 from pentai_core.runtime_snapshot_collector import (
     CommandResult,
     LocalBoundedCommandExecutor,
+    NetworkConformanceResult,
     OciRuntimeSnapshotCollector,
     SnapshotCollectionError,
 )
@@ -62,6 +63,16 @@ class FixtureExecutor:
         return self.responses.pop(0)
 
 
+@dataclass(frozen=True)
+class FixtureConformance:
+    result: NetworkConformanceResult = NetworkConformanceResult(NETWORK, True, True, True)
+
+    def verify(self, network_id: str) -> NetworkConformanceResult:
+        if network_id != NETWORK:
+            raise AssertionError("unexpected network identity")
+        return self.result
+
+
 def response(document: object, *, returncode: int = 0) -> CommandResult:
     return CommandResult(returncode, json.dumps(document).encode())
 
@@ -74,6 +85,7 @@ def collector(executor: FixtureExecutor) -> OciRuntimeSnapshotCollector:
         gateway_network_id=NETWORK,
         pentai_instance_id=PENTAI,
         executor=executor,
+        network_conformance=FixtureConformance(),
     )
 
 
@@ -139,6 +151,7 @@ class RuntimeSnapshotCollectorTests(unittest.TestCase):
             gateway_network_id=NETWORK,
             pentai_instance_id=PENTAI,
             executor=executor,
+            network_conformance=FixtureConformance(),
         )
         self.assertTrue(inspected.inspect_runtime().rootless)
         self.assertTrue(inspected.inspect_gateway_network().internal)
@@ -214,6 +227,7 @@ class RuntimeSnapshotCollectorTests(unittest.TestCase):
                     gateway_network_id=network_id,
                     pentai_instance_id=PENTAI,
                     executor=FixtureExecutor([]),
+                    network_conformance=FixtureConformance(),
                 )
         with self.assertRaises(SnapshotCollectionError):
             OciRuntimeSnapshotCollector(
@@ -223,7 +237,34 @@ class RuntimeSnapshotCollectorTests(unittest.TestCase):
                 gateway_network_id=NETWORK,
                 pentai_instance_id=PENTAI,
                 executor=FixtureExecutor([]),
+                network_conformance=FixtureConformance(),
             )
+
+    def test_network_probe_failure_and_identity_mismatch_deny(self) -> None:
+        cases = (
+            (
+                NetworkConformanceResult("other-network", True, True, True),
+                "NETWORK_CONFORMANCE_MISMATCH",
+            ),
+            (NetworkConformanceResult(NETWORK, False, True, True), "NETWORK_CONFORMANCE_UNSAFE"),
+            (NetworkConformanceResult(NETWORK, True, False, True), "NETWORK_CONFORMANCE_UNSAFE"),
+            (NetworkConformanceResult(NETWORK, True, True, False), "NETWORK_CONFORMANCE_UNSAFE"),
+        )
+        for conformance, expected in cases:
+            with (
+                self.subTest(expected=expected),
+                self.assertRaises(SnapshotCollectionError) as raised,
+            ):
+                OciRuntimeSnapshotCollector(
+                    runtime="docker",
+                    executable=DOCKER,
+                    runtime_instance_id=INSTANCE,
+                    gateway_network_id=NETWORK,
+                    pentai_instance_id=PENTAI,
+                    executor=FixtureExecutor([response(docker_network())]),
+                    network_conformance=FixtureConformance(conformance),
+                ).inspect_gateway_network()
+            self.assertEqual(raised.exception.code, expected)
 
     def test_local_executor_rejects_command_and_bound_changes(self) -> None:
         executable = Path("/bin/echo")
