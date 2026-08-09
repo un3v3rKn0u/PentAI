@@ -638,3 +638,35 @@ were not containment-verified. Target-facing execution is still prohibited.
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not approve production use, worker execution, or target-facing networking.
+
+## 2026-08-09 — Application-owned gateway runtime supervision
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without HTTP, DNS, worker, or target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Core startup ordering, injected runtime-supervisor ownership,
+recovery-before-readiness, bounded watchdog thread lifetime, degraded health, missing
+supervisor behavior, direct safety pause, authenticated shutdown, and idempotent
+framework cleanup.
+
+**Evidence examined:** Tests prove successful recovery precedes ready state; recovery
+and watchdog failures pause safety and remain degraded; a possibly live durable runtime
+with no configured supervisor returns degraded readiness; shutdown stops monitoring and
+retries durable cleanup; repeated shutdown does not repeat successful cleanup; and
+diagnostics contain only fixed reason codes and non-authoritative counts/state.
+
+**Findings:** The core previously revoked grants and paused assessments on startup but
+did not own the merged sentinel lifecycle. It could therefore report ready without
+terminating a recorded sentinel or starting continuous checks. The supervisor closes
+that application-lifetime gap while preserving `execution_enabled: false`.
+
+**Limitations and deferred work:** OCI runtime construction is still injected rather
+than built from production configuration. Hosted process-kill testing of the composed
+core, other operating systems, route/source-IP attestation, controlled DNS, HTTP,
+redirects, worker attachment, and production scheduling remain unverified or absent.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not approve production use, worker execution, or target-facing networking.

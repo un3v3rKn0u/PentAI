@@ -16,6 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from pentai_core import __version__
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.config import Settings, allowed_origins
+from pentai_core.gateway_runtime_supervisor import (
+    RuntimeSupervisorControl,
+    UnconfiguredGatewayRuntimeSupervisor,
+)
 from pentai_core.migrate import migrate
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
@@ -146,7 +150,11 @@ def _unauthorized() -> JSONResponse:
     )
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    runtime_supervisor: RuntimeSupervisorControl | None = None,
+) -> FastAPI:
     runtime = settings or Settings.from_environment()
     runtime.validate()
     migrate(runtime.database_path)
@@ -160,6 +168,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         runtime.database_path, source_store=source_store, policy_signer=signer
     )
     authorization.recover_startup()
+    supervisor = runtime_supervisor or UnconfiguredGatewayRuntimeSupervisor(
+        database_path=runtime.database_path,
+        pause_safety=lambda reason: authorization.set_global_safety(
+            status="paused", reason=reason, actor_id="gateway-runtime-supervisor"
+        ),
+    )
+    supervisor.start()
     app = FastAPI(
         title="PentAI Local Core",
         version=__version__,
@@ -167,6 +182,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.shutdown_requested = threading.Event()
+    app.state.runtime_supervisor = supervisor
+    app.router.add_event_handler("shutdown", supervisor.stop)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins(runtime),
@@ -201,19 +218,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/v1/health", response_model=HealthResponse)
     def health() -> HealthResponse:
+        runtime_status = supervisor.status()
         return HealthResponse(
-            status="ok",
+            status="degraded" if runtime_status["status"] == "degraded" else "ok",
             version=__version__,
             environment=runtime.environment,
             execution_enabled=False,
         )
 
-    @app.get("/api/v1/readiness")
-    def readiness() -> dict[str, object]:
+    @app.get("/api/v1/readiness", response_model=None)
+    def readiness() -> Any:
+        runtime_status = supervisor.status()
+        if runtime_status["status"] == "degraded":
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "degraded",
+                    "reason_code": runtime_status["reason_code"],
+                    "execution_enabled": False,
+                },
+            )
         return {"status": "ready", "execution_enabled": False}
+
+    @app.get("/api/v1/runtime-supervision")
+    def runtime_supervision() -> dict[str, object]:
+        return supervisor.status()
 
     @app.post("/api/v1/shutdown")
     def shutdown() -> dict[str, str]:
+        supervisor.stop()
         app.state.shutdown_requested.set()
         return {"status": "shutting_down"}
 
