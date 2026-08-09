@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -28,7 +29,7 @@ class MigrationTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(migrate(database), [])
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 tables = {
                     row[0]
                     for row in connection.execute(
@@ -77,7 +78,7 @@ class MigrationTests(unittest.TestCase):
             ):
                 migrate(database)
 
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 tables = {
                     row[0]
                     for row in connection.execute(
@@ -116,7 +117,7 @@ class MigrationTests(unittest.TestCase):
                 self.assertEqual(migrate(database), ["0003"])
                 self.assertEqual(migrate(database), [])
 
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 triggers = {
                     row[0]
                     for row in connection.execute(
@@ -151,7 +152,7 @@ class MigrationTests(unittest.TestCase):
             database = root / "pentai.db"
             with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
                 migrate(database)
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 connection.execute(
                     "INSERT INTO programs(id, name, status) VALUES ('p1', 'fixture', 'draft')"
                 )
@@ -171,7 +172,7 @@ class MigrationTests(unittest.TestCase):
             )
             with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
                 self.assertEqual(migrate(database), ["0004"])
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 row = connection.execute(
                     "SELECT source_kind, media_type, source_version FROM source_documents"
                 ).fetchone()
@@ -185,7 +186,7 @@ class MigrationTests(unittest.TestCase):
             )
             with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
                 self.assertEqual(migrate(database), ["0005"])
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 encrypted = connection.execute(
                     """
                     SELECT blob_status, encryption_version, plaintext_size
@@ -207,7 +208,7 @@ class MigrationTests(unittest.TestCase):
             database = root / "pentai.db"
             with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
                 migrate(database)
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 connection.execute(
                     "INSERT INTO programs(id, name, status) VALUES ('p', 'p', 'draft')"
                 )
@@ -230,7 +231,7 @@ class MigrationTests(unittest.TestCase):
             )
             with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
                 self.assertEqual(migrate(database), ["0006"])
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 row = connection.execute(
                     "SELECT version_number, validation_status FROM manifest_versions"
                 ).fetchone()
