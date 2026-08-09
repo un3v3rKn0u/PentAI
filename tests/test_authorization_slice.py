@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -202,7 +203,7 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertTrue(version["valid"], version["issues"])
         bundle = self.service.compile_policy(version["id"])
         self.assertEqual(bundle["policy"]["compiler"]["version"], "1.1.0")
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             stored_version = connection.execute(
                 "SELECT compiler_version FROM policy_bundles WHERE id = ?", (bundle["id"],)
             ).fetchone()[0]
@@ -256,7 +257,7 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertEqual(result["reason_codes"], ["DESTINATION_AUTHORIZED"])
         self.assertEqual(result["pinned_addresses"], ["192.0.2.20"])
         self.assertFalse(result["execution_enabled"])
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             self.assertIsNone(
                 connection.execute(
                     "SELECT used_at FROM action_grants WHERE grant_id = ?",
@@ -315,7 +316,7 @@ class AuthorizationSliceTests(unittest.TestCase):
                 redirect_count=0,
             )
         self.assertEqual(raised.exception.code, "NETWORK_AUTHORIZATION_DENIED")
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT status FROM network_attestations WHERE attestation_id = ?",
@@ -491,7 +492,7 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "IDEMPOTENCY_CONFLICT")
 
         grant = self.service.mint_action_grant(decision["decision_id"])
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
                     "UPDATE action_intents SET intent_json = '{}' WHERE intent_id = ?",
@@ -567,7 +568,7 @@ class AuthorizationSliceTests(unittest.TestCase):
             status="stopped", reason="synthetic emergency", actor_id="human-reviewer"
         )
         self.assertEqual(stopped["status"], "stopped")
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             epoch = connection.execute(
                 "SELECT revocation_epoch FROM engagements WHERE id = ?",
                 (self.engagement["id"],),
@@ -740,7 +741,7 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertEqual(bundle["policy"]["signature"]["algorithm"], "Ed25519")
         approval = self.service.approve_policy(bundle["id"], approver_id="human-reviewer")
         self.assertEqual(approval["signature"]["algorithm"], "Ed25519")
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute(
                 "UPDATE policy_bundles SET signature = ? WHERE id = ?",
                 ("invalid", bundle["id"]),
@@ -898,7 +899,7 @@ class AuthorizationSliceTests(unittest.TestCase):
 
         self.service.activate_policy(second_bundle["id"], actor_id="human-reviewer")
 
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             first = connection.execute(
                 "SELECT revoked_at FROM policy_bundles WHERE id = ?",
                 (first_bundle["id"],),
@@ -914,7 +915,7 @@ class AuthorizationSliceTests(unittest.TestCase):
         with self.assertRaises(DomainError) as raised:
             self.service.activate_policy(first_bundle["id"], actor_id="human-reviewer")
         self.assertEqual(raised.exception.code, "POLICY_REVOKED")
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             after = connection.execute(
                 "SELECT active_policy_id FROM engagements WHERE id = ?",
                 (self.engagement["id"],),
@@ -1084,7 +1085,7 @@ class AuthorizationSliceTests(unittest.TestCase):
             <= actions
         )
         self.assertTrue(self.service.verify_audit_chain()["valid"])
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             event = connection.execute(
                 "SELECT event_id FROM audit_events ORDER BY sequence LIMIT 1"
             ).fetchone()
@@ -1098,7 +1099,7 @@ class AuthorizationSliceTests(unittest.TestCase):
 
     def test_activated_policy_and_approved_manifest_are_database_immutable(self) -> None:
         version, bundle = self.activate()
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
                     "UPDATE policy_bundles SET content_hash = ? WHERE id = ?",
