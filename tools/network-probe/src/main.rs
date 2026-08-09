@@ -3,6 +3,7 @@ use std::fs;
 use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::path::Path;
 use std::process;
+use std::thread;
 use std::time::Duration;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
@@ -15,7 +16,11 @@ struct Arguments {
 }
 
 fn main() {
-    let arguments = match parse_arguments(env::args().skip(1)) {
+    let raw_arguments: Vec<String> = env::args().skip(1).collect();
+    if let Some(runtime_id) = sentinel_runtime_id(&raw_arguments) {
+        run_sentinel(runtime_id);
+    }
+    let arguments = match parse_arguments(raw_arguments.into_iter()) {
         Ok(arguments) => arguments,
         Err(message) => {
             eprintln!("pentai-network-probe: {message}");
@@ -51,6 +56,21 @@ fn main() {
         host_namespaces_blocked,
         resource_limits_enforced,
     );
+}
+
+fn sentinel_runtime_id(arguments: &[String]) -> Option<&str> {
+    match arguments {
+        [mode, runtime] if mode == "--mode=sentinel" => runtime
+            .strip_prefix("--runtime-id=")
+            .filter(|value| valid_identifier(value)),
+        _ => None,
+    }
+}
+
+fn run_sentinel(_runtime_id: &str) -> ! {
+    loop {
+        thread::sleep(Duration::from_secs(60));
+    }
 }
 
 fn parse_arguments(arguments: impl Iterator<Item = String>) -> Result<Arguments, &'static str> {
@@ -221,5 +241,22 @@ mod tests {
             }
         });
         assert!(parse_arguments(unsafe_identity).is_err());
+    }
+
+    #[test]
+    fn sentinel_mode_requires_only_a_safe_runtime_identity() {
+        let valid = [
+            "--mode=sentinel".to_owned(),
+            "--runtime-id=runtime-1".to_owned(),
+        ];
+        assert_eq!(sentinel_runtime_id(&valid), Some("runtime-1"));
+        assert_eq!(sentinel_runtime_id(&valid[..1]), None);
+        assert_eq!(
+            sentinel_runtime_id(&[
+                "--mode=sentinel".to_owned(),
+                "--runtime-id=bad/id".to_owned()
+            ]),
+            None
+        );
     }
 }

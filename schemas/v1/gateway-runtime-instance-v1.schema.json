@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/gateway-runtime-instance-v1.schema.json",
+  "title": "PentAI GatewayRuntimeInstance v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "runtime_id", "session_id", "containment_attestation_id", "oci_runtime", "oci_runtime_instance_id", "gateway_network_id", "image_digest", "status", "created_at", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "runtime_id": {"type": "string", "format": "uuid"},
+    "session_id": {"type": "string", "format": "uuid"},
+    "containment_attestation_id": {"type": "string", "format": "uuid"},
+    "oci_runtime": {"enum": ["docker", "podman"]},
+    "oci_runtime_instance_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "gateway_network_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "image_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "container_id": {"type": "string", "pattern": "^[a-f0-9]{12,64}$"},
+    "status": {"enum": ["launching", "running", "terminated", "failed"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "last_checked_at": {"type": "string", "format": "date-time"},
+    "finalized_at": {"type": "string", "format": "date-time"},
+    "termination_reason": {"type": "string", "minLength": 1, "maxLength": 256},
+    "execution_enabled": {"const": false}
+  }
+}

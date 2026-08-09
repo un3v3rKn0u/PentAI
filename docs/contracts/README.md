@@ -18,6 +18,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   reauthorization result.
 - `gateway-session-v1.schema.json` — atomically budgeted, durable, non-executing
   gateway session preparation.
+- `gateway-runtime-instance-v1.schema.json` — durable identity and fail-closed state
+  for a non-target-facing gateway fixture runtime.
 - `worker-containment-attestation-v1.schema.json` — short-lived runtime measurements
   required before a worker launch may be planned.
 - `worker-launch-spec-v1.schema.json` — immutable, digest-pinned, non-executing worker
@@ -37,6 +39,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | NetworkAttestation v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | DestinationDecision v1 | Gateway Maintainer | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
 | GatewaySession v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
+| GatewayRuntimeInstance v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | WorkerContainmentAttestation v1 | Systems Engineer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | WorkerLaunchSpec v1 | Execution Safety Lead | Contract Maintainer | Systems Engineer, independent Security Reviewer |
 | Canonical Types v1 | Policy Maintainer | Contract Maintainer | Gateway Maintainer, independent Security Reviewer |
