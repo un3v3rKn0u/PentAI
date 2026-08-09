@@ -16,6 +16,7 @@ from pentai_core.gateway_runtime_lifecycle import (
     GatewayRuntimeError,
     GatewayRuntimeLifecycle,
     GatewayRuntimeWatchdog,
+    LinuxProcCapabilityMonitor,
     OciGatewayFixtureController,
 )
 from pentai_core.migrate import migrate
@@ -113,6 +114,16 @@ class FixtureSafety:
 
     def halt(self, session_id: str, reason: str) -> None:
         self.calls.append((session_id, reason))
+
+
+@dataclass
+class FixtureCapabilityMonitor:
+    result: bool = True
+    pids: list[int] = field(default_factory=list)
+
+    def all_dropped(self, pid: int) -> bool:
+        self.pids.append(pid)
+        return self.result
 
 
 @dataclass
@@ -283,7 +294,7 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
     def test_fixed_oci_commands_are_locked_down(self) -> None:
         inspected = {
             "Id": CONTAINER,
-            "State": {"Running": True},
+            "State": {"Running": True, "Pid": 1234},
             "Config": {
                 "User": "65532:65532",
                 "Labels": {
@@ -352,9 +363,7 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
     def test_podman_verification_uses_effective_caps_and_exact_network_name(self) -> None:
         inspected = {
             "Id": CONTAINER,
-            "State": {"Running": True},
-            "EffectiveCaps": [],
-            "BoundingCaps": [],
+            "State": {"Running": True, "Pid": 1234},
             "Config": {
                 "User": "65532:65532",
                 "Labels": {
@@ -387,13 +396,14 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
                     0,
                     json.dumps({"id": NETWORK_ID, "name": "fixture-name"}).encode(),
                 ),
-                CommandResult(0, b"[]"),
-                CommandResult(0, b"[]"),
                 CommandResult(0, CONTAINER.encode()),
             ]
         )
         controller = OciGatewayFixtureController(
-            runtime="podman", executable=OCI, executor=executor
+            runtime="podman",
+            executable=OCI,
+            executor=executor,
+            capability_monitor=FixtureCapabilityMonitor(),
         )
         controller.verify("runtime-1", CONTAINER, NETWORK_ID)
         controller.terminate("runtime-1", CONTAINER)
@@ -401,6 +411,21 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
             executor.calls[-1],
             (str(OCI), "rm", "--force", "--time=0", CONTAINER),
         )
+
+    def test_linux_proc_capability_monitor_requires_every_zero_mask(self) -> None:
+        proc_root = Path(self.temporary.name) / "proc"
+        status = proc_root / "123" / "status"
+        status.parent.mkdir(parents=True)
+        status.write_text(
+            "CapInh:\t0000000000000000\nCapPrm:\t0000000000000000\n"
+            "CapEff:\t0000000000000000\nCapBnd:\t0000000000000000\n"
+            "CapAmb:\t0000000000000000\n"
+        )
+        monitor = LinuxProcCapabilityMonitor(proc_root)
+        self.assertTrue(monitor.all_dropped(123))
+        status.write_text(status.read_text().replace("CapEff:\t0000000000000000", "CapEff:\t1"))
+        self.assertFalse(monitor.all_dropped(123))
+        self.assertFalse(monitor.all_dropped(124))
 
     def test_authorization_safety_adapter_pauses_owning_assessment(self) -> None:
         with closing(sqlite3.connect(self.database)) as connection, connection:

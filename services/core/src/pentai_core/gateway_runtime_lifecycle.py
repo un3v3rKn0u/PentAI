@@ -33,6 +33,42 @@ class RuntimeController(Protocol):
     def terminate(self, runtime_id: str, container_id: str | None) -> None: ...
 
 
+class CapabilityMonitor(Protocol):
+    def all_dropped(self, pid: int) -> bool: ...
+
+
+class LinuxProcCapabilityMonitor:
+    def __init__(self, proc_root: Path = Path("/proc")) -> None:
+        if not proc_root.is_absolute():
+            raise GatewayRuntimeError("PROC_ROOT_INVALID", "proc root is invalid")
+        self._proc_root = proc_root
+
+    def all_dropped(self, pid: int) -> bool:
+        if not 1 <= pid <= 2_147_483_647:
+            return False
+        try:
+            with (self._proc_root / str(pid) / "status").open("rb") as status_file:
+                raw = status_file.read(65_537)
+        except OSError:
+            return False
+        if len(raw) > 65_536:
+            return False
+        try:
+            fields = dict(
+                line.split(":", 1)
+                for line in raw.decode("ascii").splitlines()
+                if ":" in line
+            )
+        except UnicodeDecodeError:
+            return False
+        required = ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")
+        return all(
+            re.fullmatch(r"\s*[0-9a-fA-F]{16}\s*", fields.get(name, "")) is not None
+            and int(fields[name].strip(), 16) == 0
+            for name in required
+        )
+
+
 class ContainmentMonitor(Protocol):
     def measure(self) -> dict[str, object]: ...
 
@@ -72,7 +108,12 @@ class AuthorizationSafetyHandler:
 
 class OciGatewayFixtureController:
     def __init__(
-        self, *, runtime: str, executable: Path, executor: BoundedCommandExecutor
+        self,
+        *,
+        runtime: str,
+        executable: Path,
+        executor: BoundedCommandExecutor,
+        capability_monitor: CapabilityMonitor | None = None,
     ) -> None:
         if runtime not in {"docker", "podman"}:
             raise GatewayRuntimeError("RUNTIME_UNSUPPORTED", "runtime is unsupported")
@@ -81,6 +122,11 @@ class OciGatewayFixtureController:
         self._executable = str(executable)
         self._runtime = runtime
         self._executor = executor
+        self._capability_monitor = capability_monitor
+        if runtime == "podman" and capability_monitor is None:
+            raise GatewayRuntimeError(
+                "CAPABILITY_MONITOR_REQUIRED", "capability monitor is required"
+            )
 
     def launch(self, runtime_id: str, network_id: str, image_digest: str) -> str:
         self._validate(runtime_id, network_id, image_digest)
@@ -163,8 +209,6 @@ class OciGatewayFixtureController:
             else set()
         )
         expected_network_names: set[str] | None = None
-        podman_effective_caps: object = None
-        podman_bounding_caps: object = None
         if self._runtime == "podman":
             network_result = self._executor.execute(
                 (self._executable, "network", "inspect", "--format", "json", network_id),
@@ -189,31 +233,6 @@ class OciGatewayFixtureController:
                     "GATEWAY_INSPECTION_FAILED", "gateway network inspection failed"
                 )
             expected_network_names = {str(network_document["name"])}
-            capability_documents: list[object] = []
-            for field in ("EffectiveCaps", "BoundingCaps"):
-                capability_result = self._executor.execute(
-                    (
-                        self._executable,
-                        "inspect",
-                        "--format",
-                        f"{{{{json .{field}}}}}",
-                        container_id,
-                    ),
-                    timeout_seconds=5,
-                    max_output_bytes=4096,
-                )
-                try:
-                    capability_document = json.loads(capability_result.stdout)
-                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                    raise GatewayRuntimeError(
-                        "GATEWAY_INSPECTION_FAILED", "capability inspection failed"
-                    ) from exc
-                if capability_result.returncode != 0:
-                    raise GatewayRuntimeError(
-                        "GATEWAY_INSPECTION_FAILED", "capability inspection failed"
-                    )
-                capability_documents.append(capability_document)
-            podman_effective_caps, podman_bounding_caps = capability_documents
         nano_cpus = host_document.get("NanoCpus")
         cpu_quota = host_document.get("CpuQuota")
         cpu_period = host_document.get("CpuPeriod")
@@ -225,10 +244,14 @@ class OciGatewayFixtureController:
             and cpu_quota * 4 <= cpu_period
         )
         podman = self._runtime == "podman"
-        podman_effective_empty = podman_effective_caps == []
-        podman_bounding_empty = podman_bounding_caps == []
+        podman_process_caps_empty = (
+            isinstance(state, dict)
+            and type(state.get("Pid")) is int
+            and self._capability_monitor is not None
+            and self._capability_monitor.all_dropped(state["Pid"])
+        )
         capabilities_dropped = (
-            podman_effective_empty and podman_bounding_empty
+            podman_process_caps_empty
             if podman
             else isinstance(cap_drop, list)
             and any(str(item).lower() == "all" for item in cap_drop)
@@ -266,10 +289,7 @@ class OciGatewayFixtureController:
         }
         failed = sorted(name for name, passed in checks.items() if not passed)
         if podman and not capabilities_dropped:
-            if not podman_effective_empty:
-                failed.append("podman_effective_caps_empty")
-            if not podman_bounding_empty:
-                failed.append("podman_bounding_caps_empty")
+            failed.append("podman_process_caps_empty")
         if podman and not network_identity:
             if not podman_network_single:
                 failed.append("podman_network_single")

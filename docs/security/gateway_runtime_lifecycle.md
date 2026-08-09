@@ -22,6 +22,9 @@ root, a non-root image user, private default PID/IPC namespaces, no host mounts 
 runtime socket, and fixed CPU, memory, and PID limits. Post-launch and watchdog checks
 re-inspect ownership labels, container identity, running state, network, user,
 privileges, namespaces, mounts, and limits, and refresh the full containment attestation.
+On Linux/Podman, the inspected process ID is checked against a bounded `/proc` status
+read and every inheritable, permitted, effective, bounding, and ambient capability mask
+must be zero.
 
 Any missing, stale, changed, malformed, or unverifiable observation terminates the
 container and invokes the durable assessment safety transition. Termination failure is

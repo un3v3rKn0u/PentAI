@@ -16,6 +16,7 @@ from typing import Any
 
 from pentai_core.gateway_runtime_lifecycle import (
     GatewayRuntimeLifecycle,
+    LinuxProcCapabilityMonitor,
     OciGatewayFixtureController,
 )
 from pentai_core.managed_gateway_network import (
@@ -196,7 +197,10 @@ def _run_gateway_lifecycle(
     )
     attestor = RuntimeContainmentAttestor(collector)
     controller = OciGatewayFixtureController(
-        runtime=runtime, executable=executable, executor=executor
+        runtime=runtime,
+        executable=executable,
+        executor=executor,
+        capability_monitor=LinuxProcCapabilityMonitor() if runtime == "podman" else None,
     )
     safety = HarnessSafety()
     with tempfile.TemporaryDirectory(prefix="pentai-gateway-lifecycle-") as temporary:
