@@ -77,11 +77,13 @@ also passes. Local results are not cross-platform evidence.
 The completion reconciliation reran contract validation, Ruff lint/format checks,
 `pip-audit`, `pnpm audit --audit-level moderate`, and `cargo audit` on 2026-08-08.
 Python and JavaScript reported no known vulnerabilities. Rust reported no
-vulnerability failures and the same 17 allowed maintenance/unsoundness warnings. The
-Git remote separately reports one moderate Dependabot alert on the default branch;
-its private metadata was unavailable to the local/connector session and the local
-audits did not reproduce it. It remains a dependency-maintenance item, not evidence
-that a Phase 0 exit criterion failed; it must be triaged before a production release.
+vulnerability failures and the same 17 allowed maintenance/unsoundness warnings.
+Dependabot alert 1 was subsequently identified as `GHSA-wrw7-89jp-8q8g`: iterator
+unsoundness in transitive `glib` 0.18.5. Current Tauri 2.11.5 requires GTK 0.18 and
+cannot resolve the patched `glib` 0.20 line. PentAI keeps Linux development smoke
+coverage but blocks Linux distribution builds through the `release-distribution`
+feature until the upstream dependency graph is patched. This is containment, not a
+claim that the dependency was upgraded.
 
 `INV-AUTH-005` is verified only for the Phase 0 local session boundary: an automated
 caller cannot assert an actor ID to approve or activate a policy, and the caller must

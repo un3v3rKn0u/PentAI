@@ -66,6 +66,22 @@ jobs:
       - run: pnpm --filter @pentai/ui build
       - run: cargo check --manifest-path apps/desktop/Cargo.toml
       - run: cargo test --manifest-path apps/desktop/Cargo.toml
+      - name: Confirm Linux release distribution is blocked by the glib advisory gate
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set +e
+          output=$(cargo check --manifest-path apps/desktop/Cargo.toml --features release-distribution 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "Linux release gate unexpectedly allowed a distribution build"
+            exit 1
+          fi
+          if ! grep -Fq "PENTAI-LINUX-RELEASE-BLOCKED-GHSA-WRW7-89JP-8Q8G" <<<"$output"; then
+            echo "Linux distribution build failed outside the expected advisory gate"
+            exit 1
+          fi
       - name: Bundle release desktop with embedded sidecar identity
         working-directory: apps/desktop
         run: >-
