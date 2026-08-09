@@ -223,7 +223,10 @@ export function App() {
   const [manifestDiff, setManifestDiff] = useState<Json | null>(null);
   const [policy, setPolicy] = useState<Json | null>(null);
   const [policyHistory, setPolicyHistory] = useState<Json[]>([]);
+  const [currentIntent, setCurrentIntent] = useState<Json | null>(null);
   const [decision, setDecision] = useState<Json | null>(null);
+  const [grant, setGrant] = useState<Json | null>(null);
+  const [grantStatus, setGrantStatus] = useState("not issued");
   const [audit, setAudit] = useState<Json>({ events: [], verification: { valid: true } });
   const [intentUrl, setIntentUrl] = useState("https://example.test/api/items");
   const [state, setState] = useState<WorkflowState>("draft");
@@ -294,7 +297,10 @@ export function App() {
       setManifestText("");
       setPolicy(null);
       setPolicyHistory([]);
+      setCurrentIntent(null);
       setDecision(null);
+      setGrant(null);
+      setGrantStatus("not issued");
       setIntakeState("empty");
       setState("draft");
     });
@@ -453,7 +459,36 @@ export function App() {
         expires_at: new Date(Date.now() + 300_000).toISOString(),
         idempotency_key: crypto.randomUUID()
       };
+      setCurrentIntent(intent);
+      setGrant(null);
+      setGrantStatus("not issued");
       setDecision(await request("/policy-decisions", { engagement_id: engagement.id, intent }));
+      await refreshAudit();
+    });
+  }
+
+  async function mintGrant() {
+    if (!decision || decision.outcome !== "allow") return;
+    await run(async () => {
+      const issued = await request("/action-grants", {
+        decision_id: decision.decision_id,
+        audience: "pentai-execution-broker"
+      });
+      setGrant(issued);
+      setGrantStatus("issued — no execution");
+      await refreshAudit();
+    });
+  }
+
+  async function consumeGrant() {
+    if (!grant || !currentIntent) return;
+    await run(async () => {
+      await request("/action-grants/consume", {
+        grant,
+        intent: currentIntent,
+        audience: "pentai-execution-broker"
+      });
+      setGrantStatus("consumed — no execution");
       await refreshAudit();
     });
   }
@@ -474,8 +509,8 @@ export function App() {
       </header>
 
       <section className="safety-banner">
-        <strong>Supervised intake; simulation-only assessment</strong>
-        <span>Only an explicit URL import may use guarded HTTP(S). No ActionGrants or target testing.</span>
+        <strong>Supervised authorization; no target execution</strong>
+        <span>Signed grants may be issued and consumed locally, but no gateway or worker can use them yet.</span>
       </section>
 
       {!connection && (
@@ -662,6 +697,14 @@ export function App() {
               <code>{decision.reason_codes.join(", ")}</code>
             </div>
           )}
+          <button onClick={mintGrant} disabled={!connection || decision?.outcome !== "allow" || Boolean(grant)}>
+            Issue single-use grant
+          </button>
+          <button onClick={consumeGrant} disabled={!connection || !grant || grantStatus.startsWith("consumed")}>
+            Verify and consume locally
+          </button>
+          <p className="hint">Grant status: {grantStatus}</p>
+          {grant && <code>{grant.grant_id} · expires {grant.expires_at}</code>}
         </section>
 
         <section className="panel wide audit-panel">

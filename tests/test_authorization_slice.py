@@ -5,6 +5,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -131,9 +132,10 @@ def intent_for(
     engagement_id: str, policy_hash: str, url: str = "https://example.test/api/items"
 ) -> dict[str, object]:
     created = timestamp(timedelta())
+    intent_id = str(uuid4())
     return {
         "schema_version": "1.0.0",
-        "intent_id": str(uuid4()),
+        "intent_id": intent_id,
         "assessment_id": engagement_id,
         "policy_hash": policy_hash,
         "actor": {"actor_type": "human", "actor_id": "researcher"},
@@ -149,7 +151,7 @@ def intent_for(
         "impact": "benign",
         "created_at": created,
         "expires_at": timestamp(timedelta(minutes=5)),
-        "idempotency_key": "synthetic-intent-0001",
+        "idempotency_key": f"synthetic-intent-{intent_id}",
     }
 
 
@@ -203,6 +205,145 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(first["outcome"], "allow")
         self.assertEqual(first["reason_codes"], ["EXPLICIT_ALLOW"])
+
+    def test_allow_decision_mints_and_atomically_consumes_single_use_grant(self) -> None:
+        _, bundle = self.activate()
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        decision = self.service.evaluate_intent(self.engagement["id"], intent)
+        grant = self.service.mint_action_grant(decision["decision_id"])
+        self.assertEqual(contract_issues(grant, "action-grant-v1.schema.json"), ())
+        self.assertEqual(grant["intent_id"], intent["intent_id"])
+        self.assertEqual(grant["decision_id"], decision["decision_id"])
+        self.assertTrue(grant["single_use"])
+        self.assertEqual(self.service.mint_action_grant(decision["decision_id"]), grant)
+
+        consumed = self.service.consume_action_grant(
+            grant, intent, audience="pentai-execution-broker"
+        )
+        self.assertEqual(consumed["status"], "consumed")
+        grant_events = [
+            event
+            for event in self.service.audit_events()
+            if event["action"].startswith("action_grant")
+        ]
+        self.assertEqual(
+            [event["action"] for event in grant_events],
+            ["action_grant.issued", "action_grant.consumed"],
+        )
+        self.assertTrue(
+            all(event["data"]["intent_id"] == intent["intent_id"] for event in grant_events)
+        )
+        with self.assertRaises(DomainError) as raised:
+            self.service.consume_action_grant(
+                grant, intent, audience="pentai-execution-broker"
+            )
+        self.assertEqual(raised.exception.code, "GRANT_REPLAYED")
+
+    def test_grant_rejects_wrong_audience_mutation_expiry_and_wrong_key(self) -> None:
+        _, bundle = self.activate()
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        decision = self.service.evaluate_intent(self.engagement["id"], intent)
+        grant = self.service.mint_action_grant(decision["decision_id"])
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.consume_action_grant(grant, intent, audience="pentai-egress-gateway")
+        self.assertEqual(raised.exception.code, "GRANT_BINDING_MISMATCH")
+
+        mutated = copy.deepcopy(intent)
+        mutated["parameters_digest"] = "2" * 64
+        with self.assertRaises(DomainError) as raised:
+            self.service.consume_action_grant(
+                grant, mutated, audience="pentai-execution-broker"
+            )
+        self.assertEqual(raised.exception.code, "GRANT_BINDING_MISMATCH")
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.consume_action_grant(
+                grant,
+                intent,
+                audience="pentai-execution-broker",
+                now=datetime.now(UTC) + timedelta(minutes=1),
+            )
+        self.assertEqual(raised.exception.code, "GRANT_EXPIRED")
+
+        wrong_key_service = AuthorizationService(
+            self.database,
+            source_store=self.service.source_store,
+            policy_signer=PolicySigner(b"w" * 32),
+        )
+        with self.assertRaises(DomainError) as raised:
+            wrong_key_service.consume_action_grant(
+                grant, intent, audience="pentai-execution-broker"
+            )
+        self.assertEqual(raised.exception.code, "GRANT_SIGNATURE_INVALID")
+
+    def test_concurrent_grant_consumption_allows_exactly_one_winner(self) -> None:
+        _, bundle = self.activate()
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        decision = self.service.evaluate_intent(self.engagement["id"], intent)
+        grant = self.service.mint_action_grant(decision["decision_id"])
+
+        def consume() -> str:
+            try:
+                self.service.consume_action_grant(
+                    grant, intent, audience="pentai-execution-broker"
+                )
+            except DomainError as exc:
+                return exc.code
+            return "consumed"
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = sorted(executor.map(lambda _: consume(), range(2)))
+        self.assertEqual(outcomes, ["GRANT_REPLAYED", "consumed"])
+
+    def test_deny_decision_and_revocation_cannot_produce_usable_grant(self) -> None:
+        _, bundle = self.activate()
+        denied_intent = intent_for(
+            self.engagement["id"], bundle["content_hash"], "https://outside.test/api"
+        )
+        denied = self.service.evaluate_intent(self.engagement["id"], denied_intent)
+        with self.assertRaises(DomainError) as raised:
+            self.service.mint_action_grant(denied["decision_id"])
+        self.assertEqual(raised.exception.code, "GRANT_AUTHORITY_INVALID")
+
+        allowed_intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        allowed_intent["idempotency_key"] = "synthetic-intent-allowed-2"
+        allowed = self.service.evaluate_intent(self.engagement["id"], allowed_intent)
+        grant = self.service.mint_action_grant(allowed["decision_id"])
+        self.service.revoke_policy(
+            bundle["id"], actor_id="human-reviewer", reason="synthetic emergency stop"
+        )
+        with self.assertRaises(DomainError) as raised:
+            self.service.consume_action_grant(
+                grant, allowed_intent, audience="pentai-execution-broker"
+            )
+        self.assertEqual(raised.exception.code, "GRANT_REVOKED")
+
+    def test_intent_idempotency_and_authorization_records_are_immutable(self) -> None:
+        _, bundle = self.activate()
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        decision = self.service.evaluate_intent(self.engagement["id"], intent)
+        conflicting = copy.deepcopy(intent)
+        conflicting["intent_id"] = str(uuid4())
+        with self.assertRaises(DomainError) as raised:
+            self.service.evaluate_intent(self.engagement["id"], conflicting)
+        self.assertEqual(raised.exception.code, "IDEMPOTENCY_CONFLICT")
+
+        grant = self.service.mint_action_grant(decision["decision_id"])
+        with sqlite3.connect(self.database) as connection:
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "UPDATE action_intents SET intent_json = '{}' WHERE intent_id = ?",
+                    (intent["intent_id"],),
+                )
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    """
+                    UPDATE action_grants SET audience = 'pentai-egress-gateway'
+                    WHERE grant_id = ?
+                    """,
+                    (grant["grant_id"],),
+                )
 
     def test_ambiguous_altered_expired_and_out_of_scope_deny(self) -> None:
         _, bundle = self.activate()

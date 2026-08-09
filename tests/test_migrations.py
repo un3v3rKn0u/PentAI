@@ -13,7 +13,10 @@ class MigrationTests(unittest.TestCase):
     def test_initial_migration_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "pentai.db"
-            self.assertEqual(migrate(database), ["0001", "0002", "0003", "0004", "0005", "0006"])
+            self.assertEqual(
+                migrate(database),
+                ["0001", "0002", "0003", "0004", "0005", "0006", "0007"],
+            )
             self.assertEqual(migrate(database), [])
             with sqlite3.connect(database) as connection:
                 tables = {
@@ -29,6 +32,8 @@ class MigrationTests(unittest.TestCase):
                     "policy_bundles",
                     "approvals",
                     "policy_evaluations",
+                    "action_intents",
+                    "action_grants",
                     "audit_events",
                     "outbox",
                 }

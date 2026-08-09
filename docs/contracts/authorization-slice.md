@@ -2,8 +2,9 @@
 
 This local-only slice covers program and source intake, Manifest v2 validation,
 deterministic Policy IR v1 compilation, exact human approval, immutable activation,
-ActionIntent simulation, and hash-chained audit. It creates no ActionGrant and contains
-no target-facing networking code.
+persisted ActionIntent evaluation, signed ActionGrant issuance, atomic local
+verification/consumption, and hash-chained audit. It contains no target-facing
+networking code.
 
 ## Invariants
 
@@ -33,6 +34,24 @@ The slice emits `EXPLICIT_ALLOW`, `DEFAULT_DENY`, `EXPLICIT_DENY`, `POLICY_INACT
 `POLICY_EXPIRED`, `POLICY_REVOKED`, `POLICY_HASH_MISMATCH`, `TARGET_AMBIGUOUS`,
 `TARGET_OUT_OF_SCOPE`, `CAPABILITY_DENIED`, `METHOD_DENIED`, `PORT_DENIED`, and
 `PATH_DENIED` from PolicyDecision v1.
+
+## ActionGrant v1 lifecycle
+
+Only a persisted, contract-valid `allow` PolicyDecision linked to the exact immutable
+ActionIntent and current active signed policy can mint a grant. Grants bind the
+assessment, policy hash, revocation epoch, audience, capability, canonical target and
+HTTP/account digest, and parameters digest. They expire after at most 30 seconds and
+authorize one request and one connection.
+
+Verification compares the presented grant and intent with their immutable database
+records, verifies the domain-separated Ed25519 signature, current policy and epoch,
+audience, time window, and all intent bindings, then atomically records consumption.
+Replay, mutation, expiry, revocation, wrong-key, wrong-audience, and stale-epoch paths
+deny. This verifier performs no network or tool action.
+
+Migration `0007_action_grants.sql` adds immutable intent and grant ledgers plus atomic
+consumption/revocation state. It is additive: earlier records and APIs remain intact,
+and older application code ignores the new tables after rollback.
 
 ## Manifest v2 field provenance and history
 

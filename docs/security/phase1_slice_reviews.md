@@ -245,3 +245,41 @@ This acceptance supports local development with synthetic, owned fixtures only. 
 not production approval, release authorization, external assurance, or permission to
 bypass remaining execution and networking controls. Independent review remains the
 preferred assurance upgrade when another qualified reviewer becomes available.
+
+## 2026-08-09 — Non-executing ActionGrant authorization chain
+
+**Decision:** Sole-maintainer security review — non-independent; approved for the
+non-executing local slice only<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; the documented sole-maintainer exception is used. This review
+does not extend production or external signing assurance and authorizes no target
+execution.
+
+**Scope reviewed:** additive migration `0007`; immutable ActionIntent persistence;
+deterministic PolicyDecision linkage; Ed25519 ActionGrant minting; audience,
+assessment, policy, epoch, capability, target/HTTP/account, and parameter bindings;
+30-second maximum lifetime; atomic single-use consumption; revocation; audit linkage;
+API and supervised UI states.
+
+**Evidence examined:** complete branch diff; ActionIntent, PolicyDecision, and
+ActionGrant v1 schemas; INV-GRANT-001 through INV-GRANT-004; exact allow-only minting;
+malformed/wrong-key/wrong-audience/mutated/expired/replayed/revoked/idempotency paths;
+two-consumer race proof; immutable database triggers; migration idempotency; full local
+Python, contracts, UI, desktop compile, and dependency-audit results.
+
+**Findings:** No unresolved material finding in the non-executing scope. Grant
+issuance requires an immutable allow decision and current signed policy. Verification
+uses a write-reserving transaction so concurrent consumers cannot both succeed.
+Policy revocation or replacement invalidates outstanding grants and increments the
+epoch. All verifier failures deny and perform no external effect.
+
+**Limitations and deferred work:** The current core process hosts the logical execution
+broker boundary; process isolation comes with the worker slice. Budget reservation,
+clock-health attestation, controlled DNS, destination/redirect reauthorization,
+route/source-IP checks, gateway containment, and target-facing HTTP(S) remain absent.
+The verifier result is not permission to bypass any of those controls.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It is
+accepted only for local grant issuance and consumption with no networking. Independent
+review remains the preferred assurance upgrade before production or external use.

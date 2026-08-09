@@ -2,7 +2,7 @@
 
 **Status:** implemented local-only milestone
 **Contracts:** Engagement Manifest v2, Policy IR v1, ActionIntent v1, PolicyDecision v1,
-Approval v1.1, canonicalization v1
+Approval v1.2, ActionGrant v1, canonicalization v1
 
 ## Workflow
 
@@ -13,11 +13,12 @@ Program → Engagement → SourceDocument (SHA-256)
 → immutable ManifestVersion → validated canonical manifest
 → deterministic PolicyBundle → exact human policy_activation Approval
 → immutable active policy → deterministic ActionIntent decision
+→ signed, single-use ActionGrant → local verification and consumption
 → hash-chained AuditEvent
 ```
 
-This milestone performs policy simulation only. It does not issue `ActionGrant` objects,
-resolve DNS, create sockets, contact targets, or perform HTTP/HTTPS requests.
+This milestone issues and locally consumes `ActionGrant` objects. It does not resolve
+DNS, create sockets, contact targets, or perform HTTP/HTTPS requests.
 
 ## State and version rules
 
@@ -111,11 +112,6 @@ cargo test --manifest-path apps/desktop/Cargo.toml
 
 ## Known limitations
 
-- The proposed Phase 1 signing implementation uses OS credential storage and Ed25519,
-  but signing-key custody requires independent security approval under
-  `GIT_WORKFLOW.md`. Until ADR 0003 is independently approved and merged, it carries no
-  release or enforcement assurance.
-- Source content is hashed and represented by a content-addressed blob reference; an
-  encrypted source-blob store is deferred.
-- Testing windows, live route/DNS/source-IP attestation, budget reservation, grant
-  issuance, and controlled HTTP/HTTPS execution are deliberately deferred.
+- Grant minting does not yet reserve rate, concurrency, or total-request budgets.
+- Live route/DNS/source-IP attestation and controlled HTTP/HTTPS execution remain
+  deliberately deferred. Grants cannot bypass those future runtime checks.

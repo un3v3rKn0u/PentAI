@@ -238,13 +238,20 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [ ] Build typed, expiring approvals and activation workflow.
   - Signed lifecycle implementation was merged in PR #26 and accepted under the
     explicitly non-independent local-development governance scope. This does not grant
-    production, release, or external assurance.
+    production, release, or external assurance; Phase 1 completion remains gated by
+    the remaining execution, recovery, evidence, and reporting demonstrations.
 - [x] Build semantic diffs for scope, techniques, limits, and reporting terms.
 
 ### 6.5 Actions: execution and safety
 
 - [ ] Implement `ActionIntent → PolicyDecision → ActionGrant → Execution` end to end.
-- [ ] Build a single-use, audience-bound, short-lived grant verifier.
+- [x] Build a single-use, audience-bound, short-lived grant verifier.
+  - The non-executing `ActionIntent → PolicyDecision → ActionGrant` chain and atomic
+    local verifier are implemented on `feature/action-grant-chain`; gateway execution
+    remains explicitly deferred.
+  - Gateway integration remains technically gated by containment, controlled DNS,
+    route/source-IP attestation, redirect reauthorization, stop controls, and negative
+    bypass tests.
 - [ ] Build the first gateway supporting HTTP(S), controlled DNS, redirects, and rate enforcement.
 - [ ] Create an isolated HTTP/browser worker with no direct outbound route.
 - [ ] Implement source-IP attestation and approved-IP comparison.
