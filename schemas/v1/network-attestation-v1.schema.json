@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/network-attestation-v1.schema.json",
+  "title": "PentAI NetworkAttestation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "attestation_id", "assessment_id", "policy_hash", "route_profile_id", "resolver_mode", "resolver_id", "observations", "observed_at", "expires_at"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "attestation_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "route_profile_id": {"type": "string", "minLength": 1},
+    "resolver_mode": {"enum": ["tunnel_resolver", "approved_resolver"]},
+    "source_ipv4": {"type": "string", "format": "ipv4"},
+    "source_ipv6": {"type": "string", "format": "ipv6"},
+    "resolver_id": {"type": "string", "minLength": 1},
+    "observations": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  }
+}

@@ -19,6 +19,7 @@ from pentai_policy import (
 from pentai_policy.document import contract_issues, parse_time
 
 from pentai_core.database import transaction
+from pentai_core.network_control import authorize_destination, validate_attestation
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
 
@@ -1023,6 +1024,14 @@ class AuthorizationService:
             connection.execute(
                 "UPDATE programs SET status = 'active' WHERE id = ?", (policy["program_id"],)
             )
+            connection.execute(
+                """
+                UPDATE network_attestations
+                SET status = 'invalidated', invalidated_at = ?
+                WHERE engagement_id = ? AND status = 'valid'
+                """,
+                (activated_at, policy["engagement_id"]),
+            )
             self._audit(
                 connection,
                 action="policy.activation",
@@ -1066,6 +1075,14 @@ class AuthorizationService:
                 """
                 UPDATE action_grants SET revoked_at = ?
                 WHERE engagement_id = ? AND used_at IS NULL AND revoked_at IS NULL
+                """,
+                (revoked_at, policy["engagement_id"]),
+            )
+            connection.execute(
+                """
+                UPDATE network_attestations
+                SET status = 'invalidated', invalidated_at = ?
+                WHERE engagement_id = ? AND status = 'valid'
                 """,
                 (revoked_at, policy["engagement_id"]),
             )
@@ -1530,6 +1547,204 @@ class AuthorizationService:
             "execution_enabled": False,
         }
 
+    def record_network_attestation(
+        self, attestation: dict[str, Any], *, attestor_id: str
+    ) -> dict[str, Any]:
+        if not attestor_id.strip():
+            raise DomainError("ATTESTOR_ID_REQUIRED", "network attestor identity is required")
+        if contract_issues(attestation, "network-attestation-v1.schema.json"):
+            raise DomainError("ATTESTATION_INVALID", "network attestation is malformed")
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            engagement = connection.execute(
+                "SELECT * FROM engagements WHERE id = ?", (attestation["assessment_id"],)
+            ).fetchone()
+            if engagement is None or engagement["active_policy_id"] is None:
+                raise DomainError("ATTESTATION_INVALID", "assessment policy is inactive")
+            policy_row = connection.execute(
+                "SELECT * FROM policy_bundles WHERE id = ?", (engagement["active_policy_id"],)
+            ).fetchone()
+            safety = connection.execute(
+                "SELECT global_status FROM safety_state WHERE singleton_id = 1"
+            ).fetchone()
+            if (
+                policy_row is None
+                or policy_row["revoked_at"] is not None
+                or engagement["status"] != "active"
+                or safety is None
+                or safety["global_status"] != "active"
+            ):
+                raise DomainError("ATTESTATION_INVALID", "authorization state is inactive")
+            policy = json.loads(policy_row["policy_json"])
+            signature = policy.get("signature", {})
+            if (
+                policy.get("content_hash") != policy_row["content_hash"]
+                or policy.get("engagement_id") != attestation["assessment_id"]
+                or policy_row["activated_at"] is None
+                or self.policy_signer is None
+                or signature.get("algorithm") != "Ed25519"
+                or not self.policy_signer.verify(
+                    f"pentai-policy-v1:{policy_row['content_hash']}".encode("ascii"),
+                    str(signature.get("value", "")),
+                    str(signature.get("key_id", "")),
+                )
+            ):
+                raise DomainError("ATTESTATION_INVALID", "assessment policy is unverifiable")
+            try:
+                validate_attestation(attestation, policy)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise DomainError(str(exc), "network attestation was denied") from None
+            connection.execute(
+                """
+                INSERT INTO network_attestations(
+                    attestation_id, engagement_id, policy_bundle_id, policy_hash,
+                    route_profile_id, source_ipv4, source_ipv6, resolver_mode, resolver_id,
+                    observations_json, observed_at, expires_at, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'valid')
+                """,
+                (
+                    attestation["attestation_id"], attestation["assessment_id"],
+                    policy_row["id"], attestation["policy_hash"],
+                    attestation["route_profile_id"], attestation.get("source_ipv4"),
+                    attestation.get("source_ipv6"), attestation["resolver_mode"],
+                    attestation["resolver_id"],
+                    canonical_json(attestation["observations"]), attestation["observed_at"],
+                    attestation["expires_at"],
+                ),
+            )
+            self._audit(
+                connection,
+                action="network.attested",
+                subject_type="network_attestation",
+                subject_id=attestation["attestation_id"],
+                actor_type="service",
+                actor_id=attestor_id,
+                data={
+                    "route_profile_id": attestation["route_profile_id"],
+                    "source_ipv4": attestation.get("source_ipv4"),
+                    "source_ipv6": attestation.get("source_ipv6"),
+                },
+            )
+        return {**attestation, "status": "valid", "execution_enabled": False}
+
+    def authorize_network_destination(
+        self,
+        *,
+        grant_id: str,
+        attestation_id: str,
+        candidate_url: str,
+        addresses: list[str],
+        cname_chain: list[str],
+        sni_host: str,
+        host_header: str,
+        redirect_count: int,
+    ) -> dict[str, Any]:
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT ag.*, ai.intent_json, p.policy_json, p.revoked_at AS policy_revoked_at,
+                       e.active_policy_id, e.revocation_epoch AS current_epoch,
+                       e.status AS engagement_status, s.global_status
+                FROM action_grants ag
+                JOIN action_intents ai ON ai.intent_id = ag.intent_id
+                JOIN policy_bundles p ON p.id = ag.policy_bundle_id
+                JOIN engagements e ON e.id = ag.engagement_id
+                CROSS JOIN safety_state s WHERE ag.grant_id = ?
+                """,
+                (grant_id,),
+            ).fetchone()
+            attestation_row = connection.execute(
+                "SELECT * FROM network_attestations WHERE attestation_id = ?", (attestation_id,)
+            ).fetchone()
+            if row is None or attestation_row is None:
+                raise DomainError("NETWORK_AUTHORIZATION_DENIED", "grant or attestation missing")
+            grant = json.loads(row["grant_json"])
+            now = _now()
+            if (
+                contract_issues(grant, "action-grant-v1.schema.json")
+                or content_hash(grant) != row["grant_hash"]
+                or parse_time(grant["not_before"]) > now
+                or parse_time(grant["expires_at"]) <= now
+                or row["used_at"] is not None or row["revoked_at"] is not None
+                or row["policy_revoked_at"] is not None
+                or row["active_policy_id"] != row["policy_bundle_id"]
+                or row["revocation_epoch"] != row["current_epoch"]
+                or row["engagement_status"] != "active" or row["global_status"] != "active"
+                or row["audience"] != "pentai-egress-gateway"
+                or grant.get("audience") != "pentai-egress-gateway"
+                or attestation_row["status"] != "valid"
+                or attestation_row["engagement_id"] != row["engagement_id"]
+                or attestation_row["policy_bundle_id"] != row["policy_bundle_id"]
+                or attestation_row["policy_hash"] != grant["policy_hash"]
+                or self.policy_signer is None
+                or not self.policy_signer.verify(
+                    _grant_payload(grant), str(grant.get("signature", {}).get("value", "")),
+                    str(grant.get("signature", {}).get("key_id", "")),
+                )
+            ):
+                raise DomainError("NETWORK_AUTHORIZATION_DENIED", "runtime authority is inactive")
+            attestation = {
+                "schema_version": "1.0.0",
+                "attestation_id": attestation_row["attestation_id"],
+                "assessment_id": attestation_row["engagement_id"],
+                "policy_hash": attestation_row["policy_hash"],
+                "route_profile_id": attestation_row["route_profile_id"],
+                "resolver_mode": attestation_row["resolver_mode"],
+                "resolver_id": attestation_row["resolver_id"],
+                "observations": json.loads(attestation_row["observations_json"]),
+                "observed_at": attestation_row["observed_at"],
+                "expires_at": attestation_row["expires_at"],
+            }
+            if attestation_row["source_ipv4"]:
+                attestation["source_ipv4"] = attestation_row["source_ipv4"]
+            if attestation_row["source_ipv6"]:
+                attestation["source_ipv6"] = attestation_row["source_ipv6"]
+            previous_row = connection.execute(
+                """
+                SELECT decision_json FROM destination_authorizations
+                WHERE grant_id = ? ORDER BY created_at DESC, authorization_id DESC LIMIT 1
+                """,
+                (grant_id,),
+            ).fetchone()
+            previous_pinned = None
+            if previous_row is not None:
+                previous_decision = json.loads(previous_row["decision_json"])
+                if previous_decision.get("outcome") == "allow":
+                    previous_pinned = previous_decision.get("pinned_addresses", [])
+            decision = authorize_destination(
+                grant=grant,
+                intent=json.loads(row["intent_json"]),
+                policy=json.loads(row["policy_json"]),
+                attestation=attestation,
+                candidate_url=candidate_url,
+                addresses=addresses,
+                cname_chain=cname_chain,
+                sni_host=sni_host,
+                host_header=host_header,
+                redirect_count=redirect_count,
+                previously_pinned_addresses=previous_pinned,
+            )
+            if contract_issues(decision, "destination-decision-v1.schema.json"):
+                raise DomainError("NETWORK_AUTHORIZATION_DENIED", "destination decision is invalid")
+            connection.execute(
+                """
+                INSERT INTO destination_authorizations(
+                    authorization_id, grant_id, attestation_id, candidate_url,
+                    decision_json, decision_hash, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (decision["authorization_id"], grant_id, attestation_id, candidate_url,
+                 canonical_json(decision), content_hash(decision), decision["created_at"]),
+            )
+            self._audit(
+                connection, action="network.destination_decided", subject_type="action_grant",
+                subject_id=grant_id, actor_type="service", actor_id="network-control",
+                data={"outcome": decision["outcome"], "reason_codes": decision["reason_codes"],
+                "authorization_id": decision["authorization_id"]},
+            )
+        return decision
+
     def recover_startup(self) -> dict[str, Any]:
         recovered_at = _timestamp()
         with transaction(self.database_path) as connection:
@@ -1548,6 +1763,14 @@ class AuthorizationService:
                 WHERE status = 'active'
                 """
             ).rowcount
+            invalidated = connection.execute(
+                """
+                UPDATE network_attestations
+                SET status = 'invalidated', invalidated_at = ?
+                WHERE status = 'valid'
+                """,
+                (recovered_at,),
+            ).rowcount
             connection.execute(
                 """
                 UPDATE safety_state
@@ -1564,10 +1787,19 @@ class AuthorizationService:
                 subject_id="global",
                 actor_type="service",
                 actor_id="startup-recovery",
-                data={"revoked_grants": revoked, "paused_assessments": affected},
+                data={
+                    "revoked_grants": revoked,
+                    "paused_assessments": affected,
+                    "invalidated_attestations": invalidated,
+                },
                 occurred_at=recovered_at,
             )
-        return {"status": "paused", "revoked_grants": revoked, "paused_assessments": affected}
+        return {
+            "status": "paused",
+            "revoked_grants": revoked,
+            "paused_assessments": affected,
+            "invalidated_attestations": invalidated,
+        }
 
     def set_global_safety(self, *, status: str, reason: str, actor_id: str) -> dict[str, Any]:
         if status not in {"active", "paused", "stopped"}:
@@ -1579,6 +1811,7 @@ class AuthorizationService:
             connection.execute("BEGIN IMMEDIATE")
             revoked = 0
             affected = 0
+            invalidated = 0
             if status in {"paused", "stopped"}:
                 revoked = connection.execute(
                     """
@@ -1593,6 +1826,14 @@ class AuthorizationService:
                     SET status = 'paused', revocation_epoch = revocation_epoch + 1
                     WHERE status = 'active'
                     """
+                ).rowcount
+                invalidated = connection.execute(
+                    """
+                    UPDATE network_attestations
+                    SET status = 'invalidated', invalidated_at = ?
+                    WHERE status = 'valid'
+                    """,
+                    (changed_at,),
                 ).rowcount
             connection.execute(
                 """
@@ -1613,6 +1854,7 @@ class AuthorizationService:
                     "reason": reason.strip(),
                     "revoked_grants": revoked,
                     "paused_assessments": affected,
+                    "invalidated_attestations": invalidated,
                 },
                 occurred_at=changed_at,
             )
@@ -1675,6 +1917,7 @@ class AuthorizationService:
                 ):
                     raise DomainError("SAFETY_RESUME_DENIED", "assessment policy is unverifiable")
             revoked = 0
+            invalidated = 0
             if status == "paused":
                 revoked = connection.execute(
                     """
@@ -1690,6 +1933,14 @@ class AuthorizationService:
                     """,
                     (engagement_id,),
                 )
+                invalidated = connection.execute(
+                    """
+                    UPDATE network_attestations
+                    SET status = 'invalidated', invalidated_at = ?
+                    WHERE engagement_id = ? AND status = 'valid'
+                    """,
+                    (changed_at, engagement_id),
+                ).rowcount
             else:
                 connection.execute(
                     "UPDATE engagements SET status = 'active' WHERE id = ?", (engagement_id,)
@@ -1701,7 +1952,11 @@ class AuthorizationService:
                 subject_id=engagement_id,
                 actor_type="human",
                 actor_id=actor_id,
-                data={"reason": reason.strip(), "revoked_grants": revoked},
+                data={
+                    "reason": reason.strip(),
+                    "revoked_grants": revoked,
+                    "invalidated_attestations": invalidated,
+                },
                 occurred_at=changed_at,
             )
         return {"id": engagement_id, "status": status, "changed_at": changed_at}

@@ -315,3 +315,36 @@ cannot validate those absent controls and therefore never enables execution.
 **Residual risk accepted:** This is a self-authored, non-independent review for local
 synthetic development only. It is not production approval, release authorization, or
 external assurance.
+
+## 2026-08-09 — Non-executing network authorization control
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Additive migration `0009`; NetworkAttestation and
+DestinationDecision v1 contracts; active signed-policy, route, source-IP, resolver,
+grant audience, expiry, epoch, DNS answer, CNAME, redirect, protocol, port, SNI, Host,
+IPv6, and pin-change checks; safety invalidation; immutable persistence and audit.
+
+**Evidence examined:** Contract validation; synthetic RFC 5737 allow path; private and
+loopback denial; IPv6-disabled denial; SNI mismatch; DNS pin-change denial; pause
+invalidation; grant remains unconsumed; migration and repository quality checks
+reported with the slice.
+
+**Findings:** Missing, malformed, stale, mismatched, or unverifiable authority denies.
+Only gateway-audience grants are eligible. The fixture resolver exception is narrowly
+limited to documentation address ranges and no code in this slice performs DNS or
+HTTP networking. Decisions explicitly remain non-executing.
+
+**Limitations and deferred work:** No trusted attestor, public-IP observation,
+controlled resolver, gateway socket, active session, worker containment, or firewall
+enforcement exists yet. Therefore INV-NET-001 through INV-NET-004 are only partially
+prepared and are not claimed verified. Live route loss and DNS bypass tests remain
+blocked on those later components.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It is
+not production approval, release authorization, external assurance, or permission to
+contact any target.
