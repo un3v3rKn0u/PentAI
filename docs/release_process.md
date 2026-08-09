@@ -46,6 +46,7 @@ pnpm typecheck
 pnpm test
 pnpm build
 cargo check --manifest-path apps/desktop/Cargo.toml
+cargo check --manifest-path apps/desktop/Cargo.toml --features release-distribution
 ```
 
 The release pull request must also pass Quality, Dependency review, CodeQL, and all
@@ -69,6 +70,12 @@ the independent reviews defined in `GIT_WORKFLOW.md`.
    PentAI does not yet publish desktop binaries because artifact signing and
    platform-specific notarization are not configured.
 7. Verify the release and tag are visible, then delete the temporary release branch.
+
+Linux desktop distribution is blocked at build time by `release-distribution` while
+Tauri's GTK 0.18 dependency retains `GHSA-wrw7-89jp-8q8g`. Development smoke builds
+remain enabled so the platform does not silently lose compatibility coverage.
+Removing this gate requires a lockfile with `glib` 0.20 or later, a clean advisory
+result, and successful Ubuntu desktop lifecycle and bundle checks.
 
 ## Rollback and incident handling
 

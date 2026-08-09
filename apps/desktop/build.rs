@@ -3,6 +3,11 @@ use std::{env, fs, path::PathBuf};
 
 fn main() {
     let target = env::var("TARGET").expect("Cargo TARGET is required");
+    if target.contains("linux") && env::var_os("CARGO_FEATURE_RELEASE_DISTRIBUTION").is_some() {
+        panic!(
+            "PENTAI-LINUX-RELEASE-BLOCKED-GHSA-WRW7-89JP-8Q8G: Tauri's GTK 0.18 stack requires vulnerable glib 0.18; release distribution remains disabled until the upstream dependency supports glib 0.20 or later"
+        );
+    }
     let extension = if target.contains("windows") {
         ".exe"
     } else {
