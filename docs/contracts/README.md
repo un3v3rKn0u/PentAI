@@ -16,6 +16,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   one active policy.
 - `destination-decision-v1.schema.json` — immutable, non-executing DNS and destination
   reauthorization result.
+- `gateway-session-v1.schema.json` — atomically budgeted, durable, non-executing
+  gateway session preparation.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review
@@ -30,6 +32,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | ActionGrant v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | NetworkAttestation v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | DestinationDecision v1 | Gateway Maintainer | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
+| GatewaySession v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | Canonical Types v1 | Policy Maintainer | Contract Maintainer | Gateway Maintainer, independent Security Reviewer |
 
 The owning role is accountable for semantics and consumers. The Contract Maintainer is

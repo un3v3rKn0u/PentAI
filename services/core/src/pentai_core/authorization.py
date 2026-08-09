@@ -86,6 +86,72 @@ class AuthorizationService:
         self.source_store = source_store
         self.policy_signer = policy_signer
 
+    @staticmethod
+    def _abort_gateway_sessions(
+        connection: sqlite3.Connection, *, finalized_at: str, engagement_id: str | None = None
+    ) -> int:
+        if engagement_id is None:
+            rows = connection.execute(
+                """
+                SELECT br.engagement_id, COUNT(*) AS amount
+                FROM gateway_sessions gs
+                JOIN budget_reservations br ON br.reservation_id = gs.reservation_id
+                WHERE gs.status = 'prepared' GROUP BY br.engagement_id
+                """
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT br.engagement_id, COUNT(*) AS amount
+                FROM gateway_sessions gs
+                JOIN budget_reservations br ON br.reservation_id = gs.reservation_id
+                WHERE gs.status = 'prepared' AND br.engagement_id = ?
+                GROUP BY br.engagement_id
+                """,
+                (engagement_id,),
+            ).fetchall()
+        for row in rows:
+            connection.execute(
+                """
+                UPDATE budget_accounts
+                SET reserved_requests = reserved_requests - ?,
+                    active_connections = active_connections - ?, updated_at = ?
+                WHERE engagement_id = ?
+                """,
+                (row["amount"], row["amount"], finalized_at, row["engagement_id"]),
+            )
+        if engagement_id is None:
+            connection.execute(
+                """
+                UPDATE budget_reservations SET status = 'released', finalized_at = ?
+                WHERE status = 'reserved'
+                """,
+                (finalized_at,),
+            )
+            return connection.execute(
+                """
+                UPDATE gateway_sessions SET status = 'aborted', finalized_at = ?
+                WHERE status = 'prepared'
+                """,
+                (finalized_at,),
+            ).rowcount
+        connection.execute(
+            """
+            UPDATE budget_reservations SET status = 'released', finalized_at = ?
+            WHERE status = 'reserved' AND engagement_id = ?
+            """,
+            (finalized_at, engagement_id),
+        )
+        return connection.execute(
+            """
+            UPDATE gateway_sessions SET status = 'aborted', finalized_at = ?
+            WHERE status = 'prepared' AND reservation_id IN (
+                SELECT reservation_id FROM budget_reservations WHERE engagement_id = ?
+            )
+            """,
+            (finalized_at, engagement_id),
+        ).rowcount
+
     def _audit(
         self,
         connection: sqlite3.Connection,
@@ -1036,6 +1102,11 @@ class AuthorizationService:
                 """,
                 (activated_at, policy["engagement_id"]),
             )
+            self._abort_gateway_sessions(
+                connection,
+                finalized_at=activated_at,
+                engagement_id=policy["engagement_id"],
+            )
             self._audit(
                 connection,
                 action="policy.activation",
@@ -1089,6 +1160,11 @@ class AuthorizationService:
                 WHERE engagement_id = ? AND status = 'valid'
                 """,
                 (revoked_at, policy["engagement_id"]),
+            )
+            self._abort_gateway_sessions(
+                connection,
+                finalized_at=revoked_at,
+                engagement_id=policy["engagement_id"],
             )
             self._audit(
                 connection,
@@ -1868,6 +1944,242 @@ class AuthorizationService:
             )
         return decision
 
+    def prepare_gateway_session(
+        self, *, grant_id: str, destination_authorization_id: str
+    ) -> dict[str, Any]:
+        prepared_at = _timestamp()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT ag.*, da.attestation_id, da.decision_json, da.decision_hash,
+                       na.status AS attestation_status, p.policy_json,
+                       p.revoked_at AS policy_revoked_at, e.active_policy_id,
+                       e.revocation_epoch AS current_epoch, e.status AS engagement_status,
+                       s.global_status
+                FROM action_grants ag
+                JOIN destination_authorizations da ON da.grant_id = ag.grant_id
+                JOIN network_attestations na ON na.attestation_id = da.attestation_id
+                JOIN policy_bundles p ON p.id = ag.policy_bundle_id
+                JOIN engagements e ON e.id = ag.engagement_id
+                CROSS JOIN safety_state s
+                WHERE ag.grant_id = ? AND da.authorization_id = ?
+                """,
+                (grant_id, destination_authorization_id),
+            ).fetchone()
+            if row is None:
+                raise DomainError("GATEWAY_SESSION_DENIED", "runtime authorization is missing")
+            existing = connection.execute(
+                "SELECT reservation_id FROM budget_reservations WHERE grant_id = ?",
+                (grant_id,),
+            ).fetchone()
+            if existing is not None:
+                raise DomainError("GATEWAY_SESSION_REPLAYED", "authority is already reserved")
+            grant = json.loads(row["grant_json"])
+            decision = json.loads(row["decision_json"])
+            policy = json.loads(row["policy_json"])
+            now = parse_time(prepared_at)
+            if (
+                contract_issues(grant, "action-grant-v1.schema.json")
+                or contract_issues(decision, "destination-decision-v1.schema.json")
+                or content_hash(grant) != row["grant_hash"]
+                or content_hash(decision) != row["decision_hash"]
+                or decision.get("outcome") != "allow"
+                or decision.get("execution_enabled") is not False
+                or decision.get("grant_id") != grant_id
+                or decision.get("attestation_id") != row["attestation_id"]
+                or grant.get("audience") != "pentai-egress-gateway"
+                or row["audience"] != "pentai-egress-gateway"
+                or row["used_at"] is not None
+                or row["revoked_at"] is not None
+                or parse_time(grant["not_before"]) > now
+                or parse_time(grant["expires_at"]) <= now
+                or row["policy_revoked_at"] is not None
+                or row["active_policy_id"] != row["policy_bundle_id"]
+                or row["revocation_epoch"] != row["current_epoch"]
+                or row["engagement_status"] != "active"
+                or row["global_status"] != "active"
+                or row["attestation_status"] != "valid"
+                or self.policy_signer is None
+                or not self.policy_signer.verify(
+                    _grant_payload(grant),
+                    str(grant.get("signature", {}).get("value", "")),
+                    str(grant.get("signature", {}).get("key_id", "")),
+                )
+            ):
+                raise DomainError("GATEWAY_SESSION_DENIED", "runtime authority is inactive")
+            budgets = policy["budgets"]
+            request_limit = int(budgets["maximum_total_requests"])
+            connection_limit = int(budgets["concurrent_connections"])
+            response_limit = min(
+                int(budgets["maximum_response_bytes"]),
+                int(grant["constraints"]["maximum_response_bytes"]),
+            )
+            connection.execute(
+                """
+                INSERT INTO budget_accounts(
+                    engagement_id, policy_bundle_id, request_limit, connection_limit,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(engagement_id) DO UPDATE SET
+                    policy_bundle_id = excluded.policy_bundle_id,
+                    request_limit = excluded.request_limit,
+                    connection_limit = excluded.connection_limit,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    row["engagement_id"],
+                    row["policy_bundle_id"],
+                    request_limit,
+                    connection_limit,
+                    prepared_at,
+                ),
+            )
+            reserved = connection.execute(
+                """
+                UPDATE budget_accounts
+                SET reserved_requests = reserved_requests + 1,
+                    active_connections = active_connections + 1, updated_at = ?
+                WHERE engagement_id = ?
+                  AND reserved_requests + committed_requests + 1 <= request_limit
+                  AND active_connections + 1 <= connection_limit
+                """,
+                (prepared_at, row["engagement_id"]),
+            )
+            if reserved.rowcount != 1:
+                raise DomainError("BUDGET_EXHAUSTED", "request or concurrency budget is exhausted")
+            reservation_id = str(uuid4())
+            session_id = str(uuid4())
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO budget_reservations(
+                        reservation_id, engagement_id, policy_bundle_id, grant_id,
+                        destination_authorization_id, request_count, response_bytes_limit,
+                        status, reserved_at
+                    ) VALUES (?, ?, ?, ?, ?, 1, ?, 'reserved', ?)
+                    """,
+                    (
+                        reservation_id,
+                        row["engagement_id"],
+                        row["policy_bundle_id"],
+                        grant_id,
+                        destination_authorization_id,
+                        response_limit,
+                        prepared_at,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO gateway_sessions(
+                        session_id, reservation_id, grant_id, attestation_id,
+                        destination_authorization_id, status, prepared_at,
+                        execution_enabled
+                    ) VALUES (?, ?, ?, ?, ?, 'prepared', ?, 0)
+                    """,
+                    (
+                        session_id,
+                        reservation_id,
+                        grant_id,
+                        row["attestation_id"],
+                        destination_authorization_id,
+                        prepared_at,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise DomainError(
+                    "GATEWAY_SESSION_REPLAYED", "authority is already reserved"
+                ) from exc
+            document = {
+                "schema_version": "1.0.0",
+                "session_id": session_id,
+                "reservation_id": reservation_id,
+                "grant_id": grant_id,
+                "attestation_id": row["attestation_id"],
+                "destination_authorization_id": destination_authorization_id,
+                "status": "prepared",
+                "request_count": 1,
+                "response_bytes_limit": response_limit,
+                "prepared_at": prepared_at,
+                "execution_enabled": False,
+            }
+            if contract_issues(document, "gateway-session-v1.schema.json"):
+                raise DomainError("GATEWAY_SESSION_DENIED", "generated session is invalid")
+            self._audit(
+                connection,
+                action="gateway.session_prepared",
+                subject_type="gateway_session",
+                subject_id=session_id,
+                actor_type="service",
+                actor_id="gateway-control",
+                data={
+                    "reservation_id": reservation_id,
+                    "grant_id": grant_id,
+                    "destination_authorization_id": destination_authorization_id,
+                    "execution_enabled": False,
+                },
+                occurred_at=prepared_at,
+            )
+        return document
+
+    def abort_gateway_session(self, session_id: str, *, reason: str) -> dict[str, Any]:
+        if not reason.strip():
+            raise DomainError("SESSION_REASON_REQUIRED", "session abort reason is required")
+        finalized_at = _timestamp()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT gs.*, br.engagement_id FROM gateway_sessions gs
+                JOIN budget_reservations br ON br.reservation_id = gs.reservation_id
+                WHERE gs.session_id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                raise DomainError("GATEWAY_SESSION_NOT_FOUND", "gateway session does not exist")
+            if row["status"] != "prepared":
+                raise DomainError("GATEWAY_SESSION_FINALIZED", "gateway session is already final")
+            connection.execute(
+                """
+                UPDATE budget_accounts
+                SET reserved_requests = reserved_requests - 1,
+                    active_connections = active_connections - 1, updated_at = ?
+                WHERE engagement_id = ?
+                """,
+                (finalized_at, row["engagement_id"]),
+            )
+            connection.execute(
+                """
+                UPDATE budget_reservations SET status = 'released', finalized_at = ?
+                WHERE reservation_id = ? AND status = 'reserved'
+                """,
+                (finalized_at, row["reservation_id"]),
+            )
+            connection.execute(
+                """
+                UPDATE gateway_sessions SET status = 'aborted', finalized_at = ?
+                WHERE session_id = ? AND status = 'prepared'
+                """,
+                (finalized_at, session_id),
+            )
+            self._audit(
+                connection,
+                action="gateway.session_aborted",
+                subject_type="gateway_session",
+                subject_id=session_id,
+                actor_type="service",
+                actor_id="gateway-control",
+                data={"reason": reason.strip()},
+                occurred_at=finalized_at,
+            )
+        return {
+            "session_id": session_id,
+            "status": "aborted",
+            "finalized_at": finalized_at,
+            "execution_enabled": False,
+        }
+
     def recover_startup(self) -> dict[str, Any]:
         recovered_at = _timestamp()
         with transaction(self.database_path) as connection:
@@ -1894,6 +2206,9 @@ class AuthorizationService:
                 """,
                 (recovered_at,),
             ).rowcount
+            aborted_sessions = self._abort_gateway_sessions(
+                connection, finalized_at=recovered_at
+            )
             connection.execute(
                 """
                 UPDATE safety_state
@@ -1914,6 +2229,7 @@ class AuthorizationService:
                     "revoked_grants": revoked,
                     "paused_assessments": affected,
                     "invalidated_attestations": invalidated,
+                    "aborted_gateway_sessions": aborted_sessions,
                 },
                 occurred_at=recovered_at,
             )
@@ -1922,6 +2238,7 @@ class AuthorizationService:
             "revoked_grants": revoked,
             "paused_assessments": affected,
             "invalidated_attestations": invalidated,
+            "aborted_gateway_sessions": aborted_sessions,
         }
 
     def set_global_safety(self, *, status: str, reason: str, actor_id: str) -> dict[str, Any]:
@@ -1935,6 +2252,7 @@ class AuthorizationService:
             revoked = 0
             affected = 0
             invalidated = 0
+            aborted_sessions = 0
             if status in {"paused", "stopped"}:
                 revoked = connection.execute(
                     """
@@ -1958,6 +2276,9 @@ class AuthorizationService:
                     """,
                     (changed_at,),
                 ).rowcount
+                aborted_sessions = self._abort_gateway_sessions(
+                    connection, finalized_at=changed_at
+                )
             connection.execute(
                 """
                 UPDATE safety_state
@@ -1978,6 +2299,7 @@ class AuthorizationService:
                     "revoked_grants": revoked,
                     "paused_assessments": affected,
                     "invalidated_attestations": invalidated,
+                    "aborted_gateway_sessions": aborted_sessions,
                 },
                 occurred_at=changed_at,
             )
@@ -2041,6 +2363,7 @@ class AuthorizationService:
                     raise DomainError("SAFETY_RESUME_DENIED", "assessment policy is unverifiable")
             revoked = 0
             invalidated = 0
+            aborted_sessions = 0
             if status == "paused":
                 revoked = connection.execute(
                     """
@@ -2064,6 +2387,9 @@ class AuthorizationService:
                     """,
                     (changed_at, engagement_id),
                 ).rowcount
+                aborted_sessions = self._abort_gateway_sessions(
+                    connection, finalized_at=changed_at, engagement_id=engagement_id
+                )
             else:
                 connection.execute(
                     "UPDATE engagements SET status = 'active' WHERE id = ?", (engagement_id,)
@@ -2079,6 +2405,7 @@ class AuthorizationService:
                     "reason": reason.strip(),
                     "revoked_grants": revoked,
                     "invalidated_attestations": invalidated,
+                    "aborted_gateway_sessions": aborted_sessions,
                 },
                 occurred_at=changed_at,
             )

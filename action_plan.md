@@ -253,6 +253,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     route/source-IP attestation, redirect reauthorization, stop controls, and negative
     bypass tests.
 - [ ] Build the first gateway supporting HTTP(S), controlled DNS, redirects, and rate enforcement.
+  - The non-networking gateway control plane now persists immutable destination
+    decisions, atomically reserves total-request/concurrency/response capacity, and
+    prepares durable sessions with execution disabled. Rate token buckets, sockets,
+    containment, and external effects remain required before this item is complete.
 - [ ] Create an isolated HTTP/browser worker with no direct outbound route.
 - [ ] Implement source-IP attestation and approved-IP comparison.
 - [x] Implement global and assessment-level pause, stop, and grant revocation.

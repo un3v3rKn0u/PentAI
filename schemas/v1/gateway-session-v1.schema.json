@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/gateway-session-v1.schema.json",
+  "title": "PentAI GatewaySession v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "session_id", "reservation_id", "grant_id", "attestation_id", "destination_authorization_id", "status", "request_count", "response_bytes_limit", "prepared_at", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "session_id": {"type": "string", "format": "uuid"},
+    "reservation_id": {"type": "string", "format": "uuid"},
+    "grant_id": {"type": "string", "format": "uuid"},
+    "attestation_id": {"type": "string", "format": "uuid"},
+    "destination_authorization_id": {"type": "string", "format": "uuid"},
+    "status": {"enum": ["prepared", "closed", "aborted"]},
+    "request_count": {"const": 1},
+    "response_bytes_limit": {"type": "integer", "minimum": 1},
+    "prepared_at": {"type": "string", "format": "date-time"},
+    "finalized_at": {"type": "string", "format": "date-time"},
+    "execution_enabled": {"const": false}
+  }
+}
