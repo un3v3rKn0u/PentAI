@@ -216,7 +216,7 @@ assurance claim.
 governance limitation is accepted for this internal validation slice only. It does not
 authorize target-facing execution or substitute for independent assessment.
 
-## 2026-08-09 — Signed policy lifecycle (review pending)
+## 2026-08-09 — Signed policy lifecycle (merged; review gate still open)
 
 **Decision:** Not approved — independent security review required<br>
 **Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
@@ -234,7 +234,46 @@ ID and policy/approval binding; unsigned legacy denial; key absence and invalid-
 failure; expiry, replacement, revocation, and audit regressions; local and hosted checks
 reported on the PR.
 
-**Open gate:** A qualified independent reviewer must examine and approve generation,
+**Post-merge status:** PR #26 was squash-merged as `0686878` with all hosted checks
+passing, but GitHub records no review. The merge did not satisfy or waive this gate.
+A qualified independent reviewer must still examine and approve generation,
 credential-store behavior on macOS/Windows/Linux, key delivery, memory exposure,
 domain separation, verification, loss/rotation behavior, compatibility, and recovery.
-No merge or security claim is permitted before that approval.
+No release, gateway connection, or security claim is permitted before that approval.
+
+## 2026-08-09 — Non-executing ActionGrant authorization chain
+
+**Decision:** Sole-maintainer security review — non-independent; approved for the
+non-executing local slice only<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; the documented sole-maintainer exception is used. This review
+does not extend or reapprove signing-key custody and authorizes no target execution.
+
+**Scope reviewed:** additive migration `0007`; immutable ActionIntent persistence;
+deterministic PolicyDecision linkage; Ed25519 ActionGrant minting; audience,
+assessment, policy, epoch, capability, target/HTTP/account, and parameter bindings;
+30-second maximum lifetime; atomic single-use consumption; revocation; audit linkage;
+API and supervised UI states.
+
+**Evidence examined:** complete branch diff; ActionIntent, PolicyDecision, and
+ActionGrant v1 schemas; INV-GRANT-001 through INV-GRANT-004; exact allow-only minting;
+malformed/wrong-key/wrong-audience/mutated/expired/replayed/revoked/idempotency paths;
+two-consumer race proof; immutable database triggers; migration idempotency; full local
+Python, contracts, UI, desktop compile, and dependency-audit results.
+
+**Findings:** No unresolved material finding in the non-executing scope. Grant
+issuance requires an immutable allow decision and current signed policy. Verification
+uses a write-reserving transaction so concurrent consumers cannot both succeed.
+Policy revocation or replacement invalidates outstanding grants and increments the
+epoch. All verifier failures deny and perform no external effect.
+
+**Limitations and deferred work:** The current core process hosts the logical execution
+broker boundary; process isolation comes with the worker slice. Budget reservation,
+clock-health attestation, controlled DNS, destination/redirect reauthorization,
+route/source-IP checks, gateway containment, and target-facing HTTP(S) remain absent.
+The verifier result is not permission to bypass any of those controls.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It is
+accepted only for local grant issuance and consumption with no networking. Independent
+review remains required before this authority is connected to an execution gateway.

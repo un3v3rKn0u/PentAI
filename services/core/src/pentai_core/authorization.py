@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePath
@@ -15,7 +16,7 @@ from pentai_policy import (
     evaluate,
     validate_and_canonicalize_manifest,
 )
-from pentai_policy.document import parse_time
+from pentai_policy.document import contract_issues, parse_time
 
 from pentai_core.database import transaction
 from pentai_core.policy_signing import PolicySigner
@@ -51,6 +52,21 @@ def _now() -> datetime:
 
 def _timestamp(value: datetime | None = None) -> str:
     return (value or _now()).isoformat().replace("+00:00", "Z")
+
+
+def _grant_payload(document: dict[str, Any]) -> bytes:
+    unsigned = {key: value for key, value in document.items() if key != "signature"}
+    return b"pentai-action-grant-v1:" + canonical_json(unsigned).encode()
+
+
+def _intent_target_digest(intent: dict[str, Any]) -> str:
+    return content_hash(
+        {
+            "target": intent.get("target"),
+            "http": intent.get("http"),
+            "account_reference": intent.get("account_reference"),
+        }
+    )
 
 
 class AuthorizationService:
@@ -961,6 +977,13 @@ class AuthorizationService:
                 )
                 connection.execute(
                     """
+                    UPDATE action_grants SET revoked_at = ?
+                    WHERE engagement_id = ? AND used_at IS NULL AND revoked_at IS NULL
+                    """,
+                    (activated_at, policy["engagement_id"]),
+                )
+                connection.execute(
+                    """
                     UPDATE engagements
                     SET revocation_epoch = revocation_epoch + 1
                     WHERE id = ?
@@ -1039,6 +1062,13 @@ class AuthorizationService:
                 """,
                 (policy["engagement_id"],),
             )
+            connection.execute(
+                """
+                UPDATE action_grants SET revoked_at = ?
+                WHERE engagement_id = ? AND used_at IS NULL AND revoked_at IS NULL
+                """,
+                (revoked_at, policy["engagement_id"]),
+            )
             self._audit(
                 connection,
                 action="policy.revocation",
@@ -1116,6 +1146,56 @@ class AuthorizationService:
                 )
             ):
                 raise DomainError("POLICY_SIGNATURE_INVALID", "active policy signature is invalid")
+            intent_issues = contract_issues(intent, "action-intent-v1.schema.json")
+            if not intent_issues:
+                intent_hash = content_hash(intent)
+                prior_intent = connection.execute(
+                    """
+                    SELECT intent_hash FROM action_intents
+                    WHERE engagement_id = ? AND idempotency_key = ?
+                    """,
+                    (engagement_id, intent["idempotency_key"]),
+                ).fetchone()
+                if prior_intent is not None and prior_intent["intent_hash"] != intent_hash:
+                    self._audit(
+                        connection,
+                        action="action_intent.rejected",
+                        subject_type="action_intent",
+                        subject_id=str(intent.get("intent_id", "invalid")),
+                        actor_type="service",
+                        actor_id="authorization-service",
+                        data={"reason_codes": ["IDEMPOTENCY_CONFLICT"]},
+                    )
+                    raise DomainError(
+                        "IDEMPOTENCY_CONFLICT",
+                        "idempotency key is already bound to another intent",
+                    )
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO action_intents(
+                        intent_id, engagement_id, policy_bundle_id, policy_hash,
+                        idempotency_key, intent_hash, intent_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        intent["intent_id"],
+                        engagement_id,
+                        policy["id"],
+                        intent["policy_hash"],
+                        intent["idempotency_key"],
+                        intent_hash,
+                        canonical_json(intent),
+                        intent["created_at"],
+                    ),
+                )
+                stored_intent = connection.execute(
+                    "SELECT intent_hash FROM action_intents WHERE intent_id = ?",
+                    (intent["intent_id"],),
+                ).fetchone()
+                if stored_intent is None or stored_intent["intent_hash"] != intent_hash:
+                    raise DomainError(
+                        "INTENT_ID_CONFLICT", "intent identifier is already bound"
+                    )
             decision = evaluate(
                 intent,
                 policy_document,
@@ -1157,6 +1237,270 @@ class AuthorizationService:
                 },
             )
             return decision
+
+    def mint_action_grant(
+        self, decision_id: str, *, audience: str = "pentai-execution-broker"
+    ) -> dict[str, Any]:
+        if audience not in {"pentai-execution-broker", "pentai-egress-gateway"}:
+            raise DomainError("GRANT_AUDIENCE_INVALID", "grant audience is invalid")
+        if self.policy_signer is None:
+            raise DomainError("GRANT_SIGNER_UNAVAILABLE", "grant signer is unavailable")
+        issued = _now()
+        issued_at = _timestamp(issued)
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT pe.*, ai.intent_hash, ai.idempotency_key,
+                       p.content_hash AS policy_hash,
+                       p.policy_json, p.activated_at, p.revoked_at,
+                       e.active_policy_id, e.revocation_epoch, e.status AS engagement_status
+                FROM policy_evaluations pe
+                JOIN action_intents ai ON ai.intent_id = pe.intent_id
+                JOIN policy_bundles p ON p.id = pe.policy_bundle_id
+                JOIN engagements e ON e.id = pe.engagement_id
+                WHERE pe.decision_id = ?
+                """,
+                (decision_id,),
+            ).fetchone()
+            if row is None:
+                raise DomainError("DECISION_NOT_FOUND", "policy decision does not exist")
+            intent = json.loads(row["intent_json"])
+            decision = json.loads(row["decision_json"])
+            policy = json.loads(row["policy_json"])
+            policy_signature = policy.get("signature", {})
+            if (
+                contract_issues(intent, "action-intent-v1.schema.json")
+                or contract_issues(decision, "policy-decision-v1.schema.json")
+                or content_hash(intent) != row["intent_hash"]
+                or decision.get("outcome") != "allow"
+                or decision.get("reason_codes") != ["EXPLICIT_ALLOW"]
+                or decision.get("decision_id") != decision_id
+                or decision.get("intent_id") != intent.get("intent_id")
+                or decision.get("assessment_id") != row["engagement_id"]
+                or decision.get("policy_hash") != row["policy_hash"]
+                or intent.get("policy_hash") != row["policy_hash"]
+                or row["active_policy_id"] != row["policy_bundle_id"]
+                or row["activated_at"] is None
+                or row["revoked_at"] is not None
+                or row["engagement_status"] != "active"
+                or policy_signature.get("algorithm") != "Ed25519"
+                or not self.policy_signer.verify(
+                    f"pentai-policy-v1:{row['policy_hash']}".encode("ascii"),
+                    str(policy_signature.get("value", "")),
+                    str(policy_signature.get("key_id", "")),
+                )
+            ):
+                raise DomainError("GRANT_AUTHORITY_INVALID", "decision cannot authorize a grant")
+            existing = connection.execute(
+                "SELECT grant_json FROM action_grants WHERE decision_id = ?", (decision_id,)
+            ).fetchone()
+            if existing is not None:
+                existing_grant: dict[str, Any] = json.loads(existing["grant_json"])
+                return existing_grant
+            expires = min(
+                issued + timedelta(seconds=30),
+                parse_time(intent["expires_at"]),
+                parse_time(policy["validity"]["not_after"]),
+            )
+            if expires <= issued:
+                raise DomainError("GRANT_EXPIRED", "grant authority is already expired")
+            requested = intent.get("requested_limits", {})
+            http = intent.get("http", {})
+            maximum_response_bytes = min(
+                int(
+                    requested.get(
+                        "maximum_response_bytes", policy["budgets"]["maximum_response_bytes"]
+                    )
+                ),
+                int(policy["budgets"]["maximum_response_bytes"]),
+            )
+            follow_redirects = bool(http.get("follow_redirects", False))
+            maximum_redirects = int(http.get("maximum_redirects", 0)) if follow_redirects else 0
+            grant: dict[str, Any] = {
+                "schema_version": "1.0.0",
+                "grant_id": str(uuid4()),
+                "intent_id": intent["intent_id"],
+                "decision_id": decision_id,
+                "assessment_id": row["engagement_id"],
+                "policy_hash": row["policy_hash"],
+                "revocation_epoch": row["revocation_epoch"],
+                "audience": audience,
+                "capability": intent["capability"],
+                "target_digest": _intent_target_digest(intent),
+                "parameters_digest": intent["parameters_digest"],
+                "constraints": {
+                    "maximum_connections": 1,
+                    "maximum_requests": 1,
+                    "timeout_seconds": min(int(requested.get("timeout_seconds", 30)), 300),
+                    "maximum_response_bytes": maximum_response_bytes,
+                    "follow_redirects": follow_redirects,
+                    "maximum_redirects": maximum_redirects,
+                    "required_route_profile_id": policy["network_constraints"][
+                        "route_profile_id"
+                    ],
+                },
+                "issued_at": issued_at,
+                "not_before": issued_at,
+                "expires_at": _timestamp(expires),
+                "nonce": secrets.token_urlsafe(24),
+                "single_use": True,
+            }
+            grant["signature"] = {
+                "algorithm": "Ed25519",
+                "key_id": self.policy_signer.key_id,
+                "value": self.policy_signer.sign(_grant_payload(grant)),
+            }
+            if contract_issues(grant, "action-grant-v1.schema.json"):
+                raise DomainError("GRANT_CONTRACT_INVALID", "generated grant is invalid")
+            grant_json = canonical_json(grant)
+            grant_hash = content_hash(grant)
+            connection.execute(
+                """
+                INSERT INTO action_grants(
+                    grant_id, intent_id, decision_id, engagement_id, policy_bundle_id,
+                    policy_hash, revocation_epoch, audience, grant_json, grant_hash,
+                    issued_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    grant["grant_id"],
+                    grant["intent_id"],
+                    decision_id,
+                    row["engagement_id"],
+                    row["policy_bundle_id"],
+                    row["policy_hash"],
+                    row["revocation_epoch"],
+                    audience,
+                    grant_json,
+                    grant_hash,
+                    issued_at,
+                    grant["expires_at"],
+                ),
+            )
+            self._audit(
+                connection,
+                action="action_grant.issued",
+                subject_type="action_grant",
+                subject_id=grant["grant_id"],
+                actor_type="service",
+                actor_id="execution-broker",
+                data={
+                    "intent_id": grant["intent_id"],
+                    "decision_id": decision_id,
+                    "policy_hash": grant["policy_hash"],
+                    "audience": audience,
+                    "grant_hash": grant_hash,
+                },
+                occurred_at=issued_at,
+            )
+            return grant
+
+    def consume_action_grant(
+        self,
+        grant: dict[str, Any],
+        intent: dict[str, Any],
+        *,
+        audience: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        instant = now or _now()
+        consumed_at = _timestamp(instant)
+        if self.policy_signer is None:
+            raise DomainError("GRANT_SIGNER_UNAVAILABLE", "grant signer is unavailable")
+        if contract_issues(grant, "action-grant-v1.schema.json"):
+            raise DomainError("GRANT_INVALID", "grant contract is invalid")
+        signature = grant.get("signature", {})
+        if (
+            signature.get("algorithm") != "Ed25519"
+            or not self.policy_signer.verify(
+                _grant_payload(grant),
+                str(signature.get("value", "")),
+                str(signature.get("key_id", "")),
+            )
+        ):
+            raise DomainError("GRANT_SIGNATURE_INVALID", "grant signature is invalid")
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT ag.*, ai.intent_json, ai.intent_hash,
+                       e.active_policy_id, e.revocation_epoch AS current_revocation_epoch,
+                       e.status AS engagement_status,
+                       p.activated_at, p.revoked_at AS policy_revoked_at
+                FROM action_grants ag
+                JOIN action_intents ai ON ai.intent_id = ag.intent_id
+                JOIN engagements e ON e.id = ag.engagement_id
+                JOIN policy_bundles p ON p.id = ag.policy_bundle_id
+                WHERE ag.grant_id = ?
+                """,
+                (grant["grant_id"],),
+            ).fetchone()
+            if row is None:
+                raise DomainError("GRANT_NOT_FOUND", "grant does not exist")
+            stored_intent = json.loads(row["intent_json"])
+            if (
+                canonical_json(grant) != row["grant_json"]
+                or content_hash(grant) != row["grant_hash"]
+                or canonical_json(intent) != canonical_json(stored_intent)
+                or content_hash(intent) != row["intent_hash"]
+                or audience != grant["audience"]
+                or grant["audience"] != row["audience"]
+                or grant["assessment_id"] != row["engagement_id"]
+                or grant["policy_hash"] != row["policy_hash"]
+                or grant["revocation_epoch"] != row["revocation_epoch"]
+                or grant["intent_id"] != intent.get("intent_id")
+                or grant["capability"] != intent.get("capability")
+                or grant["target_digest"] != _intent_target_digest(intent)
+                or grant["parameters_digest"] != intent.get("parameters_digest")
+            ):
+                raise DomainError("GRANT_BINDING_MISMATCH", "grant binding is invalid")
+            if row["used_at"] is not None:
+                raise DomainError("GRANT_REPLAYED", "grant was already consumed")
+            if row["revoked_at"] is not None:
+                raise DomainError("GRANT_REVOKED", "grant is revoked")
+            if parse_time(grant["not_before"]) > instant:
+                raise DomainError("GRANT_NOT_YET_VALID", "grant is not yet valid")
+            if parse_time(grant["expires_at"]) <= instant:
+                raise DomainError("GRANT_EXPIRED", "grant has expired")
+            if (
+                row["active_policy_id"] != row["policy_bundle_id"]
+                or row["activated_at"] is None
+                or row["policy_revoked_at"] is not None
+                or row["engagement_status"] != "active"
+                or grant["revocation_epoch"] != row["current_revocation_epoch"]
+            ):
+                raise DomainError("GRANT_REVOKED", "grant authority is no longer active")
+            cursor = connection.execute(
+                """
+                UPDATE action_grants SET used_at = ?
+                WHERE grant_id = ? AND used_at IS NULL AND revoked_at IS NULL
+                """,
+                (consumed_at, grant["grant_id"]),
+            )
+            if cursor.rowcount != 1:
+                raise DomainError("GRANT_REPLAYED", "grant was already consumed")
+            self._audit(
+                connection,
+                action="action_grant.consumed",
+                subject_type="action_grant",
+                subject_id=grant["grant_id"],
+                actor_type="service",
+                actor_id=audience,
+                data={
+                    "intent_id": grant["intent_id"],
+                    "decision_id": grant["decision_id"],
+                    "policy_hash": grant["policy_hash"],
+                    "grant_hash": row["grant_hash"],
+                },
+                occurred_at=consumed_at,
+            )
+            return {
+                "grant_id": grant["grant_id"],
+                "status": "consumed",
+                "consumed_at": consumed_at,
+                "policy_hash": grant["policy_hash"],
+            }
 
     def audit_events(self) -> list[dict[str, Any]]:
         with transaction(self.database_path) as connection:

@@ -101,6 +101,17 @@ class EvaluationRequest(StrictRequest):
     intent: dict[str, Any]
 
 
+class GrantRequest(StrictRequest):
+    decision_id: str
+    audience: str = "pentai-execution-broker"
+
+
+class GrantConsumptionRequest(StrictRequest):
+    grant: dict[str, Any]
+    intent: dict[str, Any]
+    audience: str
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -351,6 +362,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def evaluate_policy(evaluation: EvaluationRequest) -> dict[str, Any]:
         return call(
             lambda: authorization.evaluate_intent(evaluation.engagement_id, evaluation.intent)
+        )
+
+    @app.post("/api/v1/action-grants")
+    def mint_action_grant(requested: GrantRequest) -> dict[str, Any]:
+        return call(
+            lambda: authorization.mint_action_grant(
+                requested.decision_id, audience=requested.audience
+            )
+        )
+
+    @app.post("/api/v1/action-grants/consume")
+    def consume_action_grant(requested: GrantConsumptionRequest) -> dict[str, Any]:
+        return call(
+            lambda: authorization.consume_action_grant(
+                requested.grant, requested.intent, audience=requested.audience
+            )
         )
 
     @app.get("/api/v1/audit")

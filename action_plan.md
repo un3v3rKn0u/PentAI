@@ -236,14 +236,20 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
 - [ ] Build policy compilation, deterministic decision evaluation, signing, activation, revocation, and version history.
 - [ ] Build typed, expiring approvals and activation workflow.
-  - Implementation is prepared on `feature/signed-policy-lifecycle`; merge is blocked
-    pending the independent signing-key-custody review required by `GIT_WORKFLOW.md`.
+  - Signed lifecycle implementation was merged in PR #26; Phase 1 completion remains
+    gated by the remaining execution, recovery, evidence, and reporting demonstrations.
 - [x] Build semantic diffs for scope, techniques, limits, and reporting terms.
 
 ### 6.5 Actions: execution and safety
 
 - [ ] Implement `ActionIntent → PolicyDecision → ActionGrant → Execution` end to end.
-- [ ] Build a single-use, audience-bound, short-lived grant verifier.
+- [x] Build a single-use, audience-bound, short-lived grant verifier.
+  - The non-executing `ActionIntent → PolicyDecision → ActionGrant` chain and atomic
+    local verifier are implemented on `feature/action-grant-chain`; gateway execution
+    remains explicitly deferred.
+  - Gateway integration is governance-blocked until a qualified independent reviewer
+    closes the post-merge PR #26 signing-key-custody gate recorded in
+    `docs/security/phase1_slice_reviews.md`.
 - [ ] Build the first gateway supporting HTTP(S), controlled DNS, redirects, and rate enforcement.
 - [ ] Create an isolated HTTP/browser worker with no direct outbound route.
 - [ ] Implement source-IP attestation and approved-IP comparison.
