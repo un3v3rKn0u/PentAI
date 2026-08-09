@@ -16,10 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from pentai_core import __version__
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.config import Settings, allowed_origins
-from pentai_core.gateway_runtime_supervisor import (
-    RuntimeSupervisorControl,
-    UnconfiguredGatewayRuntimeSupervisor,
-)
+from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
+from pentai_core.gateway_runtime_supervisor import RuntimeSupervisorControl
 from pentai_core.migrate import migrate
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
@@ -168,11 +166,8 @@ def create_app(
         runtime.database_path, source_store=source_store, policy_signer=signer
     )
     authorization.recover_startup()
-    supervisor = runtime_supervisor or UnconfiguredGatewayRuntimeSupervisor(
-        database_path=runtime.database_path,
-        pause_safety=lambda reason: authorization.set_global_safety(
-            status="paused", reason=reason, actor_id="gateway-runtime-supervisor"
-        ),
+    supervisor = runtime_supervisor or compose_gateway_runtime_supervisor(
+        settings=runtime, safety_control=authorization
     )
     supervisor.start()
     app = FastAPI(

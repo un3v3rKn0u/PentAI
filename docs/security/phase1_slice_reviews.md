@@ -670,3 +670,39 @@ redirects, worker attachment, and production scheduling remain unverified or abs
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not approve production use, worker execution, or target-facing networking.
+
+## 2026-08-09 — Strict gateway runtime composition and crash harness
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without HTTP, DNS, worker, or target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Disabled-by-default runtime configuration, complete identity and
+digest validation, trusted executable construction, production supervisor composition,
+recovery ordering, continuous containment revalidation, fixed degraded diagnostics,
+and the hosted abrupt-process-loss harness.
+
+**Evidence examined:** Unit and integration tests prove partial or ambiguous opt-in,
+unsupported runtimes, relative executable paths, malformed identities, mutable image
+references, invalid watchdog bounds, and unavailable executables deny or degrade. Tests
+also prove durable cleanup precedes containment revalidation, readiness follows both,
+watchdog checks repeat, and execution remains false. The hosted harness uses a spawned
+child that launches only the repository sentinel and exits through `os._exit`; a new
+production-composed supervisor must terminate the durable container and pause its
+synthetic owning assessment.
+
+**Findings:** Core previously accepted only an injected lifecycle and therefore could
+not establish the trusted runtime, managed-network, and pinned-probe identities from
+operator configuration. Strict composition closes that gap without provisioning a
+network, building an image, or creating any target-facing capability.
+
+**Limitations and deferred work:** The local Docker daemon is rootful, so the live
+crash harness was not run locally. Its Linux rootless Podman result remains required in
+hosted review. Other operating systems, machine reboot, production deployment, route
+and source-IP attestation, controlled DNS, HTTP, redirects, and worker attachment remain
+unverified or absent.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not approve production use, worker execution, or target-facing networking.

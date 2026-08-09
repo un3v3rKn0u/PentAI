@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
+_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+_DIGEST_PATTERN = re.compile(r"^sha256:[a-f0-9]{64}$")
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
@@ -25,12 +27,21 @@ class Settings:
     policy_signing_key: bytes | None = None
     launch_credential: str | None = None
     test_mode: bool = False
+    gateway_runtime_enabled: bool = False
+    gateway_runtime: str | None = None
+    gateway_runtime_executable: Path | None = None
+    gateway_runtime_instance_id: str | None = None
+    gateway_network_id: str | None = None
+    gateway_probe_image_digest: str | None = None
+    gateway_instance_id: str | None = None
+    gateway_watchdog_interval_seconds: float = 5
 
     def validate(self) -> None:
         if self.host not in _LOOPBACK_HOSTS:
             raise ValueError("PentAI Core must bind to a loopback address")
         if not 1 <= self.port <= 65535:
             raise ValueError("PentAI Core port must be from 1 through 65535")
+        self._validate_gateway_runtime()
         if self.test_mode:
             return
         credential = self.launch_credential
@@ -61,9 +72,54 @@ class Settings:
             policy_signing_key=policy_signing_key,
             launch_credential=os.getenv("PENTAI_LAUNCH_CREDENTIAL"),
             test_mode=environment == "test" and os.getenv("PENTAI_TEST_MODE") == "1",
+            gateway_runtime_enabled=_environment_flag("PENTAI_GATEWAY_RUNTIME_ENABLED"),
+            gateway_runtime=os.getenv("PENTAI_GATEWAY_RUNTIME"),
+            gateway_runtime_executable=_optional_path("PENTAI_GATEWAY_RUNTIME_EXECUTABLE"),
+            gateway_runtime_instance_id=os.getenv("PENTAI_GATEWAY_RUNTIME_INSTANCE_ID"),
+            gateway_network_id=os.getenv("PENTAI_GATEWAY_NETWORK_ID"),
+            gateway_probe_image_digest=os.getenv("PENTAI_GATEWAY_PROBE_IMAGE_DIGEST"),
+            gateway_instance_id=os.getenv("PENTAI_GATEWAY_INSTANCE_ID"),
+            gateway_watchdog_interval_seconds=float(
+                os.getenv("PENTAI_GATEWAY_WATCHDOG_INTERVAL_SECONDS", "5")
+            ),
         )
         settings.validate()
         return settings
+
+    def _validate_gateway_runtime(self) -> None:
+        configured = (
+            self.gateway_runtime,
+            self.gateway_runtime_executable,
+            self.gateway_runtime_instance_id,
+            self.gateway_network_id,
+            self.gateway_probe_image_digest,
+            self.gateway_instance_id,
+        )
+        if not self.gateway_runtime_enabled:
+            if any(value is not None for value in configured):
+                raise ValueError("Gateway runtime configuration requires explicit enablement")
+            return
+        if any(value is None for value in configured):
+            raise ValueError("Enabled gateway runtime configuration is incomplete")
+        executable = self.gateway_runtime_executable
+        identities = (
+            self.gateway_runtime_instance_id,
+            self.gateway_network_id,
+            self.gateway_instance_id,
+        )
+        if (
+            self.gateway_runtime not in {"docker", "podman"}
+            or executable is None
+            or not executable.is_absolute()
+            or any(
+                not isinstance(value, str) or not _IDENTIFIER_PATTERN.fullmatch(value)
+                for value in identities
+            )
+            or not isinstance(self.gateway_probe_image_digest, str)
+            or not _DIGEST_PATTERN.fullmatch(self.gateway_probe_image_digest)
+            or not 0.1 <= self.gateway_watchdog_interval_seconds <= 10
+        ):
+            raise ValueError("Gateway runtime configuration is invalid")
 
 
 def _secret_key(stdin_flag: str, environment_name: str) -> bytes | None:
@@ -82,6 +138,18 @@ def _secret_key(stdin_flag: str, environment_name: str) -> bytes | None:
     if len(key) != 32:
         raise ValueError("A required local secret key is invalid")
     return key
+
+
+def _environment_flag(name: str) -> bool:
+    value = os.getenv(name, "0")
+    if value not in {"0", "1"}:
+        raise ValueError(f"{name} must be 0 or 1")
+    return value == "1"
+
+
+def _optional_path(name: str) -> Path | None:
+    value = os.getenv(name)
+    return Path(value) if value is not None else None
 
 
 def allowed_origins(settings: Settings) -> list[str]:
