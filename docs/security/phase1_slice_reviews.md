@@ -436,3 +436,32 @@ request/concurrency capacity but is not claimed complete.
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not authorize production or target-facing execution.
+
+## 2026-08-09 — Worker containment preflight contracts
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without worker or target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** WorkerContainmentAttestation v1, WorkerLaunchSpec v1, short-lived
+preflight validation, digest pinning, bounded arguments and resources, and negative
+control tests.
+
+**Evidence examined:** Every required containment flag fails closed when absent;
+runtime-socket access, stale/future/overlong attestations, inactive gateway sessions,
+mutable image references, invalid resource limits, NUL arguments, oversized arguments,
+and excessive argument counts are denied. Successful output remains non-executing.
+
+**Findings:** The contract fixes the minimum isolation posture that a future trusted
+broker must enforce. It does not create authority, launch a runtime, or perform network
+access.
+
+**Limitations and deferred work:** Attestations are synthetic and not yet emitted by a
+trusted Docker/Podman adapter. No container, network namespace, firewall, gateway route,
+continuous health check, termination path, or platform bypass test exists. Network and
+isolation invariants are therefore not claimed verified.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not approve production use, worker execution, or target-facing networking.
