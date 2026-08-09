@@ -43,8 +43,9 @@ failed instance. This slice does not change GatewaySession v1.
 
 This is a sentinel lifecycle, not an HTTP gateway. It has no outbound route, controlled
 DNS transport, listening socket, request execution, redirect handling, response body,
-or worker attachment. The watchdog entry point must be wired into application startup
-with an approved runtime configuration before continuous production monitoring can be
+or worker attachment. Core startup now owns injected recovery, watchdog monitoring,
+degraded readiness, and shutdown cleanup. Production composition still requires an
+approved OCI runtime configuration before continuous deployment monitoring can be
 claimed. The hosted Linux rootless Podman workflow verifies sentinel launch, exact
 internal-network attachment, zero kernel capability masks, repeated monitoring,
 explicit termination, and startup recovery. Other operating systems and production

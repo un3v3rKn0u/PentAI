@@ -42,6 +42,29 @@ class AppResponse:
         return self.body.decode()
 
 
+@dataclass
+class FixtureRuntimeSupervisor:
+    state: str = "ready"
+    reason_code: str | None = None
+    starts: int = 0
+    stops: int = 0
+
+    def start(self) -> None:
+        self.starts += 1
+
+    def stop(self) -> None:
+        self.stops += 1
+
+    def status(self) -> dict[str, object]:
+        return {
+            "status": self.state,
+            "reason_code": self.reason_code,
+            "recovered_instances": 0,
+            "watchdog_running": self.state == "ready",
+            "execution_enabled": False,
+        }
+
+
 def app_request(
     app: FastAPI,
     method: str,
@@ -108,6 +131,7 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
     [
         ("GET", "/api/v1/health"),
         ("GET", "/api/v1/readiness"),
+        ("GET", "/api/v1/runtime-supervision"),
         ("GET", "/api/v1/safety-state"),
         ("GET", "/api/v1/audit"),
         ("POST", "/api/v1/shutdown"),
@@ -166,6 +190,51 @@ def test_correct_credential_reaches_protected_readiness(
     )
     assert response.status_code == 200
     assert response.json() == {"status": "ready", "execution_enabled": False}
+
+
+def test_runtime_supervisor_degradation_blocks_readiness_without_exposing_details(
+    tmp_path: Path,
+) -> None:
+    settings = runtime_settings(tmp_path / "degraded.db")
+    supervisor = FixtureRuntimeSupervisor(
+        state="degraded", reason_code="GATEWAY_WATCHDOG_FAILED"
+    )
+    app = create_app(settings, runtime_supervisor=supervisor)
+    credential = settings.launch_credential or ""
+    readiness = app_request(
+        app, "GET", "/api/v1/readiness", authorization=f"Bearer {credential}"
+    )
+    assert readiness.status_code == 503
+    assert readiness.json() == {
+        "status": "degraded",
+        "reason_code": "GATEWAY_WATCHDOG_FAILED",
+        "execution_enabled": False,
+    }
+    health = app_request(app, "GET", "/api/v1/health", authorization=f"Bearer {credential}")
+    assert health.status_code == 200
+    assert health.json()["status"] == "degraded"
+    runtime = app_request(
+        app,
+        "GET",
+        "/api/v1/runtime-supervision",
+        authorization=f"Bearer {credential}",
+    )
+    assert runtime.json()["watchdog_running"] is False
+    assert supervisor.starts == 1
+
+
+def test_authenticated_shutdown_stops_runtime_supervision(tmp_path: Path) -> None:
+    settings = runtime_settings(tmp_path / "shutdown-supervisor.db")
+    supervisor = FixtureRuntimeSupervisor()
+    app = create_app(settings, runtime_supervisor=supervisor)
+    response = app_request(
+        app,
+        "POST",
+        "/api/v1/shutdown",
+        authorization=f"Bearer {settings.launch_credential}",
+    )
+    assert response.status_code == 200
+    assert supervisor.stops == 1
 
 
 def test_startup_safety_state_is_durably_paused(
