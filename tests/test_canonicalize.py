@@ -73,7 +73,9 @@ class CanonicalizationFixtureTests(unittest.TestCase):
                 canonicalize_port(invalid)
 
 
-ascii_label = st.from_regex(r"[a-z](?:[a-z0-9-]{0,15}[a-z0-9])?", fullmatch=True)
+ascii_label = st.from_regex(
+    r"[a-z](?:[a-z0-9-]{0,15}[a-z0-9])?", fullmatch=True
+).filter(lambda label: label[2:4] != "--")
 ascii_domain = st.lists(ascii_label, min_size=1, max_size=4).map(".".join)
 
 

@@ -76,11 +76,11 @@ fn launch_credential() -> Result<String, String> {
     Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
-fn generate_source_master_key() -> Result<Vec<u8>, String> {
+fn generate_secret_key(purpose: &str) -> Result<Vec<u8>, String> {
     let mut bytes = vec![0_u8; 32];
     OsRng
         .try_fill_bytes(&mut bytes)
-        .map_err(|_| "secure source-key generation failed".to_string())?;
+        .map_err(|_| format!("secure {purpose} key generation failed"))?;
     Ok(bytes)
 }
 
@@ -90,7 +90,7 @@ fn source_master_key() -> Result<String, String> {
     let key = Zeroizing::new(match entry.get_secret() {
         Ok(value) => value,
         Err(KeyringError::NoEntry) => {
-            let value = generate_source_master_key()?;
+            let value = generate_secret_key("source")?;
             entry.set_secret(&value).map_err(|_| {
                 "source key could not be saved to OS credential storage".to_string()
             })?;
@@ -100,6 +100,30 @@ fn source_master_key() -> Result<String, String> {
     });
     if key.len() != 32 {
         return Err("source key in OS credential storage is invalid".to_string());
+    }
+    Ok(URL_SAFE_NO_PAD.encode(key.as_slice()))
+}
+
+fn policy_signing_key() -> Result<String, String> {
+    let entry = Entry::new("local.pentai.desktop", "policy-signing-seed-v1")
+        .map_err(|_| "OS credential storage is unavailable".to_string())?;
+    let key = Zeroizing::new(match entry.get_secret() {
+        Ok(value) => value,
+        Err(KeyringError::NoEntry) => {
+            let value = generate_secret_key("policy signing")?;
+            entry.set_secret(&value).map_err(|_| {
+                "policy signing key could not be saved to OS credential storage".to_string()
+            })?;
+            value
+        }
+        Err(_) => {
+            return Err(
+                "policy signing key could not be read from OS credential storage".to_string(),
+            )
+        }
+    });
+    if key.len() != 32 {
+        return Err("policy signing key in OS credential storage is invalid".to_string());
     }
     Ok(URL_SAFE_NO_PAD.encode(key.as_slice()))
 }
@@ -189,6 +213,7 @@ fn python_path(root: &Path) -> Result<OsString, String> {
 fn spawn_core(
     credential: &str,
     source_key: &str,
+    policy_key: &str,
     port: u16,
     database_path: &Path,
     source_store_path: &Path,
@@ -212,6 +237,7 @@ fn spawn_core(
         .env("PENTAI_DATABASE_PATH", database_path)
         .env("PENTAI_SOURCE_STORE_PATH", source_store_path)
         .env("PENTAI_SOURCE_KEY_STDIN", "1")
+        .env("PENTAI_POLICY_SIGNING_KEY_STDIN", "1")
         .env("PENTAI_LAUNCH_CREDENTIAL", credential)
         .stdin(Stdio::piped());
     #[cfg(feature = "bootstrap-smoke")]
@@ -226,7 +252,7 @@ fn spawn_core(
         .take()
         .ok_or_else(|| "core source-key channel is unavailable".to_string())?;
     stdin
-        .write_all(format!("{source_key}\n").as_bytes())
+        .write_all(format!("{source_key}\n{policy_key}\n").as_bytes())
         .and_then(|()| stdin.flush())
         .map_err(|_| "source key could not be delivered to the core".to_string())?;
     drop(stdin);
@@ -290,8 +316,11 @@ fn main() {
     let credential = launch_credential().expect("secure credential generation failed");
     let source_key = Zeroizing::new(
         URL_SAFE_NO_PAD
-            .encode(generate_source_master_key().expect("secure source-key generation failed")),
+            .encode(generate_secret_key("source").expect("secure source-key generation failed")),
     );
+    let policy_key = Zeroizing::new(URL_SAFE_NO_PAD.encode(
+        generate_secret_key("policy signing").expect("secure signing-key generation failed"),
+    ));
     let port = reserve_loopback_port().expect("no loopback port is available");
     let database_path =
         env::temp_dir().join(format!("pentai-bootstrap-smoke-{}.db", std::process::id()));
@@ -300,6 +329,7 @@ fn main() {
     let mut child = spawn_core(
         &credential,
         source_key.as_str(),
+        policy_key.as_str(),
         port,
         &database_path,
         &source_store_path,
@@ -330,6 +360,7 @@ fn main() {
         .setup(|app| {
             let credential = launch_credential()?;
             let source_key = Zeroizing::new(source_master_key()?);
+            let policy_key = Zeroizing::new(policy_signing_key()?);
             let port = reserve_loopback_port()?;
             let data_directory = app
                 .path()
@@ -340,6 +371,7 @@ fn main() {
             let mut child = spawn_core(
                 &credential,
                 source_key.as_str(),
+                policy_key.as_str(),
                 port,
                 &data_directory.join("pentai.db"),
                 &data_directory.join("source-blobs"),

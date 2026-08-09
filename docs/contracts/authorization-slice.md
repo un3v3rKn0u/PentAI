@@ -20,11 +20,12 @@ no target-facing networking code.
   truncation of the final event requires a separately anchored head hash, which is not
   part of this slice.
 
-Approval v1.1 labels the Phase 0 transactional attestation as
-`local-transaction-sha256`; it is integrity linkage inside the protected SQLite
-transaction, not a public-key signature. Previously persisted v1.0 local attestations
-remain readable for activation compatibility but no new approval claims Ed25519
-without an Ed25519 operation.
+Approval v1.2 uses an actual Ed25519 operation over the canonical approval document.
+Policy IR content hashes bind the unsigned policy and stable public-key ID; signatures
+then bind that hash with a domain-separated Ed25519 message.
+Activation verifies both signatures and their persisted linkage. Legacy transaction
+attestations and unsigned policies remain readable as history but are ineligible for
+activation and must be recompiled and reapproved.
 
 ## Stable decision codes
 

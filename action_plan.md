@@ -236,6 +236,8 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
 - [ ] Build policy compilation, deterministic decision evaluation, signing, activation, revocation, and version history.
 - [ ] Build typed, expiring approvals and activation workflow.
+  - Implementation is prepared on `feature/signed-policy-lifecycle`; merge is blocked
+    pending the independent signing-key-custody review required by `GIT_WORKFLOW.md`.
 - [x] Build semantic diffs for scope, techniques, limits, and reporting terms.
 
 ### 6.5 Actions: execution and safety

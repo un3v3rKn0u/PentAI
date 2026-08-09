@@ -9,9 +9,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `action-intent-v1.schema.json` — immutable request for an external effect.
 - `policy-decision-v1.schema.json` — deterministic decision and rule references.
 - `approval-v1.schema.json` — typed human approval that satisfies policy conditions.
-  Version 1.1 adds an explicitly non-cryptographic `local-transaction-sha256`
-  attestation for the Phase 0 local ledger; Ed25519 remains reserved for real
-  cryptographic signatures.
+  Version 1.2 uses Ed25519 over the canonical document; v1.1 transactional
+  attestations remain historical and cannot activate newly signed policy.
 - `action-grant-v1.schema.json` — short-lived, signed, single-use execution authority.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
