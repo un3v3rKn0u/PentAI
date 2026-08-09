@@ -1,12 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildIntentTarget, coreRequest } from "./App";
+import { buildIntentTarget, coreRequest, encodeBytesBase64, sourceFileMediaType } from "./App";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe("authorization workflow safety boundary", () => {
+  it("encodes selected bytes without exposing a filesystem path", () => {
+    expect(encodeBytesBase64(new Uint8Array([0, 1, 2, 253, 254, 255]))).toBe("AAEC/f7/");
+  });
+
+  it("derives only approved file media types from the selected basename", () => {
+    expect(sourceFileMediaType("Rules.JSON")).toBe("application/json");
+    expect(() => sourceFileMediaType("rules.exe")).toThrow("SOURCE_MEDIA_TYPE_INVALID");
+  });
+
   it("does not expose execution or grant issuance", () => {
     const milestoneCapabilities = ["manifest", "policy", "approval", "decision", "audit"];
     expect(milestoneCapabilities).not.toContain("action-grant");
