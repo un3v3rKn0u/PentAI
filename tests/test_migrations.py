@@ -13,7 +13,7 @@ class MigrationTests(unittest.TestCase):
     def test_initial_migration_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "pentai.db"
-            self.assertEqual(migrate(database), ["0001", "0002", "0003", "0004", "0005"])
+            self.assertEqual(migrate(database), ["0001", "0002", "0003", "0004", "0005", "0006"])
             self.assertEqual(migrate(database), [])
             with sqlite3.connect(database) as connection:
                 tables = {
@@ -148,9 +148,7 @@ class MigrationTests(unittest.TestCase):
                     ("a" * 64, "sha256:" + "a" * 64),
                 )
             (migrations / "0004_source_provenance.sql").write_text(
-                (repository_migrations / "0004_source_provenance.sql").read_text(
-                    encoding="utf-8"
-                ),
+                (repository_migrations / "0004_source_provenance.sql").read_text(encoding="utf-8"),
                 encoding="utf-8",
             )
             with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
@@ -177,6 +175,53 @@ class MigrationTests(unittest.TestCase):
                     """
                 ).fetchone()
             self.assertEqual(encrypted, ("legacy_missing", None, None))
+
+    def test_manifest_history_upgrade_preserves_rows_and_makes_them_immutable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("000[1-5]_*.sql")):
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "INSERT INTO programs(id, name, status) VALUES ('p', 'p', 'draft')"
+                )
+                connection.execute(
+                    """INSERT INTO engagements(
+                        id, program_id, status, effective_from, expires_at, timezone
+                    ) VALUES (
+                        'e', 'p', 'draft', '2026-01-01T00:00:00Z',
+                        '2027-01-01T00:00:00Z', 'UTC'
+                    )"""
+                )
+                connection.execute(
+                    """INSERT INTO manifest_versions(id, engagement_id, schema_version,
+                    document_json, content_hash) VALUES ('m', 'e', '2.0.0', '{}', ?)""",
+                    ("a" * 64,),
+                )
+            migration = repository_migrations / "0006_manifest_version_history.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0006"])
+            with sqlite3.connect(database) as connection:
+                row = connection.execute(
+                    "SELECT version_number, validation_status FROM manifest_versions"
+                ).fetchone()
+                self.assertEqual(row, (1, "legacy_unverified"))
+                with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
+                    connection.execute(
+                        "UPDATE manifest_versions SET document_json = '{}' WHERE id = 'm'"
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

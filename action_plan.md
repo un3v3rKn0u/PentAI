@@ -228,15 +228,15 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 
 ### 6.4 Actions: intake and policy
 
-- [ ] Implement source import for files, URLs, and pasted text.
-- [ ] Store source authority, timestamps, effective dates, hashes, and encrypted originals.
+- [x] Implement source import for files, URLs, and pasted text.
+- [x] Store source authority, timestamps, effective dates, hashes, and encrypted originals.
 - [ ] Build the full intake UI from `design_intake_workflow.md`.
-- [ ] Implement draft manifest editing with field-level provenance.
+- [x] Implement draft manifest editing with field-level provenance.
 - [ ] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [ ] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
 - [ ] Build policy compilation, deterministic decision evaluation, signing, activation, revocation, and version history.
 - [ ] Build typed, expiring approvals and activation workflow.
-- [ ] Build semantic diffs for scope, techniques, limits, and reporting terms.
+- [x] Build semantic diffs for scope, techniques, limits, and reporting terms.
 
 ### 6.5 Actions: execution and safety
 

@@ -201,6 +201,44 @@ def validate_and_canonicalize_manifest(
                     )
                 )
 
+    provenance = document.get("field_provenance")
+    if isinstance(provenance, dict):
+        for field_path, links in provenance.items():
+            if not isinstance(links, list):
+                continue
+            seen_links: set[tuple[str, str]] = set()
+            for index, link in enumerate(links):
+                if not isinstance(link, dict):
+                    continue
+                source_id = link.get("source_id")
+                digest = link.get("content_hash")
+                key = (str(source_id), str(digest))
+                if key in seen_links:
+                    issues.append(
+                        ValidationIssue(
+                            "PROVENANCE_AMBIGUOUS",
+                            f"/field_provenance/{field_path}/{index}",
+                            "duplicate field provenance link",
+                        )
+                    )
+                seen_links.add(key)
+                if source_id not in source_ids:
+                    issues.append(
+                        ValidationIssue(
+                            "PROVENANCE_MISSING",
+                            f"/field_provenance/{field_path}/{index}/source_id",
+                            "must reference a manifest source",
+                        )
+                    )
+                if source_hashes is not None and source_hashes.get(str(source_id)) != digest:
+                    issues.append(
+                        ValidationIssue(
+                            "PROVENANCE_HASH_MISMATCH",
+                            f"/field_provenance/{field_path}/{index}/content_hash",
+                            "field provenance does not match the imported source hash",
+                        )
+                    )
+
     scope = document.get("scope")
     assets = scope.get("assets") if isinstance(scope, dict) else None
     if not isinstance(assets, list) or not assets:

@@ -7,7 +7,8 @@ no target-facing networking code.
 
 ## Invariants
 
-- Manifest edits create new versions; approval is never inherited.
+- Meaningful manifest edits create immutable, engagement-sequenced versions; identical
+  saves are idempotent and approval is never inherited.
 - Compilation requires a valid, resolved manifest and matching persisted source hashes.
 - Activation requires the newest manifest version and an unrevoked human
   `policy_activation` approval bound to the exact manifest and policy hashes.
@@ -32,12 +33,19 @@ The slice emits `EXPLICIT_ALLOW`, `DEFAULT_DENY`, `EXPLICIT_DENY`, `POLICY_INACT
 `TARGET_OUT_OF_SCOPE`, `CAPABILITY_DENIED`, `METHOD_DENIED`, `PORT_DENIED`, and
 `PATH_DENIED` from PolicyDecision v1.
 
-## Manifest v2 limitation
+## Manifest v2 field provenance and history
 
-The authoritative schema has no general `assumptions` field or field-provenance map.
-Unknown authorization-critical fields are therefore rejected. This slice uses source
-records plus each asset's `source_reference`; broader field provenance requires a
-versioned contract change.
+Manifest v2 requires `field_provenance` for scope, techniques, operational limits,
+network, data handling, reporting, and agent controls. Every link carries an imported
+source UUID and its exact SHA-256 hash. Missing, unknown, duplicate, or stale links
+fail validation and cannot compile. Asset-level `source_reference` remains mandatory.
+
+Migration `0006_manifest_version_history.sql` adds engagement-local sequence numbers,
+stored validation outcomes, and immutable-row triggers. Pre-migration rows remain
+readable as `legacy_unverified` but fail closed at compilation until a human resaves
+them under the strengthened contract. The API lists history newest-first and computes
+engagement-bound deterministic diffs across authorization-bearing sections. There is
+no destructive down migration; rolling back code retains the additive columns/data.
 
 Phase 1 migration `0004_source_provenance.sql` strengthens the persisted source side
 of this binding with normalized source kind, media type, optional source version,

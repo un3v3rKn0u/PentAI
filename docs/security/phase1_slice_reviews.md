@@ -156,3 +156,32 @@ requests are atomic and cannot be paused mid-request; there is no background que
 **Residual risk accepted:** This is a self-authored, non-independent review. Browser and
 OS file-picker behavior still depends on hosted/platform verification. This acceptance
 does not approve assessment execution or relax any core source validation.
+
+## 2026-08-09 — Manifest versioning and field provenance
+
+**Decision:** Sole-maintainer security review — non-independent<br>
+**Reviewer:** `un3v3rKn0u`<br>
+**Roles held:** author, sole maintainer, Product Owner, Security Lead, repository owner
+
+**Scope reviewed:** Manifest v2 field-provenance contract, immutable version metadata,
+migration `0006_manifest_version_history.sql`, engagement-bound history and semantic
+diff APIs, supervised history UI, validation persistence, compatibility, and tests.
+
+**Evidence examined:** complete diff against `main`; source UUID/hash verification for
+every authority-bearing section; rejection of missing, unknown, duplicate, and stale
+links; idempotent saves; monotonic per-engagement versions; deterministic section
+diffs; cross-engagement denial; immutable legacy-upgrade test; contract, Python, UI,
+migration, and repository quality checks reported with the slice.
+
+**Findings:** No unresolved material finding. Invalid drafts are retained for diagnosis
+but cannot compile. Versions cannot be updated or deleted. Semantic diffs resolve both
+identifiers inside one engagement and disclose no source content.
+
+**Limitations and deferred work:** This slice does not sign, approve, activate, or
+revoke policy changes beyond the existing Phase 0 vertical slice. It does not add a
+structured form editor for every manifest field. Pre-upgrade manifests are visible as
+`legacy_unverified` and require human resave before compilation.
+
+**Residual risk accepted:** This is a self-authored, non-independent review. The
+strengthened schema intentionally fails closed for legacy compilation. This acceptance
+does not authorize target-facing execution or satisfy independent review.
