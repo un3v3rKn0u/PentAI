@@ -101,8 +101,13 @@ def evaluate(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     stored_hash = str(policy.get("content_hash", "0" * 64))
-    unsigned = {key: value for key, value in policy.items() if key != "content_hash"}
-    if content_hash(unsigned) != stored_hash or intent.get("policy_hash") != stored_hash:
+    unsigned = {
+        key: value for key, value in policy.items() if key not in {"content_hash", "signature"}
+    }
+    signature = policy.get("signature", {})
+    signer_key_id = signature.get("key_id") if isinstance(signature, dict) else None
+    signed_hash = content_hash({"policy": unsigned, "signer_key_id": signer_key_id})
+    if signed_hash != stored_hash or intent.get("policy_hash") != stored_hash:
         return _decision(intent, stored_hash, "deny", ["POLICY_HASH_MISMATCH"], [])
     if contract_issues(intent, "action-intent-v1.schema.json"):
         return _decision(intent, stored_hash, "deny", ["DEFAULT_DENY"], [])

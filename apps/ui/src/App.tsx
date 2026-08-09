@@ -222,6 +222,7 @@ export function App() {
   const [manifestHistory, setManifestHistory] = useState<Json[]>([]);
   const [manifestDiff, setManifestDiff] = useState<Json | null>(null);
   const [policy, setPolicy] = useState<Json | null>(null);
+  const [policyHistory, setPolicyHistory] = useState<Json[]>([]);
   const [decision, setDecision] = useState<Json | null>(null);
   const [audit, setAudit] = useState<Json>({ events: [], verification: { valid: true } });
   const [intentUrl, setIntentUrl] = useState("https://example.test/api/items");
@@ -292,6 +293,7 @@ export function App() {
       setManifestDiff(null);
       setManifestText("");
       setPolicy(null);
+      setPolicyHistory([]);
       setDecision(null);
       setIntakeState("empty");
       setState("draft");
@@ -390,22 +392,39 @@ export function App() {
   }
 
   async function compilePolicy() {
-    if (!manifest?.valid) return;
+    if (!manifest?.valid || !engagement) return;
     await run(async () => {
       const compiled = await request(`/manifests/${manifest.id}/compile`, {});
       setPolicy(compiled);
       setState("awaiting approval");
+      const history = await request(`/engagements/${engagement.id}/policies`);
+      setPolicyHistory(history.policies);
     });
   }
 
   async function approveAndActivate() {
-    if (!policy) return;
+    if (!policy || !engagement) return;
     await run(async () => {
       await request(`/policies/${policy.id}/approval`, {
         decision: "approved"
       });
       await request(`/policies/${policy.id}/activate`, {});
       setState("active");
+      const history = await request(`/engagements/${engagement.id}/policies`);
+      setPolicyHistory(history.policies);
+      await refreshAudit();
+    });
+  }
+
+  async function revokeActivePolicy() {
+    if (!policy || !engagement) return;
+    await run(async () => {
+      await request(`/policies/${policy.id}/revoke`, {
+        reason: "Explicit supervised revocation"
+      });
+      setState("revoked");
+      const history = await request(`/engagements/${engagement.id}/policies`);
+      setPolicyHistory(history.policies);
       await refreshAudit();
     });
   }
@@ -614,7 +633,23 @@ export function App() {
           <button onClick={approveAndActivate} disabled={!connection || !policy || state === "active"}>
             Explicitly approve and activate
           </button>
+          <button onClick={revokeActivePolicy} disabled={!connection || !policy || state !== "active"}>
+            Revoke active policy
+          </button>
           <p className="hint">Approval binds the exact manifest and compiled-policy hashes.</p>
+          {policyHistory.length === 0 ? (
+            <p className="hint">No signed policy versions have been compiled.</p>
+          ) : (
+            <ol className="source-list">
+              {policyHistory.map((item) => (
+                <li key={item.id}>
+                  <strong>{item.status}</strong>
+                  <span>Compiler {item.compiler_version}</span>
+                  <code>{item.content_hash.slice(0, 16)}…</code>
+                </li>
+              ))}
+            </ol>
+          )}
         </section>
 
         <section className="panel">

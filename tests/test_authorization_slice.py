@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.migrate import migrate
+from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_policy import canonicalize_url, content_hash, evaluate
 from pentai_policy.document import contract_issues
@@ -160,6 +161,7 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.service = AuthorizationService(
             self.database,
             source_store=EncryptedSourceStore(Path(self.temporary.name) / "sources", b"k" * 32),
+            policy_signer=PolicySigner(b"s" * 32),
         )
         self.program = self.service.create_program("Synthetic program")
         self.engagement = self.service.create_engagement(
@@ -225,7 +227,14 @@ class AuthorizationSliceTests(unittest.TestCase):
         expired = copy.deepcopy(policy)
         expired["validity"]["not_after"] = timestamp(timedelta(minutes=-1))
         expired["content_hash"] = content_hash(
-            {key: value for key, value in expired.items() if key != "content_hash"}
+            {
+                "policy": {
+                    key: value
+                    for key, value in expired.items()
+                    if key not in {"content_hash", "signature"}
+                },
+                "signer_key_id": expired["signature"]["key_id"],
+            }
         )
         expired_intent = intent_for(self.engagement["id"], expired["content_hash"])
         self.assertEqual(
@@ -325,9 +334,64 @@ class AuthorizationSliceTests(unittest.TestCase):
         version = self.service.save_manifest(self.engagement["id"], self.manifest)
         bundle = self.service.compile_policy(version["id"])
         approval = self.service.approve_policy(bundle["id"], approver_id="human-reviewer")
-        self.assertEqual(approval["schema_version"], "1.1.0")
-        self.assertEqual(approval["signature"]["algorithm"], "local-transaction-sha256")
+        self.assertEqual(approval["schema_version"], "1.2.0")
+        self.assertEqual(approval["signature"]["algorithm"], "Ed25519")
         self.assertEqual(contract_issues(approval, "approval-v1.schema.json"), ())
+
+    def test_policy_and_approval_signatures_are_verified_before_activation(self) -> None:
+        version = self.service.save_manifest(self.engagement["id"], self.manifest)
+        bundle = self.service.compile_policy(version["id"])
+        self.assertEqual(bundle["policy"]["signature"]["algorithm"], "Ed25519")
+        approval = self.service.approve_policy(bundle["id"], approver_id="human-reviewer")
+        self.assertEqual(approval["signature"]["algorithm"], "Ed25519")
+        with sqlite3.connect(self.database) as connection:
+            connection.execute(
+                "UPDATE policy_bundles SET signature = ? WHERE id = ?",
+                ("invalid", bundle["id"]),
+            )
+        with self.assertRaises(DomainError) as raised:
+            self.service.activate_policy(bundle["id"], actor_id="human-reviewer")
+        self.assertEqual(raised.exception.code, "POLICY_HASH_MISMATCH")
+
+    def test_missing_signer_fails_closed_before_policy_persistence(self) -> None:
+        unsigned_service = AuthorizationService(
+            self.database, source_store=self.service.source_store
+        )
+        version = unsigned_service.save_manifest(self.engagement["id"], self.manifest)
+        with self.assertRaises(DomainError) as raised:
+            unsigned_service.compile_policy(version["id"])
+        self.assertEqual(raised.exception.code, "POLICY_SIGNER_UNAVAILABLE")
+
+    def test_key_rotation_fails_closed_for_existing_policy_authority(self) -> None:
+        version = self.service.save_manifest(self.engagement["id"], self.manifest)
+        bundle = self.service.compile_policy(version["id"])
+        self.service.approve_policy(bundle["id"], approver_id="human-reviewer")
+        rotated_service = AuthorizationService(
+            self.database,
+            source_store=self.service.source_store,
+            policy_signer=PolicySigner(b"r" * 32),
+        )
+        with self.assertRaises(DomainError) as raised:
+            rotated_service.activate_policy(bundle["id"], actor_id="human-reviewer")
+        self.assertEqual(raised.exception.code, "POLICY_HASH_MISMATCH")
+
+        self.service.activate_policy(bundle["id"], actor_id="human-reviewer")
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        with self.assertRaises(DomainError) as raised:
+            rotated_service.evaluate_intent(self.engagement["id"], intent)
+        self.assertEqual(raised.exception.code, "POLICY_SIGNATURE_INVALID")
+
+    def test_policy_history_and_reasoned_revocation_are_durable(self) -> None:
+        _, bundle = self.activate()
+        history = self.service.list_policies(self.engagement["id"])
+        self.assertEqual(history[0]["status"], "active")
+        with self.assertRaises(DomainError) as raised:
+            self.service.revoke_policy(bundle["id"], actor_id="human-reviewer", reason=" ")
+        self.assertEqual(raised.exception.code, "REVOCATION_REASON_REQUIRED")
+        self.service.revoke_policy(
+            bundle["id"], actor_id="human-reviewer", reason="synthetic review withdrawal"
+        )
+        self.assertEqual(self.service.list_policies(self.engagement["id"])[0]["status"], "revoked")
 
     def test_edit_creates_version_and_does_not_inherit_approval(self) -> None:
         first = self.service.save_manifest(self.engagement["id"], self.manifest)

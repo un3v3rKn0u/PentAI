@@ -111,9 +111,10 @@ cargo test --manifest-path apps/desktop/Cargo.toml
 
 ## Known limitations
 
-- Approval v1 contains a local human-attestation value shaped by the contract, but
-  operating-system key management and independently verifiable Ed25519 signing are not
-  part of this slice. Activation relies on the transactional exact-hash approval record.
+- The proposed Phase 1 signing implementation uses OS credential storage and Ed25519,
+  but signing-key custody requires independent security approval under
+  `GIT_WORKFLOW.md`. Until ADR 0003 is independently approved and merged, it carries no
+  release or enforcement assurance.
 - Source content is hashed and represented by a content-addressed blob reference; an
   encrypted source-blob store is deferred.
 - Testing windows, live route/DNS/source-IP attestation, budget reservation, grant

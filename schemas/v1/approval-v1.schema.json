@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "approval_id", "approval_type", "subject", "assessment_id", "policy_hash", "constraints", "decision", "approver", "decided_at", "expires_at", "signature"],
   "properties": {
-    "schema_version": {"enum": ["1.0.0", "1.1.0"]},
+    "schema_version": {"enum": ["1.0.0", "1.1.0", "1.2.0"]},
     "approval_id": {"type": "string", "format": "uuid"},
     "approval_type": {"enum": ["policy_activation", "conditional_action", "sensitive_validation", "report_export"]},
     "subject": {

@@ -215,3 +215,26 @@ assurance claim.
 **Residual risk accepted:** This is a self-authored, non-independent review. Its
 governance limitation is accepted for this internal validation slice only. It does not
 authorize target-facing execution or substitute for independent assessment.
+
+## 2026-08-09 — Signed policy lifecycle (review pending)
+
+**Decision:** Not approved — independent security review required<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; the sole-maintainer exception is prohibited for signing-key
+custody.
+
+**Scope prepared for review:** OS-credential-service Ed25519 seed custody, one-use
+desktop-to-core delivery, policy and Approval v1.2 signatures, activation/evaluation
+verification, lifecycle history, explicit revocation, UI states, compatibility, tests,
+and ADR 0003 on `feature/signed-policy-lifecycle`.
+
+**Author review evidence:** Missing/wrong/malformed/tampered signature tests; exact key
+ID and policy/approval binding; unsigned legacy denial; key absence and invalid-length
+failure; expiry, replacement, revocation, and audit regressions; local and hosted checks
+reported on the PR.
+
+**Open gate:** A qualified independent reviewer must examine and approve generation,
+credential-store behavior on macOS/Windows/Linux, key delivery, memory exposure,
+domain separation, verification, loss/rotation behavior, compatibility, and recovery.
+No merge or security claim is permitted before that approval.

@@ -17,6 +17,7 @@ from pentai_core import __version__
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.config import Settings, allowed_origins
 from pentai_core.migrate import migrate
+from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_core.url_acquisition import AcquisitionError, UrlAcquirer
 
@@ -91,6 +92,10 @@ class ApprovalRequest(StrictRequest):
     reason: str | None = None
 
 
+class RevocationRequest(StrictRequest):
+    reason: str = Field(min_length=1, max_length=500)
+
+
 class EvaluationRequest(StrictRequest):
     engagement_id: str
     intent: dict[str, Any]
@@ -134,7 +139,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if runtime.source_master_key is not None
         else None
     )
-    authorization = AuthorizationService(runtime.database_path, source_store=source_store)
+    signer = PolicySigner(runtime.policy_signing_key) if runtime.policy_signing_key else None
+    authorization = AuthorizationService(
+        runtime.database_path, source_store=source_store, policy_signer=signer
+    )
     app = FastAPI(
         title="PentAI Local Core",
         version=__version__,
@@ -322,6 +330,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def activate_policy(policy_id: str, request: Request) -> dict[str, Any]:
         actor = principal(request)
         return call(lambda: authorization.activate_policy(policy_id, actor_id=actor.principal_id))
+
+    @app.post("/api/v1/policies/{policy_id}/revoke")
+    def revoke_policy(
+        policy_id: str, revocation: RevocationRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        call(
+            lambda: authorization.revoke_policy(
+                policy_id, actor_id=actor.principal_id, reason=revocation.reason
+            )
+        )
+        return {"id": policy_id, "status": "revoked"}
+
+    @app.get("/api/v1/engagements/{engagement_id}/policies")
+    def list_policies(engagement_id: str) -> dict[str, Any]:
+        return {"policies": call(lambda: authorization.list_policies(engagement_id))}
 
     @app.post("/api/v1/policy-decisions")
     def evaluate_policy(evaluation: EvaluationRequest) -> dict[str, Any]:

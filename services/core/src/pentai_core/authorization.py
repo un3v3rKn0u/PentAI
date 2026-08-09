@@ -18,6 +18,7 @@ from pentai_policy import (
 from pentai_policy.document import parse_time
 
 from pentai_core.database import transaction
+from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
 
 _SOURCE_AUTHORITIES = {
@@ -54,10 +55,15 @@ def _timestamp(value: datetime | None = None) -> str:
 
 class AuthorizationService:
     def __init__(
-        self, database_path: Path, *, source_store: EncryptedSourceStore | None = None
+        self,
+        database_path: Path,
+        *,
+        source_store: EncryptedSourceStore | None = None,
+        policy_signer: PolicySigner | None = None,
     ) -> None:
         self.database_path = database_path
         self.source_store = source_store
+        self.policy_signer = policy_signer
 
     def _audit(
         self,
@@ -670,7 +676,38 @@ class AuthorizationService:
                 )
                 rejection_code = codes[0]
             else:
-                policy = compile_manifest(manifest, row["content_hash"])
+                if self.policy_signer is None:
+                    rejection_code = "POLICY_SIGNER_UNAVAILABLE"
+                    self._audit(
+                        connection,
+                        action="policy.rejected",
+                        subject_type="manifest",
+                        subject_id=manifest_version_id,
+                        actor_type="service",
+                        actor_id="policy-compiler",
+                        data={"reason_codes": [rejection_code]},
+                    )
+                    policy = None
+                else:
+                    policy = compile_manifest(manifest, row["content_hash"])
+                    unsigned_policy = {
+                        key: value for key, value in policy.items() if key != "content_hash"
+                    }
+                    policy["content_hash"] = content_hash(
+                        {
+                            "policy": unsigned_policy,
+                            "signer_key_id": self.policy_signer.key_id,
+                        }
+                    )
+                    signature_value = self.policy_signer.sign(
+                        f"pentai-policy-v1:{policy['content_hash']}".encode("ascii")
+                    )
+                    policy["signature"] = {
+                        "algorithm": "Ed25519",
+                        "key_id": self.policy_signer.key_id,
+                        "value": signature_value,
+                    }
+            if rejection_code is None and policy is not None:
                 existing = connection.execute(
                     "SELECT id FROM policy_bundles WHERE content_hash = ?",
                     (policy["content_hash"],),
@@ -681,8 +718,8 @@ class AuthorizationService:
                         """
                         INSERT INTO policy_bundles(
                             id, engagement_id, manifest_version_id, schema_version,
-                            compiler_version, policy_json, content_hash
-                        ) VALUES (?, ?, ?, '1.0.0', ?, ?, ?)
+                            compiler_version, policy_json, content_hash, signature, signer_key_id
+                        ) VALUES (?, ?, ?, '1.0.0', ?, ?, ?, ?, ?)
                         """,
                         (
                             policy_id,
@@ -691,6 +728,8 @@ class AuthorizationService:
                             policy["compiler"]["version"],
                             canonical_json(policy),
                             policy["content_hash"],
+                            policy["signature"]["value"],
+                            policy["signature"]["key_id"],
                         ),
                     )
                 result = {
@@ -737,18 +776,11 @@ class AuthorizationService:
             ).fetchone()
             if policy is None:
                 raise DomainError("POLICY_NOT_FOUND", "policy does not exist")
+            if self.policy_signer is None:
+                raise DomainError("POLICY_SIGNER_UNAVAILABLE", "policy signer is unavailable")
             approval_id = str(uuid4())
-            attestation_payload = {
-                "approval_id": approval_id,
-                "manifest_hash": policy["manifest_hash"],
-                "policy_hash": policy["content_hash"],
-                "approver_id": approver_id.strip(),
-                "decision": decision,
-                "decided_at": decided_at,
-                "expires_at": expiry,
-            }
             document: dict[str, Any] = {
-                "schema_version": "1.1.0",
+                "schema_version": "1.2.0",
                 "approval_id": approval_id,
                 "approval_type": "policy_activation",
                 "subject": {"subject_type": "policy", "subject_id": policy_bundle_id},
@@ -759,14 +791,14 @@ class AuthorizationService:
                 "approver": {"actor_type": "human", "actor_id": approver_id.strip()},
                 "decided_at": decided_at,
                 "expires_at": expiry,
-                "signature": {
-                    "algorithm": "local-transaction-sha256",
-                    "key_id": "local-authorization-ledger",
-                    "value": content_hash(attestation_payload),
-                },
             }
             if reason:
                 document["reason"] = reason
+            document["signature"] = {
+                "algorithm": "Ed25519",
+                "key_id": self.policy_signer.key_id,
+                "value": self.policy_signer.sign(canonical_json(document).encode()),
+            }
             connection.execute(
                 """
                 INSERT INTO approvals(
@@ -828,11 +860,31 @@ class AuthorizationService:
             if policy["activated_at"] is not None:
                 raise DomainError("POLICY_ALREADY_ACTIVE", "policy is already active")
             policy_document = json.loads(policy["policy_json"])
+            policy_signature = policy_document.get("signature", {})
+            unsigned_policy = {
+                key: value
+                for key, value in policy_document.items()
+                if key not in {"content_hash", "signature"}
+            }
             if (
-                content_hash({k: v for k, v in policy_document.items() if k != "content_hash"})
+                self.policy_signer is None
+                or content_hash(
+                    {
+                        "policy": unsigned_policy,
+                        "signer_key_id": policy_signature.get("key_id"),
+                    }
+                )
                 != policy["content_hash"]
                 or policy_document["manifest_hash"] != policy["manifest_hash"]
                 or content_hash(json.loads(policy["document_json"])) != policy["manifest_hash"]
+                or policy_signature.get("algorithm") != "Ed25519"
+                or policy_signature.get("value") != policy["signature"]
+                or policy_signature.get("key_id") != policy["signer_key_id"]
+                or not self.policy_signer.verify(
+                    f"pentai-policy-v1:{policy['content_hash']}".encode("ascii"),
+                    str(policy["signature"]),
+                    str(policy["signer_key_id"]),
+                )
             ):
                 raise DomainError("POLICY_HASH_MISMATCH", "policy provenance is altered")
             source_rows = connection.execute(
@@ -866,20 +918,9 @@ class AuthorizationService:
             if approval is None:
                 raise DomainError("APPROVAL_MISSING", "exact human policy approval is required")
             approval_document = json.loads(approval["document_json"])
-            expected_attestation = content_hash(
-                {
-                    "approval_id": approval["id"],
-                    "manifest_hash": approval["manifest_hash"],
-                    "policy_hash": approval["policy_hash"],
-                    "approver_id": approval["approver_id"],
-                    "decision": approval["decision"],
-                    "decided_at": approval["decided_at"],
-                    "expires_at": approval["expires_at"],
-                }
-            )
             signature = approval_document.get("signature", {})
             common_fields_valid = (
-                approval_document.get("schema_version") in {"1.0.0", "1.1.0"}
+                approval_document.get("schema_version") == "1.2.0"
                 and approval_document.get("approval_id") == approval["id"]
                 and approval_document.get("approval_type") == approval["approval_type"]
                 and approval_document.get("subject", {}).get("subject_type") == "policy"
@@ -891,30 +932,19 @@ class AuthorizationService:
                 and approval_document.get("expires_at") == approval["expires_at"]
                 and approval_document.get("approver", {}).get("actor_id") == approval["approver_id"]
             )
-            current_attestation_valid = (
-                approval_document.get("schema_version") == "1.1.0"
-                and signature.get("algorithm") == "local-transaction-sha256"
-                and signature.get("key_id") == "local-authorization-ledger"
-                and signature.get("value") == expected_attestation
+            unsigned_approval = {
+                key: value for key, value in approval_document.items() if key != "signature"
+            }
+            signature_valid = (
+                signature.get("algorithm") == "Ed25519"
+                and self.policy_signer is not None
+                and self.policy_signer.verify(
+                    canonical_json(unsigned_approval).encode(),
+                    str(signature.get("value", "")),
+                    str(signature.get("key_id", "")),
+                )
             )
-            legacy_attestation = content_hash(
-                {
-                    "approval_id": approval["id"],
-                    "manifest_hash": approval["manifest_hash"],
-                    "policy_hash": approval["policy_hash"],
-                    "approver_id": approval["approver_id"],
-                    "decision": approval["decision"],
-                }
-            )
-            legacy_attestation_valid = (
-                approval_document.get("schema_version") == "1.0.0"
-                and signature.get("algorithm") == "Ed25519"
-                and signature.get("key_id") == "local-human-attestation"
-                and signature.get("value") == legacy_attestation
-            )
-            if not common_fields_valid or not (
-                current_attestation_valid or legacy_attestation_valid
-            ):
+            if not common_fields_valid or not signature_valid:
                 raise DomainError("APPROVAL_INVALID", "approval attestation is invalid")
             previous_policy = connection.execute(
                 """
@@ -987,6 +1017,8 @@ class AuthorizationService:
         return {"id": policy_bundle_id, "status": "active", "activated_at": activated_at}
 
     def revoke_policy(self, policy_bundle_id: str, *, actor_id: str, reason: str) -> None:
+        if not reason.strip():
+            raise DomainError("REVOCATION_REASON_REQUIRED", "revocation reason is required")
         revoked_at = _timestamp()
         with transaction(self.database_path) as connection:
             policy = connection.execute(
@@ -1018,6 +1050,48 @@ class AuthorizationService:
                 occurred_at=revoked_at,
             )
 
+    def list_policies(self, engagement_id: str) -> list[dict[str, Any]]:
+        instant = _timestamp()
+        with transaction(self.database_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT p.*,
+                    (SELECT COUNT(*) FROM approvals a
+                     WHERE a.policy_bundle_id = p.id AND a.decision = 'approved'
+                       AND a.invalidated_at IS NULL
+                       AND julianday(a.expires_at) > julianday(?)) AS current_approvals
+                FROM policy_bundles p WHERE p.engagement_id = ?
+                ORDER BY p.rowid DESC
+                """,
+                (instant, engagement_id),
+            ).fetchall()
+        history = []
+        for row in rows:
+            document = json.loads(row["policy_json"])
+            if row["revoked_at"] is not None:
+                status = "revoked"
+            elif row["activated_at"] is not None:
+                status = "active"
+            elif parse_time(document["validity"]["not_after"]) <= parse_time(instant):
+                status = "expired"
+            elif row["current_approvals"]:
+                status = "approved"
+            else:
+                status = "awaiting_approval"
+            history.append(
+                {
+                    "id": row["id"],
+                    "manifest_version_id": row["manifest_version_id"],
+                    "content_hash": row["content_hash"],
+                    "compiler_version": row["compiler_version"],
+                    "signer_key_id": row["signer_key_id"],
+                    "status": status,
+                    "activated_at": row["activated_at"],
+                    "revoked_at": row["revoked_at"],
+                }
+            )
+        return history
+
     def evaluate_intent(
         self, engagement_id: str, intent: dict[str, Any], *, now: datetime | None = None
     ) -> dict[str, Any]:
@@ -1031,6 +1105,17 @@ class AuthorizationService:
                 "SELECT * FROM policy_bundles WHERE id = ?", (engagement["active_policy_id"],)
             ).fetchone()
             policy_document = json.loads(policy["policy_json"])
+            signature = policy_document.get("signature", {})
+            if (
+                self.policy_signer is None
+                or signature.get("algorithm") != "Ed25519"
+                or not self.policy_signer.verify(
+                    f"pentai-policy-v1:{policy['content_hash']}".encode("ascii"),
+                    str(signature.get("value", "")),
+                    str(signature.get("key_id", "")),
+                )
+            ):
+                raise DomainError("POLICY_SIGNATURE_INVALID", "active policy signature is invalid")
             decision = evaluate(
                 intent,
                 policy_document,
