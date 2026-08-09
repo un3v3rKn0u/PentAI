@@ -100,6 +100,10 @@ function buildManifest(program: Json, engagement: Json, source: Json) {
       retrieved_at: source.retrieved_at,
       content_hash: source.content_hash
     }],
+    field_provenance: Object.fromEntries([
+      "/scope", "/techniques", "/operational_limits", "/network",
+      "/data_handling", "/reporting", "/agent_controls"
+    ].map((field) => [field, [{ source_id: source.id, content_hash: source.content_hash }]])),
     scope: {
       assets: [{
         asset_id: crypto.randomUUID(),
@@ -215,6 +219,8 @@ export function App() {
   const [engagement, setEngagement] = useState<Json | null>(null);
   const [source, setSource] = useState<Json | null>(null);
   const [manifest, setManifest] = useState<Json | null>(null);
+  const [manifestHistory, setManifestHistory] = useState<Json[]>([]);
+  const [manifestDiff, setManifestDiff] = useState<Json | null>(null);
   const [policy, setPolicy] = useState<Json | null>(null);
   const [decision, setDecision] = useState<Json | null>(null);
   const [audit, setAudit] = useState<Json>({ events: [], verification: { valid: true } });
@@ -282,6 +288,8 @@ export function App() {
       setSource(null);
       setEngagement(null);
       setManifest(null);
+      setManifestHistory([]);
+      setManifestDiff(null);
       setManifestText("");
       setPolicy(null);
       setDecision(null);
@@ -369,6 +377,15 @@ export function App() {
       setManifest(saved);
       setManifestText(JSON.stringify(saved.document, null, 2));
       setState(saved.valid ? "awaiting approval" : "invalid");
+      const history = await request(`/engagements/${engagement.id}/manifests`);
+      setManifestHistory(history.manifests);
+      if (saved.supersedes_id) {
+        setManifestDiff(await request(
+          `/engagements/${engagement.id}/manifests/diff?from_id=${encodeURIComponent(saved.supersedes_id)}&to_id=${encodeURIComponent(saved.id)}`
+        ));
+      } else {
+        setManifestDiff(null);
+      }
     });
   }
 
@@ -562,6 +579,31 @@ export function App() {
                   ? <li>Schema, semantics, provenance, validity, and scope passed.</li>
                   : manifest.issues.map((issue: Json) => <li key={`${issue.path}:${issue.code}`}>{issue.code} — {issue.path}</li>)}
               </ul>
+            </div>
+          )}
+          <div className="panel-heading">
+            <strong>Immutable version history</strong>
+            <span>{manifestHistory.length} saved</span>
+          </div>
+          {manifestHistory.length === 0 ? (
+            <p className="hint">No manifest versions have been saved.</p>
+          ) : (
+            <ol className="source-list">
+              {manifestHistory.map((item) => (
+                <li key={item.id}>
+                  <strong>Version {item.version_number}</strong>
+                  <span>{item.validation_status}</span>
+                  <code>{item.content_hash.slice(0, 16)}…</code>
+                </li>
+              ))}
+            </ol>
+          )}
+          {manifestDiff && (
+            <div className="result">
+              <strong>Changes from version {manifestDiff.from.version_number}</strong>
+              <p>{manifestDiff.changed_sections.length
+                ? manifestDiff.changed_sections.join(", ")
+                : "No authorization-bearing sections changed."}</p>
             </div>
           )}
         </section>

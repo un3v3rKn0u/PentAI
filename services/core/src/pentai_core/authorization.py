@@ -525,44 +525,117 @@ class AuthorizationService:
             digest = content_hash(canonical)
             previous = connection.execute(
                 """
-                SELECT id FROM manifest_versions
-                WHERE engagement_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1
+                SELECT id, content_hash, version_number FROM manifest_versions
+                WHERE engagement_id = ? ORDER BY version_number DESC LIMIT 1
                 """,
                 (engagement_id,),
             ).fetchone()
-            manifest_id = str(uuid4())
-            try:
-                connection.execute(
-                    """
-                    INSERT INTO manifest_versions(
-                        id, engagement_id, schema_version, document_json, content_hash,
-                        supersedes_id
-                    ) VALUES (?, ?, '2.0.0', ?, ?, ?)
-                    """,
-                    (
-                        manifest_id,
-                        engagement_id,
-                        canonical_json(canonical),
-                        digest,
-                        previous["id"] if previous else None,
-                    ),
-                )
-            except sqlite3.IntegrityError:
+            if previous is not None and previous["content_hash"] == digest:
                 existing = connection.execute(
-                    "SELECT id FROM manifest_versions WHERE content_hash = ?", (digest,)
+                    "SELECT * FROM manifest_versions WHERE id = ?", (previous["id"],)
                 ).fetchone()
-                if existing is None:
-                    raise
-                manifest_id = existing["id"]
-            return {
-                "id": manifest_id,
-                "engagement_id": engagement_id,
-                "content_hash": digest,
-                "document": canonical,
-                "valid": validation.valid,
-                "issues": [issue.as_dict() for issue in validation.issues],
-                "supersedes_id": previous["id"] if previous else None,
-            }
+                return self._manifest_record(existing)
+            manifest_id = str(uuid4())
+            issues = [issue.as_dict() for issue in validation.issues]
+            connection.execute(
+                """
+                INSERT INTO manifest_versions(
+                    id, engagement_id, schema_version, document_json, content_hash,
+                    supersedes_id, version_number, validation_status, validation_issues_json
+                ) VALUES (?, ?, '2.0.0', ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    manifest_id,
+                    engagement_id,
+                    canonical_json(canonical),
+                    digest,
+                    previous["id"] if previous else None,
+                    (previous["version_number"] + 1) if previous else 1,
+                    "valid" if validation.valid else "invalid",
+                    canonical_json(issues),
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM manifest_versions WHERE id = ?", (manifest_id,)
+            ).fetchone()
+            return self._manifest_record(row)
+
+    @staticmethod
+    def _manifest_record(row: sqlite3.Row) -> dict[str, Any]:
+        status = row["validation_status"]
+        return {
+            "id": row["id"],
+            "engagement_id": row["engagement_id"],
+            "schema_version": row["schema_version"],
+            "version_number": row["version_number"],
+            "content_hash": row["content_hash"],
+            "document": json.loads(row["document_json"]),
+            "valid": status == "valid",
+            "validation_status": status,
+            "issues": json.loads(row["validation_issues_json"]),
+            "supersedes_id": row["supersedes_id"],
+            "created_at": row["created_at"],
+        }
+
+    def list_manifests(self, engagement_id: str) -> list[dict[str, Any]]:
+        with transaction(self.database_path) as connection:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM engagements WHERE id = ?", (engagement_id,)
+                ).fetchone()
+                is None
+            ):
+                raise DomainError("ENGAGEMENT_NOT_FOUND", "engagement does not exist")
+            rows = connection.execute(
+                """SELECT * FROM manifest_versions WHERE engagement_id = ?
+                ORDER BY version_number DESC""",
+                (engagement_id,),
+            ).fetchall()
+        return [self._manifest_record(row) for row in rows]
+
+    def manifest_diff(
+        self, engagement_id: str, from_manifest_id: str, to_manifest_id: str
+    ) -> dict[str, Any]:
+        with transaction(self.database_path) as connection:
+            rows = connection.execute(
+                """SELECT * FROM manifest_versions
+                WHERE engagement_id = ? AND id IN (?, ?)""",
+                (engagement_id, from_manifest_id, to_manifest_id),
+            ).fetchall()
+        by_id = {row["id"]: row for row in rows}
+        if from_manifest_id not in by_id or to_manifest_id not in by_id:
+            raise DomainError("MANIFEST_NOT_FOUND", "manifest does not exist in this engagement")
+        before = json.loads(by_id[from_manifest_id]["document_json"])
+        after = json.loads(by_id[to_manifest_id]["document_json"])
+        sections = (
+            "scope",
+            "techniques",
+            "operational_limits",
+            "network",
+            "data_handling",
+            "reporting",
+            "agent_controls",
+            "unresolved_questions",
+        )
+        changes = [
+            {"section": section, "before": before.get(section), "after": after.get(section)}
+            for section in sections
+            if before.get(section) != after.get(section)
+        ]
+        return {
+            "from": {
+                "id": from_manifest_id,
+                "version_number": by_id[from_manifest_id]["version_number"],
+                "content_hash": by_id[from_manifest_id]["content_hash"],
+            },
+            "to": {
+                "id": to_manifest_id,
+                "version_number": by_id[to_manifest_id]["version_number"],
+                "content_hash": by_id[to_manifest_id]["content_hash"],
+            },
+            "changed_sections": [change["section"] for change in changes],
+            "changes": changes,
+        }
 
     def compile_policy(self, manifest_version_id: str) -> dict[str, Any]:
         rejection_code: str | None = None

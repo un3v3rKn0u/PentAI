@@ -43,6 +43,18 @@ def manifest_for(engagement: dict[str, object], source: dict[str, object]) -> di
                 "content_hash": source["content_hash"],
             }
         ],
+        "field_provenance": {
+            field: [{"source_id": source["id"], "content_hash": source["content_hash"]}]
+            for field in (
+                "/scope",
+                "/techniques",
+                "/operational_limits",
+                "/network",
+                "/data_handling",
+                "/reporting",
+                "/agent_controls",
+            )
+        },
         "scope": {
             "assets": [
                 {
@@ -325,6 +337,68 @@ class AuthorizationSliceTests(unittest.TestCase):
         with self.assertRaises(DomainError) as raised:
             self.service.activate_policy(second_bundle["id"], actor_id="human-reviewer")
         self.assertEqual(raised.exception.code, "APPROVAL_MISSING")
+
+    def test_manifest_history_is_versioned_idempotent_and_diffed(self) -> None:
+        first = self.service.save_manifest(self.engagement["id"], self.manifest)
+        duplicate = self.service.save_manifest(self.engagement["id"], copy.deepcopy(self.manifest))
+        self.assertEqual(duplicate["id"], first["id"])
+        self.assertEqual(duplicate["version_number"], 1)
+
+        edited = copy.deepcopy(self.manifest)
+        edited["reporting"]["submission_channel"] = "manual-portal"
+        second = self.service.save_manifest(self.engagement["id"], edited)
+        self.assertEqual(second["version_number"], 2)
+        self.assertEqual(second["supersedes_id"], first["id"])
+        self.assertEqual(
+            [item["version_number"] for item in self.service.list_manifests(self.engagement["id"])],
+            [2, 1],
+        )
+        difference = self.service.manifest_diff(self.engagement["id"], first["id"], second["id"])
+        self.assertEqual(difference["changed_sections"], ["reporting"])
+        self.assertEqual(
+            difference, self.service.manifest_diff(self.engagement["id"], first["id"], second["id"])
+        )
+
+    def test_field_provenance_missing_unknown_or_stale_is_default_denied(self) -> None:
+        for mutation, expected in (
+            (lambda item: item.pop("field_provenance"), "CONTRACT_INVALID"),
+            (
+                lambda item: item["field_provenance"]["/scope"][0].update(
+                    {"source_id": str(uuid4())}
+                ),
+                "PROVENANCE_MISSING",
+            ),
+            (
+                lambda item: item["field_provenance"]["/scope"][0].update(
+                    {"content_hash": "f" * 64}
+                ),
+                "PROVENANCE_HASH_MISMATCH",
+            ),
+        ):
+            candidate = copy.deepcopy(self.manifest)
+            mutation(candidate)
+            version = self.service.save_manifest(self.engagement["id"], candidate)
+            self.assertFalse(version["valid"])
+            self.assertIn(expected, {issue["code"] for issue in version["issues"]})
+            with self.assertRaises(DomainError):
+                self.service.compile_policy(version["id"])
+
+    def test_manifest_diff_cannot_cross_engagement_boundary(self) -> None:
+        first = self.service.save_manifest(self.engagement["id"], self.manifest)
+        other = self.service.create_engagement(
+            self.program["id"],
+            effective_from=timestamp(timedelta(hours=-1)),
+            expires_at=timestamp(timedelta(hours=2)),
+            timezone="UTC",
+        )
+        other_manifest = copy.deepcopy(self.manifest)
+        other_manifest["engagement"].update(
+            {key: other[key] for key in ("id", "effective_from", "expires_at", "timezone")}
+        )
+        second = self.service.save_manifest(other["id"], other_manifest)
+        with self.assertRaises(DomainError) as raised:
+            self.service.manifest_diff(self.engagement["id"], first["id"], second["id"])
+        self.assertEqual(raised.exception.code, "MANIFEST_NOT_FOUND")
 
     def test_unresolved_manifest_is_rejected_and_audited(self) -> None:
         self.manifest["unresolved_questions"] = ["Does wildcard include the apex?"]

@@ -8,6 +8,7 @@
     "schema_version",
     "engagement",
     "sources",
+    "field_provenance",
     "scope",
     "techniques",
     "operational_limits",
@@ -64,6 +65,20 @@
           "effective_at": {"type": "string", "format": "date-time"},
           "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
         }
+      }
+    },
+    "field_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["/scope", "/techniques", "/operational_limits", "/network", "/data_handling", "/reporting", "/agent_controls"],
+      "properties": {
+        "/scope": {"$ref": "#/$defs/provenanceLinks"},
+        "/techniques": {"$ref": "#/$defs/provenanceLinks"},
+        "/operational_limits": {"$ref": "#/$defs/provenanceLinks"},
+        "/network": {"$ref": "#/$defs/provenanceLinks"},
+        "/data_handling": {"$ref": "#/$defs/provenanceLinks"},
+        "/reporting": {"$ref": "#/$defs/provenanceLinks"},
+        "/agent_controls": {"$ref": "#/$defs/provenanceLinks"}
       }
     },
     "scope": {
@@ -219,5 +234,20 @@
     "known_issues": {"type": "array", "items": {"type": "object"}},
     "unresolved_questions": {"type": "array", "items": {"type": "string"}},
     "normalization_warnings": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "provenanceLinks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "content_hash"],
+        "properties": {
+          "source_id": {"type": "string", "format": "uuid"},
+          "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
   }
 }

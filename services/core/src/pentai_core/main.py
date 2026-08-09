@@ -291,6 +291,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def save_manifest(request: ManifestRequest) -> dict[str, Any]:
         return call(lambda: authorization.save_manifest(request.engagement_id, request.document))
 
+    @app.get("/api/v1/engagements/{engagement_id}/manifests")
+    def list_manifests(engagement_id: str) -> dict[str, Any]:
+        return {"manifests": call(lambda: authorization.list_manifests(engagement_id))}
+
+    @app.get("/api/v1/engagements/{engagement_id}/manifests/diff")
+    def diff_manifests(engagement_id: str, from_id: str, to_id: str) -> dict[str, Any]:
+        return call(lambda: authorization.manifest_diff(engagement_id, from_id, to_id))
+
     @app.post("/api/v1/manifests/{manifest_id}/compile")
     def compile_policy(manifest_id: str) -> dict[str, Any]:
         return call(lambda: authorization.compile_policy(manifest_id))
