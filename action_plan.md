@@ -257,6 +257,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     decisions, atomically reserves total-request/concurrency/response capacity, and
     prepares durable sessions with execution disabled. Rate token buckets, sockets,
     containment, and external effects remain required before this item is complete.
+  - A durable non-target-facing gateway sentinel lifecycle now records launch intent
+    before the external effect, binds the container to fresh containment evidence and
+    the exact prepared session/network/image, re-inspects fixed isolation controls,
+    pauses authority on drift, and retries failed termination during startup recovery.
+    Application wiring, hosted live sentinel verification, controlled DNS, outbound
+    gateway networking, and HTTP effects remain required.
 - [ ] Create an isolated HTTP/browser worker with no direct outbound route.
 - [ ] Implement source-IP attestation and approved-IP comparison.
 - [x] Implement global and assessment-level pause, stop, and grant revocation.

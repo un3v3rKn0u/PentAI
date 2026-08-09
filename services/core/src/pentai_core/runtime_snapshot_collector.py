@@ -170,7 +170,7 @@ class OciRuntimeSnapshotCollector:
                 raise SnapshotCollectionError(
                     "RUNTIME_OUTPUT_INVALID", "runtime host data is missing"
                 )
-            observed_id = host.get("machineId")
+            observed_id = runtime_instance_identity("podman", document)
             version = (
                 version_document.get("Version") if isinstance(version_document, dict) else None
             )
@@ -315,3 +315,22 @@ def _version_tuple(value: object) -> tuple[int, int]:
     if match is None:
         return (0, 0)
     return (int(match.group(1)), int(match.group(2)))
+
+
+def runtime_instance_identity(runtime: str, document: dict[str, object]) -> str:
+    if runtime == "docker":
+        identity = document.get("ID")
+    elif runtime == "podman":
+        host = document.get("host")
+        if not isinstance(host, dict):
+            raise SnapshotCollectionError(
+                "RUNTIME_OUTPUT_INVALID", "runtime host data is missing"
+            )
+        identity = host.get("machineId") or host.get("hostname")
+    else:
+        raise SnapshotCollectionError("RUNTIME_UNSUPPORTED", "runtime is unsupported")
+    if not isinstance(identity, str) or not _IDENTIFIER.fullmatch(identity):
+        raise SnapshotCollectionError(
+            "RUNTIME_IDENTITY_INVALID", "runtime identity is unavailable"
+        )
+    return identity

@@ -121,11 +121,13 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
         )
         for runtime, executable, document in accepted:
             with self.subTest(runtime=runtime):
+                executor = FixtureExecutor([encoded(document)])
                 require_rootless_runtime(
                     runtime=runtime,
                     executable=executable,
-                    executor=FixtureExecutor([encoded(document)]),
+                    executor=executor,
                 )
+                self.assertEqual(executor.calls[0][1], 10)
 
         denied = (
             ("docker", encoded({"SecurityOptions": ["name=seccomp"]})),

@@ -39,7 +39,7 @@ def require_rootless_runtime(
     template = "{{json .}}" if runtime == "docker" else "json"
     result = executor.execute(
         (str(executable), "info", "--format", template),
-        timeout_seconds=5,
+        timeout_seconds=10,
         max_output_bytes=262_144,
     )
     if result.returncode != 0:

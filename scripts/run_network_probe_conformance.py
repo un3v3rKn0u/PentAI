@@ -6,22 +6,51 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sqlite3
 import tempfile
 import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
+from pentai_core.gateway_runtime_lifecycle import (
+    GatewayRuntimeLifecycle,
+    LinuxProcCapabilityMonitor,
+    OciGatewayFixtureController,
+)
 from pentai_core.managed_gateway_network import (
     ManagedGatewayNetworkProvisioner,
     OciNetworkConformanceProbe,
     normalize_oci_image_digest,
     require_rootless_runtime,
 )
+from pentai_core.migrate import migrate
+from pentai_core.runtime_containment import RuntimeContainmentAttestor
 from pentai_core.runtime_snapshot_collector import (
     LocalBoundedCommandExecutor,
+    OciRuntimeSnapshotCollector,
     SnapshotCollectionError,
+    runtime_instance_identity,
 )
 
 _ROOT = Path(__file__).resolve().parents[1]
+
+
+@dataclass
+class HarnessSafety:
+    calls: list[tuple[str, str]] = field(default_factory=list)
+
+    def halt(self, session_id: str, reason: str) -> None:
+        self.calls.append((session_id, reason))
+
+
+@dataclass
+class HarnessMonitor:
+    attestor: RuntimeContainmentAttestor
+
+    def measure(self) -> dict[str, object]:
+        return self.attestor.measure()
 
 
 def main() -> int:
@@ -110,6 +139,13 @@ def main() -> int:
             raise SnapshotCollectionError(
                 "NETWORK_CONFORMANCE_UNSAFE", "one or more containment probes failed"
             )
+        _run_gateway_lifecycle(
+            runtime=arguments.runtime,
+            executable=executable,
+            executor=executor,
+            network_id=network.network_id,
+            image_digest=digest,
+        )
         print(json.dumps({"image_digest": digest, "network_id": network.network_id, "safe": True}))
         return 0
     finally:
@@ -125,5 +161,108 @@ def main() -> int:
                 timeout_seconds=10,
                 max_output_bytes=4096,
             )
+
+
+def _run_gateway_lifecycle(
+    *,
+    runtime: str,
+    executable: Path,
+    executor: LocalBoundedCommandExecutor,
+    network_id: str,
+    image_digest: str,
+) -> None:
+    info = executor.execute(
+        (str(executable), "info", "--format", "json" if runtime == "podman" else "{{json .}}"),
+        timeout_seconds=5,
+        max_output_bytes=262_144,
+    )
+    try:
+        document = json.loads(info.stdout)
+        runtime_instance_id = runtime_instance_identity(runtime, document)
+    except (TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SnapshotCollectionError(
+            "RUNTIME_IDENTITY_INVALID", "runtime identity is unavailable"
+        ) from exc
+    probe = OciNetworkConformanceProbe(
+        executable=executable, probe_image_digest=image_digest, executor=executor
+    )
+    collector = OciRuntimeSnapshotCollector(
+        runtime=runtime,
+        executable=executable,
+        runtime_instance_id=runtime_instance_id,
+        gateway_network_id=network_id,
+        pentai_instance_id="conformance-fixture",
+        executor=executor,
+        network_conformance=probe,
+    )
+    attestor = RuntimeContainmentAttestor(collector)
+    controller = OciGatewayFixtureController(
+        runtime=runtime,
+        executable=executable,
+        executor=executor,
+        capability_monitor=LinuxProcCapabilityMonitor() if runtime == "podman" else None,
+    )
+    safety = HarnessSafety()
+    with tempfile.TemporaryDirectory(prefix="pentai-gateway-lifecycle-") as temporary:
+        database = Path(temporary) / "lifecycle.db"
+        migrate(database)
+        sessions = [_insert_fixture_session(database), _insert_fixture_session(database)]
+        lifecycle = GatewayRuntimeLifecycle(
+            database_path=database,
+            controller=controller,
+            monitor=HarnessMonitor(attestor),
+            safety=safety,
+        )
+        first = lifecycle.launch(
+            session=sessions[0], containment=attestor.measure(), image_digest=image_digest
+        )
+        lifecycle.check(str(first["runtime_id"]))
+        lifecycle.terminate(str(first["runtime_id"]), reason="hosted lifecycle verification")
+        lifecycle.launch(
+            session=sessions[1], containment=attestor.measure(), image_digest=image_digest
+        )
+        if lifecycle.recover() != 1:
+            raise SnapshotCollectionError(
+                "GATEWAY_RECOVERY_FAILED", "gateway startup recovery did not terminate fixture"
+            )
+    if len(safety.calls) != 2:
+        raise SnapshotCollectionError("GATEWAY_SAFETY_FAILED", "safety handler was not invoked")
+
+
+def _insert_fixture_session(database: Path) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    session = {
+        "schema_version": "1.0.0",
+        "session_id": str(uuid.uuid4()),
+        "reservation_id": str(uuid.uuid4()),
+        "grant_id": str(uuid.uuid4()),
+        "attestation_id": str(uuid.uuid4()),
+        "destination_authorization_id": str(uuid.uuid4()),
+        "status": "prepared",
+        "request_count": 1,
+        "response_bytes_limit": 4096,
+        "prepared_at": (now - timedelta(seconds=1)).isoformat().replace("+00:00", "Z"),
+        "execution_enabled": False,
+    }
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute("PRAGMA foreign_keys = OFF")
+        connection.execute(
+            """INSERT INTO gateway_sessions(
+            session_id, reservation_id, grant_id, attestation_id,
+            destination_authorization_id, status, prepared_at, execution_enabled
+            ) VALUES (?, ?, ?, ?, ?, 'prepared', ?, 0)""",
+            (
+                session["session_id"], session["reservation_id"], session["grant_id"],
+                session["attestation_id"], session["destination_authorization_id"],
+                session["prepared_at"],
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return session
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

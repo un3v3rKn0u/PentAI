@@ -8,6 +8,9 @@ on:
       - "scripts/run_network_probe_conformance.py"
       - "services/core/src/pentai_core/managed_gateway_network.py"
       - "services/core/src/pentai_core/runtime_snapshot_collector.py"
+      - "services/core/src/pentai_core/gateway_runtime_lifecycle.py"
+      - "migrations/0011_gateway_runtime_lifecycle.sql"
+      - "schemas/v1/gateway-runtime-instance-v1.schema.json"
       - ".github/workflows/network-conformance.yml"
   workflow_dispatch:
 

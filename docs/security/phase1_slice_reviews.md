@@ -599,3 +599,37 @@ Isolation invariants are not claimed verified.
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not approve production use, worker execution, or target-facing networking.
+
+## 2026-08-09 — Durable non-target gateway runtime lifecycle
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without HTTP, DNS, worker, or target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Additive migration `0011`, GatewayRuntimeInstance v1, fixed OCI
+sentinel commands, post-launch inspection, repeatable watchdog checks, durable safety
+adapter, hash-chained lifecycle audit events, immutable lifecycle history, and startup
+termination recovery.
+
+**Evidence examined:** Missing/stale containment, inactive sessions, mutable image
+identity, replay, changed runtime/network identity, inspection failure, control drift,
+launch failure, termination failure, and failed-cleanup recovery deny or halt. Commands
+use a read-only root, non-root image user, dropped capabilities, no-new-privileges,
+private namespaces, no binds/runtime socket, fixed resources, exact network, ownership
+labels, and a SHA-256 image identity. The sentinel accepts no target or URL argument.
+
+**Findings:** The container ID is persisted immediately after launch and before
+inspection so a crash or cleanup failure leaves a recoverable durable identity.
+Termination failure remains fail-closed and retryable rather than being finalized as
+success. Runtime records and their authority bindings cannot be deleted or rewritten.
+
+**Limitations and deferred work:** Tests use synthetic runtime responses. The local
+Docker daemon is rootful and was not used. Hosted rootless sentinel launch/inspection/
+termination, application-startup watchdog wiring, controlled DNS transport, outbound
+gateway networking, HTTP sockets, redirect handling, worker attachment, and continuous
+production scheduling remain absent. Target-facing execution is still prohibited.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not approve production use, worker execution, or target-facing networking.
