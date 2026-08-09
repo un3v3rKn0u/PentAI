@@ -348,3 +348,32 @@ blocked on those later components.
 **Residual risk accepted:** This review is self-authored and non-independent. It is
 not production approval, release authorization, external assurance, or permission to
 contact any target.
+
+## 2026-08-09 — Trusted attestor and controlled-resolver boundaries
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Injectable two-observer source identity attestor, route and resolver
+binding, short lifetime, controlled DNS answer/CNAME canonicalization and bounds, core
+policy derivation, private raw-decision boundary, documentation, and negative tests.
+
+**Evidence examined:** Observer agreement and disagreement, duplicate endpoint IDs,
+wrong address family, resolver-attestation mismatch, duplicate and oversized DNS
+answers, canonical names and addresses, existing destination bypass tests, and complete
+local Python quality checks reported with the slice.
+
+**Findings:** AI, UI, and workers cannot produce or persist measurements through an
+API. The core selects the active policy hash, resolver results remain non-authoritative
+until destination authorization, and all outputs remain explicitly non-executing.
+
+**Limitations and deferred work:** All observers and DNS backends are injected synthetic
+fixtures. Authentication of real observation endpoints, OS route inspection, live DNS
+transport, continuous monitoring, containment, and gateway session termination remain
+absent. No network invariant is claimed fully verified.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not approve production use, external targets, or target-facing networking.

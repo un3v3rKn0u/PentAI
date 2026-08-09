@@ -27,8 +27,9 @@ deny before use. All accepted answers are pinned in the decision.
 
 RFC 5737 and RFC 3849 documentation addresses are accepted only when the attestation
 uses the explicit `fixture:` resolver namespace. This supports owned, deterministic
-tests and is not available to production resolver identities. No resolver or public-IP
-probe is implemented here.
+tests and is not available to production resolver identities. A later dependent slice
+adds an injectable controlled-resolver boundary, but no production DNS backend or
+public-IP probe is implemented yet.
 
 ## Compatibility and rollback
 

@@ -8,11 +8,13 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 from pentai_core.authorization import AuthorizationService, DomainError
+from pentai_core.controlled_dns import ControlledResolver, RawDnsAnswer
 from pentai_core.migrate import migrate
+from pentai_core.network_attestation import NetworkAttestor, RouteSnapshot, SourceObservation
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_policy import canonicalize_url, content_hash, evaluate
@@ -21,6 +23,18 @@ from pentai_policy.document import contract_issues
 
 def timestamp(offset: timedelta) -> str:
     return (datetime.now(UTC) + offset).isoformat().replace("+00:00", "Z")
+
+
+def fixture_resolver(
+    addresses: tuple[str, ...], cname_chain: tuple[str, ...] = ()
+) -> ControlledResolver:
+    backend = Mock()
+    backend.resolve.return_value = RawDnsAnswer(addresses, cname_chain)
+    return ControlledResolver(
+        backend,
+        resolver_mode="tunnel_resolver",
+        resolver_id="fixture:controlled-dns",
+    )
 
 
 def manifest_for(engagement: dict[str, object], source: dict[str, object]) -> dict[str, object]:
@@ -207,31 +221,32 @@ class AuthorizationSliceTests(unittest.TestCase):
         grant = self.service.mint_action_grant(
             decision["decision_id"], audience="pentai-egress-gateway"
         )
-        attestation = {
-            "schema_version": "1.0.0",
-            "attestation_id": str(uuid4()),
-            "assessment_id": self.engagement["id"],
-            "policy_hash": bundle["content_hash"],
-            "route_profile_id": "synthetic-route",
-            "source_ipv4": "192.0.2.10",
-            "resolver_mode": "tunnel_resolver",
-            "resolver_id": "fixture:controlled-dns",
-            "observations": ["fixture:egress-a", "fixture:egress-b"],
-            "observed_at": timestamp(timedelta(seconds=-1)),
-            "expires_at": timestamp(timedelta(minutes=1)),
-        }
-        self.service.record_network_attestation(attestation, attestor_id="fixture-attestor")
+        observers = []
+        for endpoint_id in ("fixture:egress-a", "fixture:egress-b"):
+            observer = Mock()
+            observer.observe.return_value = SourceObservation(endpoint_id, "192.0.2.10")
+            observers.append(observer)
+        route_inspector = Mock()
+        route_inspector.inspect.return_value = RouteSnapshot(
+            "synthetic-route", "tunnel_resolver", "fixture:controlled-dns"
+        )
+        attestation = self.service.attest_network(
+            self.engagement["id"],
+            attestor=NetworkAttestor(
+                tuple(observers), route_inspector, lifetime_seconds=60
+            ),
+            attestor_id="fixture-attestor",
+        )
         return intent, grant, attestation
 
     def test_network_destination_authorization_pins_fixture_dns_without_executing(self) -> None:
         intent, grant, attestation = self.network_authority()
 
-        result = self.service.authorize_network_destination(
+        result = self.service.resolve_and_authorize_network_destination(
             grant_id=grant["grant_id"],
             attestation_id=attestation["attestation_id"],
             candidate_url=intent["target"]["canonical_url"],
-            addresses=["192.0.2.20"],
-            cname_chain=["example.test"],
+            resolver=fixture_resolver(("192.0.2.20",), ("example.test",)),
             sni_host="example.test",
             host_header="example.test",
             redirect_count=0,
@@ -249,12 +264,11 @@ class AuthorizationSliceTests(unittest.TestCase):
                 ).fetchone()[0]
             )
 
-        rebound = self.service.authorize_network_destination(
+        rebound = self.service.resolve_and_authorize_network_destination(
             grant_id=grant["grant_id"],
             attestation_id=attestation["attestation_id"],
             candidate_url=intent["target"]["canonical_url"],
-            addresses=["192.0.2.21"],
-            cname_chain=["example.test"],
+            resolver=fixture_resolver(("192.0.2.21",), ("example.test",)),
             sni_host="example.test",
             host_header="example.test",
             redirect_count=0,
@@ -271,12 +285,11 @@ class AuthorizationSliceTests(unittest.TestCase):
         )
         for addresses, sni_host, expected in cases:
             with self.subTest(expected=expected):
-                result = self.service.authorize_network_destination(
+                result = self.service.resolve_and_authorize_network_destination(
                     grant_id=grant["grant_id"],
                     attestation_id=attestation["attestation_id"],
                     candidate_url=intent["target"]["canonical_url"],
-                    addresses=addresses,
-                    cname_chain=[],
+                    resolver=fixture_resolver(tuple(addresses)),
                     sni_host=sni_host,
                     host_header="example.test",
                     redirect_count=0,
@@ -292,12 +305,11 @@ class AuthorizationSliceTests(unittest.TestCase):
         )
 
         with self.assertRaises(DomainError) as raised:
-            self.service.authorize_network_destination(
+            self.service.resolve_and_authorize_network_destination(
                 grant_id=grant["grant_id"],
                 attestation_id=attestation["attestation_id"],
                 candidate_url=intent["target"]["canonical_url"],
-                addresses=["192.0.2.20"],
-                cname_chain=[],
+                resolver=fixture_resolver(("192.0.2.20",)),
                 sni_host="example.test",
                 host_header="example.test",
                 redirect_count=0,
@@ -336,6 +348,8 @@ class AuthorizationSliceTests(unittest.TestCase):
         for field, value, expected in cases:
             with self.subTest(expected=expected):
                 invalid = copy.deepcopy(attestation)
+                invalid.pop("status")
+                invalid.pop("execution_enabled")
                 invalid["attestation_id"] = str(uuid4())
                 invalid[field] = value
                 with self.assertRaises(DomainError) as raised:
