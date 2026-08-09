@@ -36,6 +36,10 @@ class NetworkConformanceResult:
     direct_egress_blocked: bool
     external_dns_blocked: bool
     ipv6_blocked: bool
+    runtime_socket_blocked: bool
+    host_mounts_blocked: bool
+    host_namespaces_blocked: bool
+    resource_limits_enforced: bool
 
 
 class NetworkConformanceVerifier(Protocol):
@@ -243,6 +247,10 @@ class OciRuntimeSnapshotCollector:
                 conformance.direct_egress_blocked,
                 conformance.external_dns_blocked,
                 conformance.ipv6_blocked,
+                conformance.runtime_socket_blocked,
+                conformance.host_mounts_blocked,
+                conformance.host_namespaces_blocked,
+                conformance.resource_limits_enforced,
             )
         ):
             raise SnapshotCollectionError(

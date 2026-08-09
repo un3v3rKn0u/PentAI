@@ -36,7 +36,8 @@ commands or flags from AI, UI, manifests, plugins, or workers.
 `OciRuntimeSnapshotCollector` supplies this fixed-command boundary for Docker and
 Podman. It verifies the expected runtime and managed-network identities, exact PentAI
 ownership/control labels, rootless operation, resource-limit availability, internal
-networking, and disabled IPv6 before emitting typed snapshots. See
+networking, disabled IPv6, absence of runtime sockets and host mounts, private PID
+namespace behavior, and active CPU/memory/PID limits before emitting typed snapshots. See
 `docs/security/runtime_snapshot_collector.md` for its assurance limits.
 
 Launch plans require an immutable SHA-256 image digest, bounded argument vector, fixed
@@ -52,8 +53,10 @@ unchanged. This slice adds no database migration or persisted runtime authority.
 
 ## Deferred verification
 
-Cross-platform Docker/Podman output verification, container launch, gateway-network
-construction, host firewall enforcement, runtime re-attestation,
-worker termination, and platform-specific escape/bypass probes remain deferred. Until
+The repository-owned probe and hosted Linux rootless Podman harness are implemented,
+but their live result is not evidence until the hosted job passes. Rootless Docker,
+cross-platform verification, container launch, gateway attachment, host firewall
+enforcement, runtime re-attestation, worker termination, and the remaining
+platform-specific escape/bypass probes remain deferred. Until
 those exist and pass, INV-NET-001, INV-NET-003, INV-NET-004, INV-ISO-001, and
 INV-ISO-003 are not claimed verified and target-facing execution remains prohibited.

@@ -65,7 +65,9 @@ class FixtureExecutor:
 
 @dataclass(frozen=True)
 class FixtureConformance:
-    result: NetworkConformanceResult = NetworkConformanceResult(NETWORK, True, True, True)
+    result: NetworkConformanceResult = NetworkConformanceResult(
+        NETWORK, True, True, True, True, True, True, True
+    )
 
     def verify(self, network_id: str) -> NetworkConformanceResult:
         if network_id != NETWORK:
@@ -243,12 +245,37 @@ class RuntimeSnapshotCollectorTests(unittest.TestCase):
     def test_network_probe_failure_and_identity_mismatch_deny(self) -> None:
         cases = (
             (
-                NetworkConformanceResult("other-network", True, True, True),
+                NetworkConformanceResult("other-network", True, True, True, True, True, True, True),
                 "NETWORK_CONFORMANCE_MISMATCH",
             ),
-            (NetworkConformanceResult(NETWORK, False, True, True), "NETWORK_CONFORMANCE_UNSAFE"),
-            (NetworkConformanceResult(NETWORK, True, False, True), "NETWORK_CONFORMANCE_UNSAFE"),
-            (NetworkConformanceResult(NETWORK, True, True, False), "NETWORK_CONFORMANCE_UNSAFE"),
+            (
+                NetworkConformanceResult(NETWORK, False, True, True, True, True, True, True),
+                "NETWORK_CONFORMANCE_UNSAFE",
+            ),
+            (
+                NetworkConformanceResult(NETWORK, True, False, True, True, True, True, True),
+                "NETWORK_CONFORMANCE_UNSAFE",
+            ),
+            (
+                NetworkConformanceResult(NETWORK, True, True, False, True, True, True, True),
+                "NETWORK_CONFORMANCE_UNSAFE",
+            ),
+            (
+                NetworkConformanceResult(NETWORK, True, True, True, False, True, True, True),
+                "NETWORK_CONFORMANCE_UNSAFE",
+            ),
+            (
+                NetworkConformanceResult(NETWORK, True, True, True, True, False, True, True),
+                "NETWORK_CONFORMANCE_UNSAFE",
+            ),
+            (
+                NetworkConformanceResult(NETWORK, True, True, True, True, True, False, True),
+                "NETWORK_CONFORMANCE_UNSAFE",
+            ),
+            (
+                NetworkConformanceResult(NETWORK, True, True, True, True, True, True, False),
+                "NETWORK_CONFORMANCE_UNSAFE",
+            ),
         )
         for conformance, expected in cases:
             with (

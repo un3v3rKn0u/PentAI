@@ -22,6 +22,39 @@ class ManagedNetworkResult:
     created: bool
 
 
+def require_rootless_runtime(
+    *, runtime: str, executable: Path, executor: BoundedCommandExecutor
+) -> None:
+    if runtime not in {"docker", "podman"} or not executable.is_absolute():
+        raise SnapshotCollectionError("RUNTIME_UNSUPPORTED", "runtime is unsupported")
+    template = "{{json .}}" if runtime == "docker" else "json"
+    result = executor.execute(
+        (str(executable), "info", "--format", template),
+        timeout_seconds=5,
+        max_output_bytes=262_144,
+    )
+    if result.returncode != 0:
+        raise SnapshotCollectionError("RUNTIME_INSPECTION_FAILED", "runtime inspection failed")
+    try:
+        document = json.loads(result.stdout)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SnapshotCollectionError(
+            "RUNTIME_OUTPUT_INVALID", "runtime output is invalid"
+        ) from exc
+    if not isinstance(document, dict):
+        raise SnapshotCollectionError("RUNTIME_OUTPUT_INVALID", "runtime output is invalid")
+    if runtime == "docker":
+        security = document.get("SecurityOptions")
+        rootless = isinstance(security, list) and any(
+            isinstance(item, str) and "rootless" in item.lower() for item in security
+        )
+    else:
+        host = document.get("host")
+        rootless = isinstance(host, dict) and host.get("rootless") is True
+    if not rootless:
+        raise SnapshotCollectionError("RUNTIME_ROOTLESS_REQUIRED", "runtime is not rootless")
+
+
 class ManagedGatewayNetworkProvisioner:
     def __init__(
         self,
@@ -237,6 +270,7 @@ class OciNetworkConformanceProbe:
                 "--entrypoint=/pentai-network-probe",
                 self._probe_image_digest,
                 "--format=json",
+                f"--network-id={network_id}",
                 "--direct-ip=192.0.2.1",
                 "--dns-ip=192.0.2.53",
                 "--ipv6=2001:db8::1",
@@ -257,6 +291,10 @@ class OciNetworkConformanceProbe:
             "direct_egress_blocked",
             "external_dns_blocked",
             "ipv6_blocked",
+            "runtime_socket_blocked",
+            "host_mounts_blocked",
+            "host_namespaces_blocked",
+            "resource_limits_enforced",
         }:
             raise SnapshotCollectionError(
                 "NETWORK_PROBE_INVALID", "network probe output is invalid"
@@ -271,6 +309,10 @@ class OciNetworkConformanceProbe:
                 "direct_egress_blocked",
                 "external_dns_blocked",
                 "ipv6_blocked",
+                "runtime_socket_blocked",
+                "host_mounts_blocked",
+                "host_namespaces_blocked",
+                "resource_limits_enforced",
             )
         )
         if any(type(value) is not bool for value in values):
@@ -282,4 +324,8 @@ class OciNetworkConformanceProbe:
             cast(bool, values[0]),
             cast(bool, values[1]),
             cast(bool, values[2]),
+            cast(bool, values[3]),
+            cast(bool, values[4]),
+            cast(bool, values[5]),
+            cast(bool, values[6]),
         )

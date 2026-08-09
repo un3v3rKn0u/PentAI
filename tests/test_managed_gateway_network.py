@@ -8,6 +8,7 @@ from pathlib import Path
 from pentai_core.managed_gateway_network import (
     ManagedGatewayNetworkProvisioner,
     OciNetworkConformanceProbe,
+    require_rootless_runtime,
 )
 from pentai_core.runtime_snapshot_collector import CommandResult, SnapshotCollectionError
 
@@ -16,6 +17,21 @@ NAME = "pentai-gateway-fixture"
 NETWORK_ID = "fixture-network-id"
 INSTANCE = "fixture-pentai"
 IMAGE = "sha256:" + "a" * 64
+
+
+def conformance(**updates: object) -> dict[str, object]:
+    document: dict[str, object] = {
+        "network_id": NETWORK_ID,
+        "direct_egress_blocked": True,
+        "external_dns_blocked": True,
+        "ipv6_blocked": True,
+        "runtime_socket_blocked": True,
+        "host_mounts_blocked": True,
+        "host_namespaces_blocked": True,
+        "resource_limits_enforced": True,
+    }
+    document.update(updates)
+    return document
 
 
 def encoded(document: object, *, returncode: int = 0) -> CommandResult:
@@ -67,6 +83,33 @@ def provisioner(executor: FixtureExecutor) -> ManagedGatewayNetworkProvisioner:
 
 
 class ManagedGatewayNetworkTests(unittest.TestCase):
+    def test_rootless_runtime_gate_requires_explicit_valid_evidence(self) -> None:
+        accepted = (
+            ("docker", DOCKER, {"SecurityOptions": ["name=rootless"]}),
+            ("podman", Path("/usr/bin/podman"), {"host": {"rootless": True}}),
+        )
+        for runtime, executable, document in accepted:
+            with self.subTest(runtime=runtime):
+                require_rootless_runtime(
+                    runtime=runtime,
+                    executable=executable,
+                    executor=FixtureExecutor([encoded(document)]),
+                )
+
+        denied = (
+            ("docker", encoded({"SecurityOptions": ["name=seccomp"]})),
+            ("podman", encoded({"host": {"rootless": False}})),
+            ("docker", CommandResult(0, b"not-json")),
+            ("docker", CommandResult(1, b"")),
+        )
+        for runtime, result in denied:
+            with self.subTest(runtime=runtime), self.assertRaises(SnapshotCollectionError):
+                require_rootless_runtime(
+                    runtime=runtime,
+                    executable=DOCKER,
+                    executor=FixtureExecutor([result]),
+                )
+
     def test_existing_owned_internal_network_is_idempotent(self) -> None:
         executor = FixtureExecutor([listed(), inspected()])
         result = provisioner(executor).ensure()
@@ -143,16 +186,7 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
 
     def test_probe_uses_pinned_locked_down_fixture_and_parses_result(self) -> None:
         executor = FixtureExecutor(
-            [
-                encoded(
-                    {
-                        "network_id": NETWORK_ID,
-                        "direct_egress_blocked": True,
-                        "external_dns_blocked": True,
-                        "ipv6_blocked": True,
-                    }
-                )
-            ]
+            [encoded(conformance())]
         )
         result = OciNetworkConformanceProbe(
             executable=DOCKER, probe_image_digest=IMAGE, executor=executor
@@ -164,27 +198,18 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
         self.assertIn("--cap-drop=ALL", command)
         self.assertIn("--security-opt=no-new-privileges", command)
         self.assertIn(IMAGE, command)
+        self.assertIn("--network-id=" + NETWORK_ID, command)
         self.assertEqual((timeout, output_limit), (10, 4096))
 
     def test_probe_identity_types_and_failures_deny(self) -> None:
         documents = (
             ({"network_id": NETWORK_ID}, "NETWORK_PROBE_INVALID"),
             (
-                {
-                    "network_id": "other-network",
-                    "direct_egress_blocked": True,
-                    "external_dns_blocked": True,
-                    "ipv6_blocked": True,
-                },
+                conformance(network_id="other-network"),
                 "NETWORK_PROBE_MISMATCH",
             ),
             (
-                {
-                    "network_id": NETWORK_ID,
-                    "direct_egress_blocked": 1,
-                    "external_dns_blocked": True,
-                    "ipv6_blocked": True,
-                },
+                conformance(direct_egress_blocked=1),
                 "NETWORK_PROBE_INVALID",
             ),
         )
@@ -199,6 +224,34 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
                     executor=FixtureExecutor([encoded(document)]),
                 ).verify(NETWORK_ID)
             self.assertEqual(raised.exception.code, expected)
+
+    def test_probe_rejects_legacy_output_and_each_unsafe_control(self) -> None:
+        legacy = conformance()
+        legacy.pop("resource_limits_enforced")
+        cases: list[tuple[dict[str, object], str]] = [(legacy, "missing-field")]
+        for control in (
+            "direct_egress_blocked",
+            "external_dns_blocked",
+            "ipv6_blocked",
+            "runtime_socket_blocked",
+            "host_mounts_blocked",
+            "host_namespaces_blocked",
+            "resource_limits_enforced",
+        ):
+            cases.append((conformance(**{control: False}), control))
+        for document, label in cases:
+            with self.subTest(control=label):
+                probe = OciNetworkConformanceProbe(
+                    executable=DOCKER,
+                    probe_image_digest=IMAGE,
+                    executor=FixtureExecutor([encoded(document)]),
+                )
+                if label == "missing-field":
+                    with self.assertRaises(SnapshotCollectionError):
+                        probe.verify(NETWORK_ID)
+                else:
+                    result = probe.verify(NETWORK_ID)
+                    self.assertFalse(getattr(result, label))
 
 
 if __name__ == "__main__":

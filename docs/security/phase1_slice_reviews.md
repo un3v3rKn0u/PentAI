@@ -561,3 +561,41 @@ claimed verified.
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not approve production use, worker execution, or target-facing networking.
+
+## 2026-08-09 — Rootless network-probe fixture and hosted conformance harness
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development and hosted TEST-NET-only verification without worker or target
+execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Dependency-free static probe, `scratch` image construction,
+content-addressed invocation, fixed TEST-NET destinations, rootless-runtime gate,
+run-scoped cleanup, strict result parsing, and direct-egress, DNS, IPv6,
+runtime-socket, host-mount, host-PID-namespace, and resource-limit signals.
+
+**Evidence examined:** Rust tests reject changed destinations, unsafe network IDs,
+missing, duplicate, and unknown arguments. Python tests reject rootful, missing,
+malformed, and failed runtime evidence; legacy or malformed probe output; identity
+mismatch; and each negative containment result. The OCI command uses a read-only root,
+non-root UID, dropped capabilities, no-new-privileges, fixed limits, an exact managed
+network, and a locally obtained SHA-256 image ID. Image construction has no base image,
+pull, or network access.
+
+**Findings:** The earlier command could not bind real probe output to its network because
+it did not pass the expected network ID. It also represented only three network
+signals. This slice binds the identity explicitly and makes all seven signals mandatory.
+The harness refuses to build or create runtime resources before rootless mode is
+verified and removes only its UUID-named fixtures.
+
+**Limitations and deferred work:** The local Docker daemon is not rootless and was not
+used. Hosted Linux Podman must pass before live containment evidence exists. The PID-1
+signal detects host PID namespace use but does not exhaust every namespace escape.
+Rootless Docker, macOS, Windows, gateway attachment, firewall enforcement, continuous
+probing, proxy/DoH/DoT/raw-route bypasses, worker launch, and termination remain absent.
+Isolation invariants are not claimed verified.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not approve production use, worker execution, or target-facing networking.
