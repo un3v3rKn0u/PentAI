@@ -154,6 +154,11 @@ exist.
 **Failure response:** Immediately close sessions, revoke grants, and pause the assessment.<br>
 **Verification:** VPN loss, interface change, address change, disagreement, and attestation timeout tests.
 
+**Phase 1 setup note:** OS-discovered route and resolver values are untrusted,
+short-lived proposals only. They cannot satisfy this invariant, supply a registered
+source identity, or enable execution without explicit human confirmation and a later
+attestation against active policy.
+
 ### INV-NET-003 — Controlled DNS
 
 **Statement:** Workers cannot use unauthorized DNS, DoH, or DoT resolvers; resolution occurs through the policy-approved route and resolver.

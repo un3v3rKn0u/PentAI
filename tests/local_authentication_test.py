@@ -17,6 +17,8 @@ import pytest
 from fastapi import FastAPI
 from pentai_core.config import Settings, allowed_origins
 from pentai_core.main import create_app
+from pentai_core.network_attestation_adapters import HostRouteSnapshot
+from pentai_core.network_profile_setup import NetworkProfileSetupService
 
 
 def runtime_settings(database_path: Path, credential: str | None = None) -> Settings:
@@ -156,6 +158,7 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("GET", "/api/v1/readiness"),
         ("GET", "/api/v1/runtime-supervision"),
         ("GET", "/api/v1/network-safety-supervision"),
+        ("GET", "/api/v1/network-profile-proposal"),
         ("GET", "/api/v1/safety-state"),
         ("GET", "/api/v1/audit"),
         ("POST", "/api/v1/shutdown"),
@@ -185,6 +188,56 @@ def test_every_api_route_rejects_missing_credentials(
             "message": "Authentication required",
         }
     }
+
+
+def test_authenticated_network_profile_discovery_is_review_only(tmp_path: Path) -> None:
+    class Probe:
+        def inspect(self) -> HostRouteSnapshot:
+            return HostRouteSnapshot("fixture0", "192.0.2.1", ("192.0.2.53",))
+
+    settings = runtime_settings(tmp_path / "pentai.db")
+    app = create_app(
+        settings,
+        network_profile_setup_service=NetworkProfileSetupService(Probe()),
+    )
+    response = app_request(
+        app,
+        "GET",
+        "/api/v1/network-profile-proposal",
+        authorization=f"Bearer {settings.launch_credential}",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "needs_confirmation"
+    assert response.json()["execution_enabled"] is False
+    assert response.json()["registered_source_ipv4"] == []
+
+
+def test_network_profile_discovery_failure_is_fixed_and_non_sensitive(tmp_path: Path) -> None:
+    class FailingProbe:
+        def inspect(self) -> HostRouteSnapshot:
+            raise RuntimeError("private route command output")
+
+    settings = runtime_settings(tmp_path / "pentai.db")
+    app = create_app(
+        settings,
+        network_profile_setup_service=NetworkProfileSetupService(FailingProbe()),
+    )
+    response = app_request(
+        app,
+        "GET",
+        "/api/v1/network-profile-proposal",
+        authorization=f"Bearer {settings.launch_credential}",
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": {
+            "code": "NETWORK_PROFILE_DISCOVERY_FAILED",
+            "message": "Local network settings could not be discovered safely",
+        }
+    }
+    assert "private" not in response.text
 
 
 @pytest.mark.parametrize(

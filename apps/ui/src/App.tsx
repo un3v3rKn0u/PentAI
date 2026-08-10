@@ -22,6 +22,7 @@ type WorkflowState =
 type SourceMode = "pasted_text" | "file" | "url";
 type IntakeState = "empty" | "ready" | "loading" | "denied" | "degraded" | "error";
 type SafetyState = "loading" | "active" | "paused" | "stopped" | "error";
+type NetworkSetupState = "empty" | "loading" | "needs_confirmation" | "degraded" | "error";
 
 const maxSourceBytes = 2 * 1024 * 1024;
 
@@ -80,6 +81,15 @@ export function sourceFileMediaType(filename: string) {
   };
   if (!extension || !mediaTypes[extension]) throw new Error("SOURCE_MEDIA_TYPE_INVALID");
   return mediaTypes[extension];
+}
+
+export function networkSetupRequirement(code: string) {
+  const messages: Record<string, string> = {
+    CONFIRM_ROUTE: "Confirm the detected interface and gateway.",
+    CONFIRM_RESOLVER_MODE: "Choose and confirm the controlled resolver mode.",
+    ENTER_REGISTERED_SOURCE_IP: "Enter the public source IP registered for the assessment."
+  };
+  return messages[code] ?? "Resolve an unknown setup requirement before activation.";
 }
 
 function buildManifest(program: Json, engagement: Json, source: Json) {
@@ -234,6 +244,9 @@ export function App() {
   const [state, setState] = useState<WorkflowState>("draft");
   const [safetyState, setSafetyState] = useState<SafetyState>("loading");
   const [safetyReason, setSafetyReason] = useState("Explicit supervised safety control");
+  const [networkSetupState, setNetworkSetupState] = useState<NetworkSetupState>("empty");
+  const [networkProposal, setNetworkProposal] = useState<Json | null>(null);
+  const [networkSetupError, setNetworkSetupError] = useState("");
   const [error, setError] = useState("");
 
   const canImport = Boolean(program);
@@ -309,6 +322,25 @@ export function App() {
       setGrantStatus(status === "active" ? "not issued" : `revoked by global ${status}`);
       await refreshAudit();
     });
+  }
+
+  async function discoverNetworkProfile() {
+    setNetworkSetupState("loading");
+    setNetworkSetupError("");
+    try {
+      const proposal = await request("/network-profile-proposal");
+      setNetworkProposal(proposal);
+      setNetworkSetupState("needs_confirmation");
+    } catch (reason) {
+      const code = reason instanceof Error ? reason.message : "REQUEST_FAILED";
+      setNetworkProposal(null);
+      setNetworkSetupError(code);
+      setNetworkSetupState(
+        code === "NETWORK_PROFILE_DISCOVERY_FAILED" || code === "CORE_UNAVAILABLE"
+          ? "degraded"
+          : "error"
+      );
+    }
   }
 
   async function changeAssessmentSafety(status: "active" | "paused") {
@@ -574,6 +606,33 @@ export function App() {
       )}
 
       {error && <p className="error" role="alert">{error}</p>}
+
+      <section className="network-setup" aria-busy={networkSetupState === "loading"}>
+        <div>
+          <p className="eyebrow">Guided network setup</p>
+          <h2>Discover local settings for review</h2>
+          <p>This creates a short-lived proposal only. It does not save, approve, or activate networking.</p>
+        </div>
+        <button onClick={discoverNetworkProfile} disabled={!connection || networkSetupState === "loading"}>
+          {networkSetupState === "loading" ? "Discovering…" : "Discover network settings"}
+        </button>
+        {networkSetupState === "empty" && <p className="setup-status">No network proposal has been created.</p>}
+        {networkSetupState === "loading" && <p className="setup-status">Reading the local route and resolver. No external observer is contacted.</p>}
+        {networkSetupState === "degraded" && <p className="setup-status bad" role="alert">Discovery unavailable: {networkSetupError}. Nothing was activated.</p>}
+        {networkSetupState === "error" && <p className="setup-status bad" role="alert">Discovery failed safely: {networkSetupError}</p>}
+        {networkProposal && networkSetupState === "needs_confirmation" && (
+          <div className="setup-proposal" role="status">
+            <dl>
+              <div><dt>Interface</dt><dd>{networkProposal.route_interface}</dd></div>
+              <div><dt>Gateway</dt><dd>{networkProposal.route_gateway ?? "None detected"}</dd></div>
+              <div><dt>Resolvers</dt><dd>{networkProposal.resolver_addresses.join(", ")}</dd></div>
+              <div><dt>Expires</dt><dd>{new Date(networkProposal.expires_at).toLocaleTimeString()}</dd></div>
+            </dl>
+            <strong>Human confirmation still required</strong>
+            <ul>{networkProposal.requirements.map((item: string) => <li key={item}>{networkSetupRequirement(item)}</li>)}</ul>
+          </div>
+        )}
+      </section>
 
       <div className="workflow-grid">
         <section className="panel">
