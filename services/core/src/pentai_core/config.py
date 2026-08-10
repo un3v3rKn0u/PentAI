@@ -5,7 +5,10 @@ import re
 import sys
 from base64 import urlsafe_b64decode
 from dataclasses import dataclass
+from ipaddress import ip_address
 from pathlib import Path
+
+from pentai_policy import CanonicalizationError, canonicalize_domain
 
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -46,6 +49,10 @@ class Settings:
     network_observer_timeout_seconds: float = 3
     network_route_timeout_seconds: float = 2
     network_watchdog_interval_seconds: float = 5
+    controlled_dns_enabled: bool = False
+    controlled_dns_server_ip: str | None = None
+    controlled_dns_tls_hostname: str | None = None
+    controlled_dns_timeout_seconds: float = 2
 
     def validate(self) -> None:
         if self.host not in _LOOPBACK_HOSTS:
@@ -54,6 +61,7 @@ class Settings:
             raise ValueError("PentAI Core port must be from 1 through 65535")
         self._validate_gateway_runtime()
         self._validate_network_attestation()
+        self._validate_controlled_dns()
         if self.test_mode:
             return
         credential = self.launch_credential
@@ -114,6 +122,12 @@ class Settings:
             ),
             network_watchdog_interval_seconds=float(
                 os.getenv("PENTAI_NETWORK_WATCHDOG_INTERVAL_SECONDS", "5")
+            ),
+            controlled_dns_enabled=_environment_flag("PENTAI_CONTROLLED_DNS_ENABLED"),
+            controlled_dns_server_ip=os.getenv("PENTAI_CONTROLLED_DNS_SERVER_IP"),
+            controlled_dns_tls_hostname=os.getenv("PENTAI_CONTROLLED_DNS_TLS_HOSTNAME"),
+            controlled_dns_timeout_seconds=float(
+                os.getenv("PENTAI_CONTROLLED_DNS_TIMEOUT_SECONDS", "2")
             ),
         )
         settings.validate()
@@ -190,6 +204,43 @@ class Settings:
             )
         ):
             raise ValueError("Enabled network attestation configuration is incomplete")
+
+    def _validate_controlled_dns(self) -> None:
+        configured = (self.controlled_dns_server_ip, self.controlled_dns_tls_hostname)
+        if not self.controlled_dns_enabled:
+            if any(value is not None for value in configured):
+                raise ValueError("Controlled DNS configuration requires explicit enablement")
+            return
+        if (
+            not self.network_attestation_enabled
+            or self.controlled_dns_server_ip is None
+            or self.network_resolver_mode is None
+            or self.network_resolver_id is None
+            or not 0.1 <= self.controlled_dns_timeout_seconds <= 10
+        ):
+            raise ValueError("Enabled controlled DNS configuration is incomplete")
+        try:
+            server = ip_address(self.controlled_dns_server_ip).compressed
+            resolvers = {
+                ip_address(value).compressed for value in self.network_resolver_addresses
+            }
+        except ValueError as exc:
+            raise ValueError("Controlled DNS configuration is invalid") from exc
+        if server not in resolvers:
+            raise ValueError("Controlled DNS server must be in the attested resolver set")
+        if (
+            self.network_resolver_mode == "tunnel_resolver"
+            and self.controlled_dns_tls_hostname is not None
+        ) or (
+            self.network_resolver_mode == "approved_resolver"
+            and self.controlled_dns_tls_hostname is None
+        ):
+            raise ValueError("Controlled DNS transport does not match resolver mode")
+        if self.controlled_dns_tls_hostname is not None:
+            try:
+                canonicalize_domain(self.controlled_dns_tls_hostname)
+            except CanonicalizationError as exc:
+                raise ValueError("Controlled DNS TLS hostname is invalid") from exc
 
 
 def _secret_key(stdin_flag: str, environment_name: str) -> bytes | None:

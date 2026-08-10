@@ -58,9 +58,21 @@ deny before use. All accepted answers are pinned in the decision.
 
 RFC 5737 and RFC 3849 documentation addresses are accepted only when the attestation
 uses the explicit `fixture:` resolver namespace. This supports owned, deterministic
-tests and is not available to production resolver identities. A later dependent slice
-adds an injectable controlled-resolver boundary, but no production DNS backend or
-public-IP probe is implemented yet.
+tests and is not available to production resolver identities.
+
+The production-composable resolver backend sends DNS directly to one literal server
+address from the attested resolver set. Tunnel mode permits only bounded TCP/53;
+approved-resolver mode permits only bounded TLS/853 with TLS 1.2 or newer and normal
+certificate/hostname validation. There is no ambient system resolver, search-domain,
+proxy, UDP, or transport fallback.
+
+Every A and AAAA response must match an independently generated transaction ID and the
+exact canonical question, and both families must return the same ordered CNAME chain.
+Non-success result codes, truncation, invalid flags/counts, compression loops,
+unrelated answer owners, invalid or cyclic CNAMEs, duplicate addresses, oversized
+messages, trailing data, timeout, and early EOF deny before deterministic destination
+authorization. Each query uses one monotonic deadline across connection, TLS, framing,
+and response reads.
 
 ## Compatibility and rollback
 
@@ -73,7 +85,8 @@ must remain available for audit.
 ## Deferred enforcement
 
 Deployment-owned observer availability and independence, live VPN/interface matrices,
-resolver transport enforcement, gateway sockets, the live redirect loop, worker
-network isolation, and OS firewall rules are prerequisites for execution and remain
-deferred. Synthetic observers are not production public-IP evidence. This slice must
-not be interpreted as satisfying gateway containment or target-facing verification.
+live resolver/DoT interoperability, resolver-specific route proof, gateway sockets,
+the live redirect loop, worker network isolation, and OS firewall denial of direct DNS,
+DoT, DoH, and alternate resolver paths are prerequisites for execution and remain
+deferred. Synthetic observers and DNS packets are not production evidence. This slice
+must not be interpreted as satisfying gateway containment or target-facing verification.
