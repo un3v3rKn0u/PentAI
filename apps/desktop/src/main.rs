@@ -2,12 +2,13 @@
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use keyring::{Entry, Error as KeyringError};
-use rand::{rngs::OsRng, TryRngCore};
+use rand::{rngs::SysRng, TryRng};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
     env,
     ffi::OsString,
+    fmt::Write as _,
     io::{Read, Write},
     net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream},
     path::{Path, PathBuf},
@@ -70,7 +71,7 @@ fn core_bootstrap(state: State<'_, CoreState>) -> CoreBootstrap {
 
 fn launch_credential() -> Result<String, String> {
     let mut bytes = [0_u8; 32];
-    OsRng
+    SysRng
         .try_fill_bytes(&mut bytes)
         .map_err(|_| "secure credential generation failed".to_string())?;
     Ok(URL_SAFE_NO_PAD.encode(bytes))
@@ -78,7 +79,7 @@ fn launch_credential() -> Result<String, String> {
 
 fn generate_secret_key(purpose: &str) -> Result<Vec<u8>, String> {
     let mut bytes = vec![0_u8; 32];
-    OsRng
+    SysRng
         .try_fill_bytes(&mut bytes)
         .map_err(|_| format!("secure {purpose} key generation failed"))?;
     Ok(bytes)
@@ -199,7 +200,12 @@ fn verify_packaged_core(candidate: PathBuf) -> Result<PathBuf, String> {
 fn file_sha256(candidate: &Path) -> Result<String, String> {
     let bytes =
         std::fs::read(candidate).map_err(|_| "packaged core could not be read".to_string())?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    Ok(encoded)
 }
 
 fn python_path(root: &Path) -> Result<OsString, String> {
