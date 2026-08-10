@@ -698,10 +698,16 @@ not establish the trusted runtime, managed-network, and pinned-probe identities 
 operator configuration. Strict composition closes that gap without provisioning a
 network, building an image, or creating any target-facing capability.
 
+**Hosted evidence recorded 2026-08-10:** PR #47's Linux rootless Podman job passed the
+TEST-NET containment matrix, launched the non-networking sentinel in a spawned
+application process, ended that process abruptly, and verified that a newly
+production-composed supervisor terminated the durable container and paused its
+synthetic owning assessment. Quality, dependency review, CodeQL, and Ubuntu, macOS,
+and Windows desktop smoke jobs also passed.
+
 **Limitations and deferred work:** The local Docker daemon is rootful, so the live
-crash harness was not run locally. Its Linux rootless Podman result remains required in
-hosted review. Other operating systems, machine reboot, production deployment, route
-and source-IP attestation, controlled DNS, HTTP, redirects, and worker attachment remain
+crash harness was not run locally. Machine reboot, production deployment, route and
+source-IP attestation, controlled DNS, HTTP, redirects, and worker attachment remain
 unverified or absent.
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
