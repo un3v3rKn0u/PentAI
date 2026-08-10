@@ -35,6 +35,17 @@ class Settings:
     gateway_probe_image_digest: str | None = None
     gateway_instance_id: str | None = None
     gateway_watchdog_interval_seconds: float = 5
+    network_attestation_enabled: bool = False
+    network_observers: tuple[str, ...] = ()
+    network_route_profile_id: str | None = None
+    network_route_interface: str | None = None
+    network_route_gateway: str | None = None
+    network_resolver_mode: str | None = None
+    network_resolver_id: str | None = None
+    network_resolver_addresses: tuple[str, ...] = ()
+    network_observer_timeout_seconds: float = 3
+    network_route_timeout_seconds: float = 2
+    network_watchdog_interval_seconds: float = 5
 
     def validate(self) -> None:
         if self.host not in _LOOPBACK_HOSTS:
@@ -42,6 +53,7 @@ class Settings:
         if not 1 <= self.port <= 65535:
             raise ValueError("PentAI Core port must be from 1 through 65535")
         self._validate_gateway_runtime()
+        self._validate_network_attestation()
         if self.test_mode:
             return
         credential = self.launch_credential
@@ -82,6 +94,27 @@ class Settings:
             gateway_watchdog_interval_seconds=float(
                 os.getenv("PENTAI_GATEWAY_WATCHDOG_INTERVAL_SECONDS", "5")
             ),
+            network_attestation_enabled=_environment_flag(
+                "PENTAI_NETWORK_ATTESTATION_ENABLED"
+            ),
+            network_observers=_environment_list("PENTAI_NETWORK_OBSERVERS", separator=";"),
+            network_route_profile_id=os.getenv("PENTAI_NETWORK_ROUTE_PROFILE_ID"),
+            network_route_interface=os.getenv("PENTAI_NETWORK_ROUTE_INTERFACE"),
+            network_route_gateway=os.getenv("PENTAI_NETWORK_ROUTE_GATEWAY"),
+            network_resolver_mode=os.getenv("PENTAI_NETWORK_RESOLVER_MODE"),
+            network_resolver_id=os.getenv("PENTAI_NETWORK_RESOLVER_ID"),
+            network_resolver_addresses=_environment_list(
+                "PENTAI_NETWORK_RESOLVER_ADDRESSES", separator=","
+            ),
+            network_observer_timeout_seconds=float(
+                os.getenv("PENTAI_NETWORK_OBSERVER_TIMEOUT_SECONDS", "3")
+            ),
+            network_route_timeout_seconds=float(
+                os.getenv("PENTAI_NETWORK_ROUTE_TIMEOUT_SECONDS", "2")
+            ),
+            network_watchdog_interval_seconds=float(
+                os.getenv("PENTAI_NETWORK_WATCHDOG_INTERVAL_SECONDS", "5")
+            ),
         )
         settings.validate()
         return settings
@@ -121,6 +154,43 @@ class Settings:
         ):
             raise ValueError("Gateway runtime configuration is invalid")
 
+    def _validate_network_attestation(self) -> None:
+        configured = (
+            *self.network_observers,
+            self.network_route_profile_id,
+            self.network_route_interface,
+            self.network_route_gateway,
+            self.network_resolver_mode,
+            self.network_resolver_id,
+            *self.network_resolver_addresses,
+        )
+        if not self.network_attestation_enabled:
+            if any(value is not None and value != "" for value in configured):
+                raise ValueError("Network attestation configuration requires explicit enablement")
+            return
+        required = (
+            self.network_route_profile_id,
+            self.network_route_interface,
+            self.network_resolver_mode,
+            self.network_resolver_id,
+        )
+        if (
+            any(value is None for value in required)
+            or len(self.network_observers) < 2
+            or len(self.network_observers) > 4
+            or not self.network_resolver_addresses
+            or self.network_resolver_mode not in {"tunnel_resolver", "approved_resolver"}
+            or any(
+                not 0.1 <= value <= 10
+                for value in (
+                    self.network_observer_timeout_seconds,
+                    self.network_route_timeout_seconds,
+                    self.network_watchdog_interval_seconds,
+                )
+            )
+        ):
+            raise ValueError("Enabled network attestation configuration is incomplete")
+
 
 def _secret_key(stdin_flag: str, environment_name: str) -> bytes | None:
     if os.getenv(stdin_flag) == "1":
@@ -150,6 +220,16 @@ def _environment_flag(name: str) -> bool:
 def _optional_path(name: str) -> Path | None:
     value = os.getenv(name)
     return Path(value) if value is not None else None
+
+
+def _environment_list(name: str, *, separator: str) -> tuple[str, ...]:
+    value = os.getenv(name)
+    if value is None:
+        return ()
+    items = tuple(item.strip() for item in value.split(separator))
+    if not items or any(not item for item in items):
+        raise ValueError(f"{name} is invalid")
+    return items
 
 
 def allowed_origins(settings: Settings) -> list[str]:

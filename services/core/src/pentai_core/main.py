@@ -19,6 +19,10 @@ from pentai_core.config import Settings, allowed_origins
 from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
 from pentai_core.gateway_runtime_supervisor import RuntimeSupervisorControl
 from pentai_core.migrate import migrate
+from pentai_core.network_safety_composition import compose_network_safety_supervisor
+from pentai_core.network_safety_supervisor import (
+    NetworkSafetySupervisorControl,
+)
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_core.url_acquisition import AcquisitionError, UrlAcquirer
@@ -152,6 +156,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     runtime_supervisor: RuntimeSupervisorControl | None = None,
+    network_safety_supervisor: NetworkSafetySupervisorControl | None = None,
 ) -> FastAPI:
     runtime = settings or Settings.from_environment()
     runtime.validate()
@@ -170,6 +175,10 @@ def create_app(
         settings=runtime, safety_control=authorization
     )
     supervisor.start()
+    network_supervisor = network_safety_supervisor or compose_network_safety_supervisor(
+        settings=runtime, safety_control=authorization
+    )
+    network_supervisor.start()
     app = FastAPI(
         title="PentAI Local Core",
         version=__version__,
@@ -178,6 +187,8 @@ def create_app(
     )
     app.state.shutdown_requested = threading.Event()
     app.state.runtime_supervisor = supervisor
+    app.state.network_safety_supervisor = network_supervisor
+    app.router.add_event_handler("shutdown", network_supervisor.stop)
     app.router.add_event_handler("shutdown", supervisor.stop)
     app.add_middleware(
         CORSMiddleware,
@@ -214,8 +225,13 @@ def create_app(
     @app.get("/api/v1/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         runtime_status = supervisor.status()
+        network_status = network_supervisor.status()
         return HealthResponse(
-            status="degraded" if runtime_status["status"] == "degraded" else "ok",
+            status=(
+                "degraded"
+                if "degraded" in {runtime_status["status"], network_status["status"]}
+                else "ok"
+            ),
             version=__version__,
             environment=runtime.environment,
             execution_enabled=False,
@@ -224,12 +240,18 @@ def create_app(
     @app.get("/api/v1/readiness", response_model=None)
     def readiness() -> Any:
         runtime_status = supervisor.status()
-        if runtime_status["status"] == "degraded":
+        network_status = network_supervisor.status()
+        if runtime_status["status"] == "degraded" or network_status["status"] == "degraded":
+            reason_code = (
+                runtime_status["reason_code"]
+                if runtime_status["status"] == "degraded"
+                else network_status["reason_code"]
+            )
             return JSONResponse(
                 status_code=503,
                 content={
                     "status": "degraded",
-                    "reason_code": runtime_status["reason_code"],
+                    "reason_code": reason_code,
                     "execution_enabled": False,
                 },
             )
@@ -239,8 +261,13 @@ def create_app(
     def runtime_supervision() -> dict[str, object]:
         return supervisor.status()
 
+    @app.get("/api/v1/network-safety-supervision")
+    def network_safety_supervision() -> dict[str, object]:
+        return network_supervisor.status()
+
     @app.post("/api/v1/shutdown")
     def shutdown() -> dict[str, str]:
+        network_supervisor.stop()
         supervisor.stop()
         app.state.shutdown_requested.set()
         return {"status": "shutting_down"}

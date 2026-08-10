@@ -712,3 +712,70 @@ unverified or absent.
 
 **Residual risk accepted:** This review is self-authored and non-independent. It does
 not approve production use, worker execution, or target-facing networking.
+
+## 2026-08-10 — Continuous network-identity kill switch
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Application startup/readiness/shutdown ownership, bounded network
+identity watchdog, current-attestation comparison, expiry and authorization-race
+handling, assessment/global safety transitions, fixed diagnostics, and audit linkage.
+
+**Evidence examined:** Tests cover successful pre-readiness and repeat checks; route,
+resolver, source, observer, expiry, missing-monitor, state-query, startup, watchdog,
+pause, and shutdown failures; prepared-session abortion and reservation release;
+attestation/grant invalidation; fixed health output; and authenticated shutdown.
+
+**Findings:** A successful monitor check does not rotate or extend authority. Any
+failure uses the existing atomic assessment safety transition, while unexpected
+supervisor failure also pauses global safety and degrades readiness. Audit events omit
+source addresses and raw observer output. No AI, UI, worker, or tool can configure or
+claim monitor success.
+
+**Limitations and deferred work:** Attestors remain injected. Production public-IP
+endpoints, platform route inspection, live resolver transport, gateway sockets,
+redirect execution, worker attachment, and machine-reboot evidence remain absent.
+Target-facing execution remains prohibited.
+
+**Residual risk accepted:** This review is self-authored and non-independent. It does
+not satisfy an external independence requirement and does not approve production or
+target-facing networking.
+
+## 2026-08-10 — Production-composable network attestor
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Disabled-by-default configuration, HTTPS observer parsing and
+transport, per-family agreement, operating-system route and resolver collection,
+exact expected-state comparison, supervisor composition, degraded readiness, and
+fixed safety diagnostics.
+
+**Evidence examined:** Owned-fixture tests cover explicit/incomplete configuration,
+unique origins, HTTPS-only/default-port endpoints, credentials and query rejection,
+bounded response handling, malformed/extra JSON, public and wrong-family addresses,
+single-observer family denial, observer agreement, interface/gateway/resolver drift,
+ambiguous route output, pre-readiness attestation, and composition failure. Full core,
+contract, lint, type, packaging, and dependency checks are required before review.
+
+**Findings:** Ambient proxies cannot redirect observer traffic; redirects are not
+followed; normal TLS hostname/certificate verification remains mandatory. No UI, AI,
+worker, or public API controls configuration or supplies measurements. Missing,
+ambiguous, unsupported, or malformed state pauses safety and never enables execution.
+
+**Limitations and deferred work:** Repository tests contact no external observer and
+cannot prove operator independence, live VPN behavior, or platform command output.
+Controlled DNS transport enforcement, firewall bypass evidence, gateway HTTP sockets,
+redirect execution, and worker attachment remain absent. Windows and Linux route
+collection require hosted verification.
+
+**Residual risk accepted:** Distinct origins do not prove infrastructure independence,
+and this review is self-authored and non-independent. It does not approve production
+or target-facing networking.

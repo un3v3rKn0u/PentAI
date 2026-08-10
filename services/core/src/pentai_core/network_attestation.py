@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import uuid4
 
 from pentai_policy import CanonicalizationError, canonicalize_ip
@@ -91,12 +91,8 @@ class NetworkAttestor:
                 "ATTESTATION_ENDPOINTS_INVALID", "source observers must have unique identities"
             )
         normalized = [self._normalize(item) for item in observations]
-        identities = {(item.source_ipv4, item.source_ipv6) for item in normalized}
-        if len(identities) != 1:
-            raise AttestationError(
-                "ATTESTATION_DISAGREEMENT", "source observers reported different identities"
-            )
-        source_ipv4, source_ipv6 = identities.pop()
+        source_ipv4 = self._consensus(normalized, "source_ipv4")
+        source_ipv6 = self._consensus(normalized, "source_ipv6")
         if source_ipv4 is None and source_ipv6 is None:
             raise AttestationError("ATTESTATION_EMPTY", "source identity was not observed")
         document: dict[str, object] = {
@@ -118,6 +114,28 @@ class NetworkAttestor:
         if source_ipv6 is not None:
             document["source_ipv6"] = source_ipv6
         return document
+
+    @staticmethod
+    def _consensus(
+        observations: list[SourceObservation], field: Literal["source_ipv4", "source_ipv6"]
+    ) -> str | None:
+        values: list[str] = []
+        for item in observations:
+            value = item.source_ipv4 if field == "source_ipv4" else item.source_ipv6
+            if value is not None:
+                values.append(value)
+        if not values:
+            return None
+        if len(values) < 2:
+            raise AttestationError(
+                "ATTESTATION_ENDPOINTS_INSUFFICIENT",
+                "each observed address family requires two independent observers",
+            )
+        if len(set(values)) != 1:
+            raise AttestationError(
+                "ATTESTATION_DISAGREEMENT", "source observers reported different identities"
+            )
+        return values[0]
 
     @staticmethod
     def _normalize(observation: SourceObservation) -> SourceObservation:

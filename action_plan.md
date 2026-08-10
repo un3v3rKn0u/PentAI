@@ -271,8 +271,20 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     remain required.
 - [ ] Create an isolated HTTP/browser worker with no direct outbound route.
 - [ ] Implement source-IP attestation and approved-IP comparison.
+  - The production-composable attestor now supports two-to-four bounded HTTPS source
+    observers, per-family agreement, TLS/response validation, and exact OS-derived
+    interface, gateway, and resolver comparison. No real endpoint is designated or
+    contacted by tests; deployment independence and live VPN/interface matrices remain
+    required before this item is complete.
 - [x] Implement global and assessment-level pause, stop, and grant revocation.
 - [ ] Implement route failure and public-IP change kill switches.
+  - The application-owned network safety supervisor now verifies every current
+    attestation before readiness and continuously afterward. Expiry, identity drift,
+    observer failure, or monitor failure pauses authority and aborts prepared sessions.
+    Explicit production observer and OS route composition is now present and fails
+    closed. Live endpoint independence/availability, VPN-loss matrices, and hosted
+    platform evidence remain required before this item is complete or target-facing
+    execution can be enabled.
 - [ ] Reauthorize DNS answers, redirects, SNI/Host, port, and protocol changes.
 
 ### 6.6 Actions: durable workflow and audit

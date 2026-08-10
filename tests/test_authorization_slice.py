@@ -240,6 +240,23 @@ class AuthorizationSliceTests(unittest.TestCase):
         )
         return intent, grant, attestation
 
+    @staticmethod
+    def network_attestor(
+        *,
+        address: str = "192.0.2.10",
+        resolver_id: str = "fixture:controlled-dns",
+    ) -> NetworkAttestor:
+        observers = []
+        for endpoint_id in ("fixture:egress-a", "fixture:egress-b"):
+            observer = Mock()
+            observer.observe.return_value = SourceObservation(endpoint_id, address)
+            observers.append(observer)
+        route_inspector = Mock()
+        route_inspector.inspect.return_value = RouteSnapshot(
+            "synthetic-route", "tunnel_resolver", resolver_id
+        )
+        return NetworkAttestor(tuple(observers), route_inspector, lifetime_seconds=60)
+
     def test_network_destination_authorization_pins_fixture_dns_without_executing(self) -> None:
         intent, grant, attestation = self.network_authority()
 
@@ -456,6 +473,93 @@ class AuthorizationSliceTests(unittest.TestCase):
                 current["attestation_id"]: "valid",
             },
         )
+
+    def test_network_identity_check_is_audited_without_rotating_authority(self) -> None:
+        _, _, attestation = self.network_authority()
+
+        result = self.service.verify_network_identity(
+            self.engagement["id"],
+            attestor=self.network_attestor(),
+            attestor_id="network-safety-supervisor",
+        )
+
+        self.assertEqual(result["status"], "verified")
+        self.assertEqual(result["attestation_id"], attestation["attestation_id"])
+        self.assertFalse(result["execution_enabled"])
+        events = [
+            event
+            for event in self.service.audit_events()
+            if event["action"] == "network.identity_checked"
+        ]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["subject_id"], attestation["attestation_id"])
+        self.assertNotIn("source_ipv4", events[0]["data"])
+        with closing(sqlite3.connect(self.database)) as connection:
+            valid = connection.execute(
+                "SELECT COUNT(*) FROM network_attestations WHERE status = 'valid'"
+            ).fetchone()[0]
+        self.assertEqual(valid, 1)
+
+    def test_network_identity_change_aborts_prepared_session_and_pauses(self) -> None:
+        intent, grant, attestation = self.network_authority()
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver=fixture_resolver(("192.0.2.20",)),
+            sni_host="example.test",
+            host_header="example.test",
+            redirect_count=0,
+        )
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.verify_network_identity(
+                self.engagement["id"],
+                attestor=self.network_attestor(resolver_id="fixture:changed-resolver"),
+                attestor_id="network-safety-supervisor",
+            )
+        self.assertEqual(raised.exception.code, "NETWORK_IDENTITY_CHANGED")
+
+        with closing(sqlite3.connect(self.database)) as connection:
+            engagement_status = connection.execute(
+                "SELECT status FROM engagements WHERE id = ?", (self.engagement["id"],)
+            ).fetchone()[0]
+            attestation_status = connection.execute(
+                "SELECT status FROM network_attestations WHERE attestation_id = ?",
+                (attestation["attestation_id"],),
+            ).fetchone()[0]
+            session_status = connection.execute(
+                "SELECT status FROM gateway_sessions WHERE session_id = ?",
+                (session["session_id"],),
+            ).fetchone()[0]
+        self.assertEqual(engagement_status, "paused")
+        self.assertEqual(attestation_status, "invalidated")
+        self.assertEqual(session_status, "aborted")
+
+    def test_expired_network_identity_denies_and_pauses_before_measurement(self) -> None:
+        _, _, attestation = self.network_authority()
+        expired = datetime.fromisoformat(
+            str(attestation["expires_at"]).replace("Z", "+00:00")
+        )
+        attestor = self.network_attestor()
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.verify_network_identity(
+                self.engagement["id"],
+                attestor=attestor,
+                attestor_id="network-safety-supervisor",
+                now=expired,
+            )
+        self.assertEqual(raised.exception.code, "ATTESTATION_INVALID")
+        with closing(sqlite3.connect(self.database)) as connection:
+            status = connection.execute(
+                "SELECT status FROM engagements WHERE id = ?", (self.engagement["id"],)
+            ).fetchone()[0]
+        self.assertEqual(status, "paused")
 
     def test_gateway_session_reserves_and_releases_budget_without_execution(self) -> None:
         intent, grant, attestation = self.network_authority()
