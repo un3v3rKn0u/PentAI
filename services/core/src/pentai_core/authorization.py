@@ -1777,6 +1777,152 @@ class AuthorizationService:
             pass
         raise failure
 
+    def network_authority_assessments(self) -> tuple[str, ...]:
+        with transaction(self.database_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT engagement_id FROM network_attestations
+                WHERE status = 'valid' ORDER BY engagement_id
+                """
+            ).fetchall()
+        return tuple(str(row["engagement_id"]) for row in rows)
+
+    def has_network_authority(self) -> bool:
+        return bool(self.network_authority_assessments())
+
+    def verify_network_identity(
+        self,
+        engagement_id: str,
+        *,
+        attestor: NetworkAttestor,
+        attestor_id: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        if not attestor_id.strip():
+            raise DomainError("ATTESTOR_ID_REQUIRED", "network attestor identity is required")
+        instant = now or _now()
+        try:
+            with transaction(self.database_path) as connection:
+                row = connection.execute(
+                    """
+                    SELECT na.*, p.policy_json, p.content_hash,
+                           p.revoked_at AS policy_revoked_at,
+                           e.active_policy_id, e.status AS engagement_status,
+                           s.global_status
+                    FROM network_attestations na
+                    JOIN policy_bundles p ON p.id = na.policy_bundle_id
+                    JOIN engagements e ON e.id = na.engagement_id
+                    CROSS JOIN safety_state s
+                    WHERE na.engagement_id = ? AND na.status = 'valid'
+                    ORDER BY na.observed_at DESC, na.attestation_id DESC LIMIT 1
+                    """,
+                    (engagement_id,),
+                ).fetchone()
+            if (
+                row is None
+                or row["policy_revoked_at"] is not None
+                or row["active_policy_id"] != row["policy_bundle_id"]
+                or row["engagement_status"] != "active"
+                or row["global_status"] != "active"
+            ):
+                raise DomainError(
+                    "NETWORK_AUTHORITY_INACTIVE", "network authority is inactive"
+                )
+            policy = json.loads(row["policy_json"])
+            current = self._attestation_document(row)
+            try:
+                validate_attestation(current, policy, now=instant)
+                measured = attestor.measure(
+                    assessment_id=engagement_id,
+                    policy_hash=row["content_hash"],
+                    now=instant,
+                )
+                validate_attestation(measured, policy, now=instant)
+            except AttestationError as exc:
+                raise DomainError(exc.code, "network identity verification failed") from exc
+            except (KeyError, TypeError, ValueError) as exc:
+                code = str(exc) if str(exc) else "ATTESTATION_INVALID"
+                raise DomainError(code, "network identity verification failed") from exc
+            identity_fields = (
+                "route_profile_id",
+                "source_ipv4",
+                "source_ipv6",
+                "resolver_mode",
+                "resolver_id",
+            )
+            if any(current.get(field) != measured.get(field) for field in identity_fields):
+                raise DomainError(
+                    "NETWORK_IDENTITY_CHANGED", "network identity changed during assessment"
+                )
+            checked_at = _timestamp(instant)
+            with transaction(self.database_path) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                unchanged = connection.execute(
+                    """
+                    SELECT 1 FROM network_attestations na
+                    JOIN engagements e ON e.id = na.engagement_id
+                    JOIN policy_bundles p ON p.id = na.policy_bundle_id
+                    CROSS JOIN safety_state s
+                    WHERE na.attestation_id = ? AND na.status = 'valid'
+                      AND e.active_policy_id = na.policy_bundle_id
+                      AND e.status = 'active' AND p.revoked_at IS NULL
+                      AND s.global_status = 'active'
+                    """,
+                    (row["attestation_id"],),
+                ).fetchone()
+                if unchanged is None:
+                    raise DomainError(
+                        "NETWORK_AUTHORITY_CHANGED", "network authority changed during check"
+                    )
+                self._audit(
+                    connection,
+                    action="network.identity_checked",
+                    subject_type="network_attestation",
+                    subject_id=row["attestation_id"],
+                    actor_type="service",
+                    actor_id=attestor_id,
+                    data={"policy_hash": row["content_hash"]},
+                    occurred_at=checked_at,
+                )
+            return {
+                "assessment_id": engagement_id,
+                "attestation_id": row["attestation_id"],
+                "status": "verified",
+                "checked_at": checked_at,
+                "execution_enabled": False,
+            }
+        except DomainError as failure:
+            try:
+                self.set_assessment_safety(
+                    engagement_id,
+                    status="paused",
+                    reason=f"network identity failure: {failure.code}",
+                    actor_id=attestor_id,
+                )
+            except DomainError:
+                pass
+            raise failure
+
+    @staticmethod
+    def _attestation_document(row: Any) -> dict[str, Any]:
+        document: dict[str, Any] = {
+            "schema_version": "1.0.0",
+            "attestation_id": row["attestation_id"],
+            "assessment_id": row["engagement_id"],
+            "policy_hash": row["policy_hash"],
+            "route_profile_id": row["route_profile_id"],
+            "resolver_mode": row["resolver_mode"],
+            "resolver_id": row["resolver_id"],
+            "observations": json.loads(row["observations_json"]),
+            "observed_at": row["observed_at"],
+            "expires_at": row["expires_at"],
+        }
+        if row["source_ipv4"] is not None:
+            document["source_ipv4"] = row["source_ipv4"]
+        if row["source_ipv6"] is not None:
+            document["source_ipv6"] = row["source_ipv6"]
+        return document
+
     def resolve_and_authorize_network_destination(
         self,
         *,

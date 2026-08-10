@@ -22,8 +22,9 @@ answers, and duplicate address/CNAME records fail closed. No result enables exec
 
 Observers and resolver backends are trusted infrastructure adapters, not agent tools.
 No public API or UI can provide their measurements. Synthetic tests inject owned
-fixtures; this slice deliberately provides no host-system resolver, public-IP endpoint,
-HTTP client, retry loop, or background monitor.
+fixtures. A later dependent slice now supplies explicitly configured bounded HTTPS
+source observers, operating-system route inspection, and a background monitor; it
+does not designate or contact a real observer during repository tests.
 
 ## Compatibility and rollback
 
@@ -34,8 +35,7 @@ history; those attestations remain unusable after expiry or a safety transition.
 
 ## Deferred verification
 
-Production adapters must pin an approved endpoint set, authenticate endpoint responses,
-bind route/interface inspection to the operating system, enforce timeouts and bounded
-concurrency, and continuously re-attest. Controlled DNS transport, port 53/853 and
-DoH/DoT blocking, gateway sockets, session termination, and worker network isolation
+Deployment must designate and review genuinely independent observer operators and run
+the live route/VPN-loss matrix. Controlled DNS transport, port 53/853 and DoH/DoT
+blocking, gateway sockets, live HTTP session termination, and worker network isolation
 remain required before any target-facing execution.

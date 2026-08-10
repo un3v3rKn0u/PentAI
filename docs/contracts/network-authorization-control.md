@@ -18,6 +18,37 @@ grant to one attestation and one canonical destination evaluation.
 - Destination decisions are immutable audit records. They never consume the grant and
   always carry `execution_enabled: false` in this slice.
 
+## Continuous identity verification
+
+Once a valid attestation exists, the application-owned network safety supervisor
+re-measures the route, resolver, and source identities before reporting the monitor
+ready and at a bounded interval afterward. Measurements are compared with the exact
+current attestation and active policy without rotating or extending that authority.
+Every successful comparison appends `network.identity_checked` to the audit chain.
+
+Expired authority, policy or safety races, route/resolver/source changes, observer
+disagreement, malformed measurements, monitor exceptions, and watchdog shutdown
+failure deny. The assessment safety transition invalidates its attestations, revokes
+unused grants, aborts prepared gateway sessions, releases reservations, and records
+the stop in the audit chain. Diagnostics expose only fixed reason codes and counts.
+
+If network authority exists while no monitor is configured, readiness degrades and
+global safety is paused. An empty authority set remains compatible with the default
+non-executing local configuration.
+
+Production composition is explicit and disabled by default. Each configured observer
+has a unique identity and HTTPS origin, uses TLS 1.2 or newer with normal hostname and
+certificate validation, ignores ambient proxy settings, permits no redirect, applies
+a bounded timeout and 1 KiB response limit, and accepts only an exact `{"ip": "..."}`
+JSON document containing the configured public address family. Each address family
+that is observed requires agreement from at least two endpoints.
+
+The host route inspector compares the exact default interface, optional next hop, and
+complete configured resolver-address set before returning the policy's route and
+resolver identities. Ambiguous routes, unsupported platforms, command failure,
+malformed output, partial configuration, duplicate observer identities/origins, and
+route or resolver drift degrade readiness and pause safety.
+
 ## Destination checks
 
 Every candidate is canonicalized and evaluated under the active policy. Protocol and
@@ -41,7 +72,8 @@ must remain available for audit.
 
 ## Deferred enforcement
 
-The trusted measurement process, controlled resolver, gateway sockets, live redirect
-loop, session termination, worker network isolation, OS firewall rules, and two-endpoint
-public-IP comparison are prerequisites for execution and remain deferred. This slice
-must not be interpreted as satisfying gateway containment or target-facing verification.
+Deployment-owned observer availability and independence, live VPN/interface matrices,
+resolver transport enforcement, gateway sockets, the live redirect loop, worker
+network isolation, and OS firewall rules are prerequisites for execution and remain
+deferred. Synthetic observers are not production public-IP evidence. This slice must
+not be interpreted as satisfying gateway containment or target-facing verification.

@@ -65,6 +65,29 @@ class FixtureRuntimeSupervisor:
         }
 
 
+@dataclass
+class FixtureNetworkSupervisor:
+    state: str = "ready"
+    reason_code: str | None = None
+    starts: int = 0
+    stops: int = 0
+
+    def start(self) -> None:
+        self.starts += 1
+
+    def stop(self) -> None:
+        self.stops += 1
+
+    def status(self) -> dict[str, object]:
+        return {
+            "status": self.state,
+            "reason_code": self.reason_code,
+            "monitored_assessments": 1,
+            "watchdog_running": self.state == "ready",
+            "execution_enabled": False,
+        }
+
+
 def app_request(
     app: FastAPI,
     method: str,
@@ -132,6 +155,7 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("GET", "/api/v1/health"),
         ("GET", "/api/v1/readiness"),
         ("GET", "/api/v1/runtime-supervision"),
+        ("GET", "/api/v1/network-safety-supervision"),
         ("GET", "/api/v1/safety-state"),
         ("GET", "/api/v1/audit"),
         ("POST", "/api/v1/shutdown"),
@@ -235,6 +259,44 @@ def test_authenticated_shutdown_stops_runtime_supervision(tmp_path: Path) -> Non
     )
     assert response.status_code == 200
     assert supervisor.stops == 1
+
+
+def test_network_supervisor_degradation_blocks_readiness_and_shutdown_stops_it(
+    tmp_path: Path,
+) -> None:
+    settings = runtime_settings(tmp_path / "network-degraded.db")
+    runtime_supervisor = FixtureRuntimeSupervisor()
+    network_supervisor = FixtureNetworkSupervisor(
+        state="degraded", reason_code="NETWORK_IDENTITY_WATCHDOG_FAILED"
+    )
+    app = create_app(
+        settings,
+        runtime_supervisor=runtime_supervisor,
+        network_safety_supervisor=network_supervisor,
+    )
+    credential = settings.launch_credential or ""
+    readiness = app_request(
+        app, "GET", "/api/v1/readiness", authorization=f"Bearer {credential}"
+    )
+    assert readiness.status_code == 503
+    assert readiness.json() == {
+        "status": "degraded",
+        "reason_code": "NETWORK_IDENTITY_WATCHDOG_FAILED",
+        "execution_enabled": False,
+    }
+    status = app_request(
+        app,
+        "GET",
+        "/api/v1/network-safety-supervision",
+        authorization=f"Bearer {credential}",
+    )
+    assert status.json()["monitored_assessments"] == 1
+    shutdown = app_request(
+        app, "POST", "/api/v1/shutdown", authorization=f"Bearer {credential}"
+    )
+    assert shutdown.status_code == 200
+    assert network_supervisor.starts == 1
+    assert network_supervisor.stops == 1
 
 
 def test_startup_safety_state_is_durably_paused(
