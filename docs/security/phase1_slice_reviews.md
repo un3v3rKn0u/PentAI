@@ -779,3 +779,39 @@ collection require hosted verification.
 **Residual risk accepted:** Distinct origins do not prove infrastructure independence,
 and this review is self-authored and non-independent. It does not approve production
 or target-facing networking.
+
+## 2026-08-10 — Pinned controlled-DNS transport
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Explicit configuration, attested-server binding, TCP and DoT
+framing, TLS requirements, transaction construction, DNS name compression parsing,
+response validation, A/AAAA and CNAME extraction, application composition, diagnostics,
+compatibility, and rollback.
+
+**Evidence examined:** Owned-fixture tests cover pinned server/port/timeout/TLS
+arguments, TCP framing, TLS 1.2 minimum, independent A/AAAA transactions, canonical
+questions, CNAME merging, replay/spoofed IDs, truncation, result codes, mismatched
+questions, compression loops, malformed/trailing records, transport failure, invalid
+transaction sources, incomplete opt-in, resolver-set mismatch, transport-mode mismatch,
+environment parsing, and attestation-bound resolver use.
+
+**Findings:** The transport never invokes the ambient resolver because it connects to
+a canonical literal address. It never reads proxy configuration or falls back to UDP,
+another server, or plaintext for approved-resolver mode. Wire failures are fixed-code
+denials and no packet content is logged or audited. UI, AI, workers, and API callers
+cannot select a resolver or supply a response.
+
+**Limitations and deferred work:** Tests do not send live DNS. Resolver-specific route
+proof, hosted DoT/certificate failure, worker firewall denial of port 53/853, DoH,
+custom resolvers, raw sockets, gateway HTTP integration, and redirect execution remain
+absent. This does not fully satisfy `INV-NET-003`.
+
+**Residual risk accepted:** TCP/53 relies on the separately attested tunnel for
+confidentiality and integrity, platform routing has not been independently verified,
+and this review is self-authored and non-independent. It does not approve production
+or target-facing networking.

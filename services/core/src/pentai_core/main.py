@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pentai_core import __version__
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.config import Settings, allowed_origins
+from pentai_core.controlled_dns_composition import compose_controlled_resolver
 from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
 from pentai_core.gateway_runtime_supervisor import RuntimeSupervisorControl
 from pentai_core.migrate import migrate
@@ -170,6 +171,7 @@ def create_app(
     authorization = AuthorizationService(
         runtime.database_path, source_store=source_store, policy_signer=signer
     )
+    controlled_resolver = compose_controlled_resolver(settings=runtime)
     authorization.recover_startup()
     supervisor = runtime_supervisor or compose_gateway_runtime_supervisor(
         settings=runtime, safety_control=authorization
@@ -188,6 +190,7 @@ def create_app(
     app.state.shutdown_requested = threading.Event()
     app.state.runtime_supervisor = supervisor
     app.state.network_safety_supervisor = network_supervisor
+    app.state.controlled_resolver = controlled_resolver
     app.router.add_event_handler("shutdown", network_supervisor.stop)
     app.router.add_event_handler("shutdown", supervisor.stop)
     app.add_middleware(

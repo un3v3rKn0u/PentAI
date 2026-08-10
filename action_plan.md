@@ -286,6 +286,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     platform evidence remain required before this item is complete or target-facing
     execution can be enabled.
 - [ ] Reauthorize DNS answers, redirects, SNI/Host, port, and protocol changes.
+  - The controlled resolver now has an explicit pinned TCP/53 or verified DoT/853
+    transport, strict DNS transaction/question/wire validation, bounded A/AAAA and
+    CNAME extraction, and direct linkage to the attested resolver identity. Existing
+    destination authorization rechecks scope, SNI/Host, port, protocol, redirects,
+    CNAMEs, IPv6, and rebinding without enabling execution. Hosted live resolver and
+    firewall bypass matrices remain required before this item is complete.
 
 ### 6.6 Actions: durable workflow and audit
 
