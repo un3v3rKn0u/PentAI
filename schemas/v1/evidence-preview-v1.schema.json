@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/evidence-preview-v1.schema.json",
+  "title": "PentAI EvidencePreview v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "derivative_id", "classification", "sha256", "render_mode", "media_type", "content", "truncated", "active_content_disabled", "previewed_at"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "derivative_id": {"type": "string", "format": "uuid"},
+    "classification": {"enum": ["public", "internal"]},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "render_mode": {"const": "plain_text"},
+    "media_type": {"const": "text/plain"},
+    "content": {"type": "string", "maxLength": 65536},
+    "truncated": {"type": "boolean"},
+    "active_content_disabled": {"const": true},
+    "previewed_at": {"type": "string", "format": "date-time"}
+  }
+}

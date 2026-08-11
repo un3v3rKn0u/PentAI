@@ -373,6 +373,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   The authenticated core accepts each as an explicitly typed, 2 MiB-bounded original;
   previewing and format-specific interpretation remain disabled until sandboxing exists.
 - [ ] Implement classification, preview sandboxing, redaction derivatives, and retention.
+  Immutable server-generated text redactions now preserve exact source provenance and
+  classification, and only derivatives have a bounded inactive plain-text preview.
+  General sandboxed file/image previews and retention/secure deletion remain required
+  before this combined item is complete.
 - [ ] Implement finding lifecycle, CVSS/CWE, affected assets, confidence, and validation status.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
 - [ ] Generate Markdown, HTML, JSON, and PDF report drafts.

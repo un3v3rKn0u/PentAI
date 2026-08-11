@@ -198,6 +198,19 @@ class EvidenceOriginalRequest(StrictRequest):
     execution_trace_id: str | None = None
 
 
+class EvidenceRedactionSpan(StrictRequest):
+    start: int = Field(ge=0)
+    end: int = Field(ge=1)
+    reason: str
+
+
+class EvidenceRedactionRequest(StrictRequest):
+    redactions: list[EvidenceRedactionSpan] = Field(min_length=1, max_length=256)
+    classification: str
+    confirm_classification: bool
+    idempotency_key: str = Field(min_length=16, max_length=128)
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -675,6 +688,29 @@ def create_app(
     def evidence_metadata(evidence_id: str, request: Request) -> dict[str, Any]:
         actor = principal(request)
         return evidence_call(lambda: evidence.metadata(evidence_id, actor_id=actor.principal_id))
+
+    @app.post("/api/v1/evidence/{evidence_id}/redactions")
+    def create_evidence_redaction(
+        evidence_id: str, requested: EvidenceRedactionRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return evidence_call(
+            lambda: evidence.create_redaction(
+                evidence_id,
+                redactions=[span.model_dump() for span in requested.redactions],
+                classification=requested.classification,
+                confirm_classification=requested.confirm_classification,
+                idempotency_key=requested.idempotency_key,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.get("/api/v1/evidence/derivatives/{derivative_id}/preview")
+    def evidence_redaction_preview(derivative_id: str, request: Request) -> dict[str, Any]:
+        actor = principal(request)
+        return evidence_call(
+            lambda: evidence.preview_redaction(derivative_id, actor_id=actor.principal_id)
+        )
 
     @app.post("/api/v1/workflows")
     def create_workflow(requested: WorkflowCreateRequest, request: Request) -> dict[str, Any]:

@@ -1419,3 +1419,43 @@ to run on the pull request.
 secret, so loss of that single OS credential makes both stores unavailable; key
 rotation and backup recovery remain release blockers. This review is self-authored and
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-11 — Immutable text redactions and inactive previews
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic evidence only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** EvidenceRedaction, EvidencePreview, and derivative-event contracts;
+additive migration; deterministic server-side range replacement; explicit human
+classification confirmation; source and derivative digest provenance; authenticated
+derivative-only preview; encryption, immutability, custody/audit linkage, compatibility,
+and rollback.
+
+**Evidence examined:** Tests cover encrypted derivative bytes, authenticated source
+loading, literal script content returned only as inert plain text, explicit
+classification confirmation, idempotent replay/conflict, ordered and non-overlapping
+range enforcement, range bounds, unknown reasons, binary and invalid-UTF-8 denial,
+original-preview denial, ciphertext tamper denial, immutable rows/events, event and
+audit coverage, migration idempotence, contract validation, Ruff, mypy, and the full
+Python suite. Fixtures contain synthetic local data only.
+
+**Findings:** Callers identify ranges but cannot upload derivative content or choose
+replacement text. The core authenticates the original, generates the derivative with
+a fixed marker, records exact source and output hashes, and requires a human to confirm
+any `public` or `internal` derivative classification. The preview route accepts only a
+derivative ID and returns bounded `application/json` with fixed plain-text rendering
+metadata; original content remains unavailable over HTTP.
+
+**Limitations and deferred work:** No UI renderer exists yet, so hosted checks can
+verify the contract/API but not a browser sandbox. Consumers must not use HTML
+injection APIs. Image/PDF parsing, original previews, annotations, retention and secure
+deletion, export manifests, model routing, findings, reports, and UI remain deferred.
+
+**Residual risk accepted:** A future consumer could violate the plain-text contract;
+the Evidence UI must add its own sandbox and negative browser tests before general
+preview support is claimed. The local custody chain is not externally timestamped.
+This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.
