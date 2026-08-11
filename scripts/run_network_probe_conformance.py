@@ -230,13 +230,33 @@ def _run_http_fixture(
         )
     try:
         transport = OciGatewayHttpFixtureTransport(
-            executable=executable, image_digest=image_digest, executor=executor
+            executable=executable, executor=executor
         )
+        now = datetime.now(UTC)
+        claim = {
+            "schema_version": "1.0.0",
+            "claim_id": str(uuid.uuid4()),
+            "start_id": str(uuid.uuid4()),
+            "session_id": str(uuid.uuid4()),
+            "runtime_id": str(uuid.uuid4()),
+            "containment_attestation_id": containment["attestation_id"],
+            "gateway_network_id": network_id,
+            "image_digest": image_digest,
+            "method": "GET",
+            "target_ip": "192.0.2.20",
+            "port": 8080,
+            "host": "example.test",
+            "path": "/fixture",
+            "response_bytes_limit": 32,
+            "deadline_at": (now + timedelta(seconds=5)).isoformat().replace("+00:00", "Z"),
+            "claimed_at": now.isoformat().replace("+00:00", "Z"),
+            "status": "claimed",
+            "fixture_execution_enabled": True,
+            "external_execution_enabled": False,
+        }
         completed = transport.execute(
-            network_id=network_id,
+            claim=claim,
             containment=containment,
-            maximum_response_bytes=32,
-            timeout_milliseconds=5_000,
         )
         if (
             completed.outcome != "completed"
@@ -246,11 +266,14 @@ def _run_http_fixture(
             raise SnapshotCollectionError(
                 "HTTP_FIXTURE_REQUEST_FAILED", "bounded fixture request failed"
             )
+        claim["claim_id"] = str(uuid.uuid4())
+        claim["start_id"] = str(uuid.uuid4())
+        claim["session_id"] = str(uuid.uuid4())
+        claim["runtime_id"] = str(uuid.uuid4())
+        claim["response_bytes_limit"] = 8
         limited = transport.execute(
-            network_id=network_id,
+            claim=claim,
             containment=containment,
-            maximum_response_bytes=8,
-            timeout_milliseconds=5_000,
         )
         if (
             limited.outcome != "response_limit_exceeded"

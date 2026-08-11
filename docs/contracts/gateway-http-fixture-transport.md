@@ -11,16 +11,23 @@ inside the temporary fixture container. The client accepts exactly:
 - HTTP host `example.test`;
 - path `/fixture` and method `GET`;
 - a response limit from 1 byte through 1 MiB; and
-- a timeout from 1 millisecond through 5 seconds.
+- an absolute durable deadline that is still in the future and no more than five
+  seconds from adapter invocation.
 
 Every other address, host, path, method, option, duplicate, or unknown argument is
-rejected before the connection. The adapter also requires a fresh complete containment
-attestation for the exact network. The OCI adapter constructs a fixed argument vector,
+rejected before the connection. Before invoking the adapter, the core atomically claims
+one committed `GatewayRequestStart`. The claim binds the exact fixture tuple, response
+ceiling, absolute deadline, image digest, managed network, runtime instance, and fresh
+containment attestation. Claims cannot be replayed; finalization must present the same
+claim identifier and completes it in the result transaction. Startup and safety recovery
+abandon unfinalized claims before cancelling their starts. The adapter also requires a
+fresh complete containment attestation for the exact network. It constructs a fixed argument vector,
 uses the managed internal network, a read-only root, no capabilities,
 no-new-privileges, and strict CPU/memory/PID limits. It parses only an exact typed JSON
 measurement and never returns or logs the response body.
 
-The client uses one monotonic deadline across connection retries, request write,
+The client validates the supplied wall-clock deadline once, converts it to one monotonic deadline,
+and uses that deadline across connection retries, request write,
 header parsing, and body reads. Headers are read with an 8 KiB ceiling. Only HTTP/1.1
 200 with one valid `Content-Length` is accepted; transfer encoding, ambiguous length,
 malformed headers, incomplete bodies, and transport failures deny. Body reads stop at
@@ -39,15 +46,16 @@ mock the OCI boundary and do not claim live containment.
 
 ## Compatibility and rollback
 
-No authorization contract or database schema changes. The transport consumes the
-existing `GatewayResponseMeasurement` shape and remains unreachable from the public
-API, UI, agents, and plugins. Rollback removes the fixture modes and adapter; existing
-authorization, commitment, result, runtime, and audit records are unchanged.
+The additive `0017` migration preserves immutable claim history and has no downgrade
+mutation. The new v1 contract is intentionally fixture-specific; widening its tuple or
+authority semantics requires a new major version. The transport remains unreachable
+from the public API, UI, agents, and plugins. Rollback disables the coordinator and
+leaves claim, authorization, commitment, result, runtime, and audit records readable.
 
 ## Deferred enforcement
 
 This is not general gateway authority. HTTPS/TLS, policy-derived destinations,
-controlled live DNS, grant/start loading inside the gateway, redirect execution,
+controlled live DNS, independent grant/start verification inside the isolated process, redirect execution,
 response evidence, a dual-homed attested gateway route, active-session kill switches,
 and worker-to-gateway traffic remain deferred. Public, customer, bug-bounty, and other
 external targets remain prohibited.

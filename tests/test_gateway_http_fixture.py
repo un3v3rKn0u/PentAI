@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pentai_core.gateway_http_fixture import (
     GatewayHttpFixtureError,
+    GatewayHttpFixtureExecution,
     OciGatewayHttpFixtureTransport,
 )
 from pentai_core.runtime_snapshot_collector import CommandResult
@@ -45,6 +46,33 @@ def containment(**updates: object) -> dict[str, object]:
     return document
 
 
+def claim(**updates: object) -> dict[str, object]:
+    now = datetime.now(UTC)
+    document: dict[str, object] = {
+        "schema_version": "1.0.0",
+        "claim_id": "22222222-2222-4222-8222-222222222222",
+        "start_id": "33333333-3333-4333-8333-333333333333",
+        "session_id": "44444444-4444-4444-8444-444444444444",
+        "runtime_id": "55555555-5555-4555-8555-555555555555",
+        "containment_attestation_id": "11111111-1111-4111-8111-111111111111",
+        "gateway_network_id": NETWORK,
+        "image_digest": IMAGE,
+        "method": "GET",
+        "target_ip": "192.0.2.20",
+        "port": 8080,
+        "host": "example.test",
+        "path": "/fixture",
+        "response_bytes_limit": 32,
+        "deadline_at": (now + timedelta(seconds=4)).isoformat().replace("+00:00", "Z"),
+        "claimed_at": now.isoformat().replace("+00:00", "Z"),
+        "status": "claimed",
+        "fixture_execution_enabled": True,
+        "external_execution_enabled": False,
+    }
+    document.update(updates)
+    return document
+
+
 @dataclass
 class FixtureExecutor:
     result: CommandResult
@@ -75,14 +103,12 @@ def output(
 def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     executor = FixtureExecutor(output())
     transport = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, image_digest=IMAGE, executor=executor
+        executable=RUNTIME, executor=executor
     )
 
     measurement = transport.execute(
-        network_id=NETWORK,
+        claim=claim(),
         containment=containment(),
-        maximum_response_bytes=32,
-        timeout_milliseconds=500,
     )
 
     assert measurement.outcome == "completed"
@@ -97,7 +123,8 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     assert "--target=192.0.2.20:8080" in command
     assert "--host=example.test" in command
     assert "--path=/fixture" in command
-    assert (timeout, output_limit) == (2.5, 4096)
+    assert any(item.startswith("--deadline-unix-milliseconds=") for item in command)
+    assert (timeout, output_limit) == (7, 4096)
 
 
 @pytest.mark.parametrize(
@@ -119,47 +146,42 @@ def test_fixture_transport_rejects_malformed_or_contradictory_output(
 ) -> None:
     transport = OciGatewayHttpFixtureTransport(
         executable=RUNTIME,
-        image_digest=IMAGE,
         executor=FixtureExecutor(document),
     )
     with pytest.raises(GatewayHttpFixtureError) as raised:
         transport.execute(
-            network_id=NETWORK,
+            claim=claim(),
             containment=containment(),
-            maximum_response_bytes=32,
-            timeout_milliseconds=500,
         )
     assert raised.value.code == expected
 
 
 @pytest.mark.parametrize(
-    ("network", "limit", "timeout"),
+    ("claim_updates", "containment_updates"),
     [
-        ("bad/network", 32, 500),
-        (NETWORK, 0, 500),
-        (NETWORK, 1_048_577, 500),
-        (NETWORK, 32, 0),
-        (NETWORK, 32, 5_001),
+        ({"gateway_network_id": "bad/network"}, {}),
+        ({"response_bytes_limit": 0}, {}),
+        ({"response_bytes_limit": 1_048_577}, {}),
+        ({"target_ip": "192.0.2.21"}, {}),
+        ({"external_execution_enabled": True}, {}),
     ],
 )
 def test_fixture_transport_denies_unbounded_or_unsafe_inputs(
-    network: str, limit: int, timeout: int
+    claim_updates: dict[str, object], containment_updates: dict[str, object]
 ) -> None:
     transport = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, image_digest=IMAGE, executor=FixtureExecutor(output())
+        executable=RUNTIME, executor=FixtureExecutor(output())
     )
-    with pytest.raises(GatewayHttpFixtureError, match="fixture bounds are invalid"):
+    with pytest.raises(GatewayHttpFixtureError):
         transport.execute(
-            network_id=network,
-            containment=containment(),
-            maximum_response_bytes=limit,
-            timeout_milliseconds=timeout,
+            claim=claim(**claim_updates),
+            containment=containment(**containment_updates),
         )
 
 
 def test_fixture_transport_requires_fresh_matching_containment() -> None:
     transport = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, image_digest=IMAGE, executor=FixtureExecutor(output())
+        executable=RUNTIME, executor=FixtureExecutor(output())
     )
     for evidence in (
         containment(gateway_network_id="other-network"),
@@ -168,9 +190,43 @@ def test_fixture_transport_requires_fresh_matching_containment() -> None:
     ):
         with pytest.raises(GatewayHttpFixtureError) as raised:
             transport.execute(
-                network_id=NETWORK,
+                claim=claim(),
                 containment=evidence,
-                maximum_response_bytes=32,
-                timeout_milliseconds=500,
             )
         assert raised.value.code == "HTTP_FIXTURE_CONTAINMENT_DENIED"
+
+
+@dataclass
+class FixtureAuthority:
+    issued_claim: dict[str, object]
+    calls: list[tuple[str, object]] = field(default_factory=list)
+
+    def claim_gateway_fixture_execution(
+        self, start_id: str, *, containment: dict[str, object]
+    ) -> dict[str, object]:
+        self.calls.append(("claim", (start_id, containment)))
+        return self.issued_claim
+
+    def finalize_gateway_request(
+        self,
+        start_id: str,
+        measurement: object,
+        *,
+        execution_claim_id: str | None = None,
+    ) -> dict[str, object]:
+        self.calls.append(("finalize", (start_id, measurement, execution_claim_id)))
+        return {"status": "completed"}
+
+
+def test_fixture_execution_claims_before_transport_and_binds_finalization() -> None:
+    authority = FixtureAuthority(claim())
+    transport = OciGatewayHttpFixtureTransport(
+        executable=RUNTIME, executor=FixtureExecutor(output())
+    )
+    execution = GatewayHttpFixtureExecution(authority=authority, transport=transport)
+
+    result = execution.execute(str(authority.issued_claim["start_id"]), containment=containment())
+
+    assert result == {"status": "completed"}
+    assert [call[0] for call in authority.calls] == ["claim", "finalize"]
+    assert authority.calls[1][1][2] == authority.issued_claim["claim_id"]

@@ -160,7 +160,11 @@ DNS changes are rebinding denials; changed hosts are independently reauthorized.
 
 **Phase 1 fixture note:** The first HTTP effect is limited in the image-pinned gateway
 binary to one owned TEST-NET fixture tuple and runs on the managed internal network.
-The core has no socket transport. Hosted rootless evidence must show the fixed request
+The core atomically issues one-use execution claims only for committed, unexpired
+starts whose consumed grant, budget, rate reservation, destination decision, running
+runtime, image, network, and fresh containment identity all match. Claim-bound
+finalization or fail-closed recovery prevents reuse. The core has no socket transport.
+Hosted rootless evidence must show the fixed request
 succeeds while direct egress, external DNS, IPv6, runtime sockets, host mounts, host
 namespaces, and unconstrained resources remain blocked. This does not yet verify
 worker-to-gateway routing or authorize external destinations.

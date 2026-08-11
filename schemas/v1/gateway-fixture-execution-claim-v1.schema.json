@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/gateway-fixture-execution-claim-v1.schema.json",
+  "title": "PentAI GatewayFixtureExecutionClaim v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "claim_id", "start_id", "session_id", "runtime_id", "containment_attestation_id", "gateway_network_id", "image_digest", "method", "target_ip", "port", "host", "path", "response_bytes_limit", "deadline_at", "claimed_at", "status", "fixture_execution_enabled", "external_execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "claim_id": {"type": "string", "format": "uuid"},
+    "start_id": {"type": "string", "format": "uuid"},
+    "session_id": {"type": "string", "format": "uuid"},
+    "runtime_id": {"type": "string", "format": "uuid"},
+    "containment_attestation_id": {"type": "string", "format": "uuid"},
+    "gateway_network_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "image_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "method": {"const": "GET"},
+    "target_ip": {"const": "192.0.2.20"},
+    "port": {"const": 8080},
+    "host": {"const": "example.test"},
+    "path": {"const": "/fixture"},
+    "response_bytes_limit": {"type": "integer", "minimum": 1, "maximum": 1048576},
+    "deadline_at": {"type": "string", "format": "date-time"},
+    "claimed_at": {"type": "string", "format": "date-time"},
+    "status": {"const": "claimed"},
+    "fixture_execution_enabled": {"const": true},
+    "external_execution_enabled": {"const": false}
+  }
+}
