@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/backup-restore-report-v2.schema.json",
+  "title": "PentAI BackupRestoreReport v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "backup_id", "status", "created_at", "database_sha256", "audit_head_hash", "evidence_blob_count", "source_blob_count", "deletion_tombstone_count", "encrypted_backup_sha256", "destination", "live_data_replaced"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "backup_id": {"type": "string", "format": "uuid"},
+    "status": {"enum": ["created", "verified"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "database_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "audit_head_hash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "evidence_blob_count": {"type": "integer", "minimum": 0},
+    "source_blob_count": {"type": "integer", "minimum": 0},
+    "deletion_tombstone_count": {"type": "integer", "minimum": 0},
+    "encrypted_backup_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "destination": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "live_data_replaced": {"const": false}
+  }
+}

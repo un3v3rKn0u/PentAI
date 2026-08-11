@@ -407,7 +407,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - Crash/power-loss tests show no committed state loss or duplicate external action.
 - Backup and restore pass integrity verification. Isolated encrypted database/evidence
   restore drills now verify SQLite, migrations, audit head, blob authentication, and
-  live deletion state; production replacement and full-device-loss drills remain open.
+  live deletion state. V2 archives also authenticate and restore the exact encrypted
+  source-provenance blobs referenced by the snapshot. Production replacement and
+  full-device-loss drills remain open.
 - Reports contain policy version, testing timestamps, evidence references, and coverage limits.
 - The product remains supervised; no autonomous active testing is enabled.
 

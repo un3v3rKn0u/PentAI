@@ -336,7 +336,12 @@ def create_app(
         evidence_store,
         storage_failure_handler=stop_for_evidence_failure,
     )
-    backups = BackupService(runtime.database_path, evidence_store, runtime.source_master_key)
+    backups = BackupService(
+        runtime.database_path,
+        evidence_store,
+        runtime.source_master_key,
+        source_store=source_store,
+    )
     audit_verification = authorization.verify_audit_chain()
     if not audit_verification["valid"]:
         raise RuntimeError("audit ledger verification failed; startup is denied")
