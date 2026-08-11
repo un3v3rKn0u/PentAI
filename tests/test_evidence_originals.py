@@ -172,3 +172,183 @@ def test_missing_key_and_invalid_inputs_deny_without_plaintext_persistence(tmp_p
 def test_base64_fixture_is_bounded_synthetic_content() -> None:
     encoded = base64.b64encode(b"synthetic").decode("ascii")
     assert base64.b64decode(encoded, validate=True) == b"synthetic"
+
+
+def test_redaction_derivative_is_encrypted_immutable_and_plain_text_previewed(
+    tmp_path: Path,
+) -> None:
+    database, workflow_id, service, store = evidence_fixture(tmp_path)
+    original = capture(
+        service,
+        workflow_id,
+        content=b"<script>alert(1)</script> token=synthetic-secret",
+        media_type="text/html",
+    )
+    source = "<script>alert(1)</script> token=synthetic-secret"
+    start = source.index("synthetic-secret")
+    derivative = service.create_redaction(
+        str(original["evidence_id"]),
+        redactions=[{"start": start, "end": len(source), "reason": "secret"}],
+        classification="internal",
+        confirm_classification=True,
+        idempotency_key="redaction-fixture-0001",
+        actor_id="local-reviewer",
+    )
+    assert derivative["source_sha256"] == original["sha256"]
+    assert derivative["sha256"] != original["sha256"]
+    assert derivative["media_type"] == "text/plain"
+    assert derivative["redactions"] == [
+        {
+            "start": start,
+            "end": len(source),
+            "reason": "secret",
+            "replacement": "[REDACTED]",
+        }
+    ]
+    digest = str(derivative["sha256"])
+    assert store.load(digest) == b"<script>alert(1)</script> token=[REDACTED]"
+
+    preview = service.preview_redaction(str(derivative["derivative_id"]), actor_id="local-reviewer")
+    assert preview["render_mode"] == "plain_text"
+    assert preview["media_type"] == "text/plain"
+    assert preview["active_content_disabled"] is True
+    assert preview["content"] == "<script>alert(1)</script> token=[REDACTED]"
+
+    with closing(sqlite3.connect(database)) as connection:
+        actions = [
+            row[0]
+            for row in connection.execute("SELECT action FROM audit_events ORDER BY sequence")
+        ]
+        events = [
+            row[0]
+            for row in connection.execute(
+                "SELECT action FROM evidence_derivative_events ORDER BY sequence"
+            )
+        ]
+    assert actions == [
+        "evidence.original_stored",
+        "evidence.content_accessed",
+        "evidence.redaction_stored",
+        "evidence.redaction_previewed",
+    ]
+    assert events == ["stored", "previewed"]
+
+    blob = store.root / digest[:2] / f"{digest}.blob"
+    payload = bytearray(blob.read_bytes())
+    payload[-1] ^= 1
+    blob.write_bytes(payload)
+    with pytest.raises(EvidenceError) as tampered:
+        service.preview_redaction(str(derivative["derivative_id"]), actor_id="local-reviewer")
+    assert tampered.value.code == "EVIDENCE_STORAGE_FAILED"
+
+
+def test_redaction_replay_and_database_history_are_immutable(tmp_path: Path) -> None:
+    database, workflow_id, service, _ = evidence_fixture(tmp_path)
+    original = capture(service, workflow_id, content=b"keep secret")
+    arguments = {
+        "redactions": [{"start": 5, "end": 11, "reason": "secret"}],
+        "classification": "internal",
+        "confirm_classification": True,
+        "idempotency_key": "redaction-fixture-0002",
+        "actor_id": "local-reviewer",
+    }
+    first = service.create_redaction(str(original["evidence_id"]), **arguments)  # type: ignore[arg-type]
+    second = service.create_redaction(str(original["evidence_id"]), **arguments)  # type: ignore[arg-type]
+    assert second == first
+    with pytest.raises(EvidenceError) as conflict:
+        service.create_redaction(
+            str(original["evidence_id"]),
+            **(arguments | {"classification": "public"}),  # type: ignore[arg-type]
+        )
+    assert conflict.value.code == "EVIDENCE_IDEMPOTENCY_CONFLICT"
+
+    with closing(sqlite3.connect(database)) as connection, connection:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            connection.execute(
+                "UPDATE evidence_derivatives SET classification = 'public' WHERE derivative_id = ?",
+                (first["derivative_id"],),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="cannot be deleted"):
+            connection.execute(
+                "DELETE FROM evidence_derivative_events WHERE derivative_id = ?",
+                (first["derivative_id"],),
+            )
+
+
+def test_redaction_and_preview_reject_unsafe_or_ambiguous_inputs(tmp_path: Path) -> None:
+    _, workflow_id, service, _ = evidence_fixture(tmp_path)
+    original = capture(service, workflow_id, content=b"0123456789")
+    with pytest.raises(EvidenceError) as unconfirmed:
+        service.create_redaction(
+            str(original["evidence_id"]),
+            redactions=[{"start": 0, "end": 1, "reason": "operator_selected"}],
+            classification="public",
+            confirm_classification=False,
+            idempotency_key="redaction-unconfirmed-01",
+            actor_id="local-reviewer",
+        )
+    assert unconfirmed.value.code == "EVIDENCE_CLASSIFICATION_CONFIRMATION_REQUIRED"
+    cases = (
+        ([], "EVIDENCE_REDACTION_INVALID"),
+        (
+            [
+                {"start": 4, "end": 7, "reason": "secret"},
+                {"start": 6, "end": 9, "reason": "secret"},
+            ],
+            "EVIDENCE_REDACTION_RANGE_INVALID",
+        ),
+        ([{"start": 2, "end": 99, "reason": "secret"}], "EVIDENCE_REDACTION_RANGE_INVALID"),
+        ([{"start": 2, "end": 4, "reason": "unknown"}], "EVIDENCE_REDACTION_RANGE_INVALID"),
+    )
+    for index, (redactions, code) in enumerate(cases):
+        with pytest.raises(EvidenceError) as raised:
+            service.create_redaction(
+                str(original["evidence_id"]),
+                redactions=redactions,
+                classification="internal",
+                confirm_classification=True,
+                idempotency_key=f"redaction-invalid-{index:04d}",
+                actor_id="local-reviewer",
+            )
+        assert raised.value.code == code
+
+    binary = capture(
+        service,
+        workflow_id,
+        content=b"synthetic image",
+        evidence_kind="screenshot",
+        media_type="image/png",
+        idempotency_key="evidence-fixture-0002",
+    )
+    with pytest.raises(EvidenceError) as unsupported:
+        service.create_redaction(
+            str(binary["evidence_id"]),
+            redactions=[{"start": 0, "end": 1, "reason": "operator_selected"}],
+            classification="internal",
+            confirm_classification=True,
+            idempotency_key="redaction-unsupported-01",
+            actor_id="local-reviewer",
+        )
+    assert unsupported.value.code == "EVIDENCE_REDACTION_UNSUPPORTED"
+
+    invalid_text = capture(
+        service,
+        workflow_id,
+        content=b"\xff\xfe",
+        media_type="text/plain",
+        idempotency_key="evidence-fixture-0003",
+    )
+    with pytest.raises(EvidenceError) as invalid_utf8:
+        service.create_redaction(
+            str(invalid_text["evidence_id"]),
+            redactions=[{"start": 0, "end": 1, "reason": "operator_selected"}],
+            classification="internal",
+            confirm_classification=True,
+            idempotency_key="redaction-invalid-utf8",
+            actor_id="local-reviewer",
+        )
+    assert invalid_utf8.value.code == "EVIDENCE_REDACTION_UNSUPPORTED"
+
+    with pytest.raises(EvidenceError) as original_preview:
+        service.preview_redaction(str(original["evidence_id"]), actor_id="local-reviewer")
+    assert original_preview.value.code == "EVIDENCE_DERIVATIVE_NOT_FOUND"

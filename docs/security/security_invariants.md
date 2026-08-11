@@ -303,6 +303,11 @@ Migration 0021 and the evidence service enforce content-addressed authenticated
 encryption, immutable database originals, and derived-key separation from source
 blobs. No original-content HTTP read route exists in this slice.
 
+Migration 0022 adds immutable redaction derivatives. The service, rather than the
+caller, generates derivative bytes from validated non-overlapping text ranges and
+binds each derivative to the original digest. Only derivatives can use the bounded
+inactive plain-text preview contract; originals remain unavailable over HTTP.
+
 ### INV-DATA-003 — Complete privileged audit
 
 **Statement:** Every policy activation/revocation, approval, grant, execution, stop event, evidence access, and report transition produces an append-only audit event.
@@ -312,6 +317,9 @@ blobs. No original-content HTTP read route exists in this slice.
 
 Evidence storage and every metadata/content access append both an evidence custody
 event and an audit-ledger event without including evidence bytes.
+
+Redaction creation and preview also append immutable per-derivative events and
+privileged audit entries without including source or derivative content.
 
 The currently enabled owned-fixture effect atomically creates a content-hashed
 execution trace linking its intent, decision, evaluated policy rules, grant, committed

@@ -35,6 +35,7 @@ directory, but rollback must restore a verified pre-migration backup rather than
 immutable records. Database/blob backup without the OS credential cannot decrypt
 originals.
 
-This slice does not expose original content through HTTP and does not implement
-sandboxed previews, redaction derivatives, retention deletion, exports, findings, or
-reports. Those capabilities require separate reviewed contracts and negative tests.
+Original content remains unavailable through HTTP. Migration 0022 adds separately
+encrypted immutable text-redaction derivatives and bounded inactive plain-text
+previews; see `evidence-redaction-preview-v1.md`. Retention deletion, general file or
+image previews, exports, findings, and reports remain deferred.

@@ -52,6 +52,12 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   one supervised workflow, exact policy, and optional matching execution trace.
 - `evidence-custody-event-v1.schema.json` — append-only per-object evidence custody
   chain for storage and access events.
+- `evidence-redaction-v1.schema.json` — immutable server-generated text redaction
+  derivative with exact source digest and selected-range provenance.
+- `evidence-preview-v1.schema.json` — bounded derivative-only inactive plain-text
+  preview response that cannot request original content.
+- `evidence-derivative-event-v1.schema.json` — append-only per-derivative custody
+  chain for redaction storage and preview access.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review
@@ -84,6 +90,9 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | ExecutionTrace v1 | Execution Safety Lead | Contract Maintainer | Gateway Maintainer, Security Reviewer |
 | EvidenceOriginal v1 | Evidence Maintainer | Contract Maintainer | Core Maintainer, Security Reviewer |
 | EvidenceCustodyEvent v1 | Evidence Maintainer | Contract Maintainer | Core Security Maintainer, Security Reviewer |
+| EvidenceRedaction v1 | Evidence Maintainer | Contract Maintainer | Core Security Maintainer, Security Reviewer |
+| EvidencePreview v1 | Evidence Maintainer | Contract Maintainer | UI Maintainer, Security Reviewer |
+| EvidenceDerivativeEvent v1 | Evidence Maintainer | Contract Maintainer | Core Security Maintainer, Security Reviewer |
 | Canonical Types v1 | Policy Maintainer | Contract Maintainer | Gateway Maintainer, independent Security Reviewer |
 
 The owning role is accountable for semantics and consumers. The Contract Maintainer is
