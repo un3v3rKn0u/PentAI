@@ -30,6 +30,7 @@ class MigrationTests(unittest.TestCase):
                     "0011",
                     "0012",
                     "0013",
+                    "0014",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -332,6 +333,47 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("parent_authorization_id", columns)
             self.assertEqual(columns["redirect_count"], "0")
             self.assertIn("destination_authorizations_one_child", indexes)
+
+    def test_gateway_rate_reservation_upgrade_is_additive_and_protected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("*.sql")):
+                if path.name >= "0014_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+
+            migration = repository_migrations / "0014_gateway_rate_reservations.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0014"])
+                self.assertEqual(migrate(database), [])
+
+            with closing(sqlite3.connect(database)) as connection:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+                    )
+                }
+            self.assertIn("gateway_rate_buckets", tables)
+            self.assertIn("gateway_rate_reservations", tables)
+            self.assertIn("gateway_rate_reservations_no_delete", triggers)
 
 
 if __name__ == "__main__":

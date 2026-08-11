@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import secrets
 import sqlite3
 from datetime import UTC, datetime, timedelta
@@ -134,9 +135,122 @@ class AuthorizationService:
         self.policy_signer = policy_signer
 
     @staticmethod
+    def _reserve_rate_bucket(
+        connection: sqlite3.Connection,
+        *,
+        engagement_id: str,
+        policy_bundle_id: str,
+        bucket_key: str,
+        refill_rate: float,
+        capacity: int,
+        reserved_at: datetime,
+    ) -> None:
+        row = connection.execute(
+            """
+            SELECT * FROM gateway_rate_buckets
+            WHERE engagement_id = ? AND bucket_key = ?
+            """,
+            (engagement_id, bucket_key),
+        ).fetchone()
+        if row is None or row["policy_bundle_id"] != policy_bundle_id:
+            tokens = float(capacity)
+        else:
+            updated_at = parse_time(row["updated_at"])
+            if reserved_at < updated_at:
+                raise DomainError("CLOCK_UNTRUSTED", "rate limiter clock moved backward")
+            elapsed = (reserved_at - updated_at).total_seconds()
+            tokens = min(float(capacity), float(row["tokens"]) + elapsed * refill_rate)
+        if tokens + 1e-9 < 1:
+            raise DomainError("RATE_LIMITED", "gateway request rate is exhausted")
+        connection.execute(
+            """
+            INSERT INTO gateway_rate_buckets(
+                engagement_id, bucket_key, policy_bundle_id, refill_rate,
+                capacity, tokens, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(engagement_id, bucket_key) DO UPDATE SET
+                policy_bundle_id = excluded.policy_bundle_id,
+                refill_rate = excluded.refill_rate,
+                capacity = excluded.capacity,
+                tokens = excluded.tokens,
+                updated_at = excluded.updated_at
+            """,
+            (
+                engagement_id,
+                bucket_key,
+                policy_bundle_id,
+                refill_rate,
+                capacity,
+                tokens - 1,
+                _timestamp(reserved_at),
+            ),
+        )
+
+    @staticmethod
+    def _release_rate_reservation(
+        connection: sqlite3.Connection, *, reservation_id: str, finalized_at: datetime
+    ) -> None:
+        row = connection.execute(
+            """
+            SELECT * FROM gateway_rate_reservations
+            WHERE reservation_id = ? AND status = 'reserved'
+            """,
+            (reservation_id,),
+        ).fetchone()
+        if row is None:
+            return
+        for bucket_key in ("global", f"host:{row['host_key']}"):
+            bucket = connection.execute(
+                """
+                SELECT * FROM gateway_rate_buckets
+                WHERE engagement_id = ? AND bucket_key = ?
+                """,
+                (row["engagement_id"], bucket_key),
+            ).fetchone()
+            if bucket is None or bucket["policy_bundle_id"] != row["policy_bundle_id"]:
+                raise DomainError("RATE_STATE_INVALID", "rate reservation bucket is missing")
+            updated_at = parse_time(bucket["updated_at"])
+            effective_time = max(finalized_at, updated_at)
+            elapsed = (effective_time - updated_at).total_seconds()
+            tokens = min(
+                float(bucket["capacity"]),
+                float(bucket["tokens"]) + elapsed * float(bucket["refill_rate"]) + 1,
+            )
+            connection.execute(
+                """
+                UPDATE gateway_rate_buckets SET tokens = ?, updated_at = ?
+                WHERE engagement_id = ? AND bucket_key = ?
+                """,
+                (tokens, _timestamp(effective_time), row["engagement_id"], bucket_key),
+            )
+        connection.execute(
+            """
+            UPDATE gateway_rate_reservations
+            SET status = 'released', finalized_at = ?
+            WHERE reservation_id = ? AND status = 'reserved'
+            """,
+            (_timestamp(finalized_at), reservation_id),
+        )
+
+    @staticmethod
     def _abort_gateway_sessions(
         connection: sqlite3.Connection, *, finalized_at: str, engagement_id: str | None = None
     ) -> int:
+        rate_rows = connection.execute(
+            """
+            SELECT gs.reservation_id FROM gateway_sessions gs
+            JOIN budget_reservations br ON br.reservation_id = gs.reservation_id
+            WHERE gs.status = 'prepared' AND (? IS NULL OR br.engagement_id = ?)
+            """,
+            (engagement_id, engagement_id),
+        ).fetchall()
+        finalized = parse_time(finalized_at)
+        for rate_row in rate_rows:
+            AuthorizationService._release_rate_reservation(
+                connection,
+                reservation_id=rate_row["reservation_id"],
+                finalized_at=finalized,
+            )
         if engagement_id is None:
             rows = connection.execute(
                 """
@@ -2319,9 +2433,13 @@ class AuthorizationService:
         return decision
 
     def prepare_gateway_session(
-        self, *, grant_id: str, destination_authorization_id: str
+        self,
+        *,
+        grant_id: str,
+        destination_authorization_id: str,
     ) -> dict[str, Any]:
-        prepared_at = _timestamp()
+        prepared_instant = _now()
+        prepared_at = _timestamp(prepared_instant)
         with transaction(self.database_path) as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
@@ -2383,12 +2501,31 @@ class AuthorizationService:
             ):
                 raise DomainError("GATEWAY_SESSION_DENIED", "runtime authority is inactive")
             budgets = policy["budgets"]
-            request_limit = int(budgets["maximum_total_requests"])
-            connection_limit = int(budgets["concurrent_connections"])
-            response_limit = min(
-                int(budgets["maximum_response_bytes"]),
-                int(grant["constraints"]["maximum_response_bytes"]),
-            )
+            try:
+                request_limit = int(budgets["maximum_total_requests"])
+                connection_limit = int(budgets["concurrent_connections"])
+                global_rps = float(budgets["global_rps"])
+                host_rps = float(budgets["per_host_rps"])
+                burst = int(budgets["burst"])
+                response_limit = min(
+                    int(budgets["maximum_response_bytes"]),
+                    int(grant["constraints"]["maximum_response_bytes"]),
+                )
+                host = decision["candidate"]["host"]
+                host_key = str(host["value"])
+                if (
+                    request_limit < 1
+                    or connection_limit < 1
+                    or not math.isfinite(global_rps)
+                    or not math.isfinite(host_rps)
+                    or global_rps <= 0
+                    or host_rps <= 0
+                    or burst < 1
+                    or not host_key
+                ):
+                    raise ValueError
+            except (KeyError, TypeError, ValueError) as exc:
+                raise DomainError("GATEWAY_SESSION_DENIED", "rate policy is invalid") from exc
             connection.execute(
                 """
                 INSERT INTO budget_accounts(
@@ -2424,6 +2561,24 @@ class AuthorizationService:
                 raise DomainError("BUDGET_EXHAUSTED", "request or concurrency budget is exhausted")
             reservation_id = str(uuid4())
             session_id = str(uuid4())
+            self._reserve_rate_bucket(
+                connection,
+                engagement_id=row["engagement_id"],
+                policy_bundle_id=row["policy_bundle_id"],
+                bucket_key="global",
+                refill_rate=global_rps,
+                capacity=burst,
+                reserved_at=prepared_instant,
+            )
+            self._reserve_rate_bucket(
+                connection,
+                engagement_id=row["engagement_id"],
+                policy_bundle_id=row["policy_bundle_id"],
+                bucket_key=f"host:{host_key}",
+                refill_rate=host_rps,
+                capacity=burst,
+                reserved_at=prepared_instant,
+            )
             try:
                 connection.execute(
                     """
@@ -2440,6 +2595,21 @@ class AuthorizationService:
                         grant_id,
                         destination_authorization_id,
                         response_limit,
+                        prepared_at,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO gateway_rate_reservations(
+                        reservation_id, engagement_id, policy_bundle_id,
+                        host_key, status, reserved_at
+                    ) VALUES (?, ?, ?, ?, 'reserved', ?)
+                    """,
+                    (
+                        reservation_id,
+                        row["engagement_id"],
+                        row["policy_bundle_id"],
+                        host_key,
                         prepared_at,
                     ),
                 )
@@ -2514,6 +2684,11 @@ class AuthorizationService:
                 raise DomainError("GATEWAY_SESSION_NOT_FOUND", "gateway session does not exist")
             if row["status"] != "prepared":
                 raise DomainError("GATEWAY_SESSION_FINALIZED", "gateway session is already final")
+            self._release_rate_reservation(
+                connection,
+                reservation_id=row["reservation_id"],
+                finalized_at=parse_time(finalized_at),
+            )
             connection.execute(
                 """
                 UPDATE budget_accounts

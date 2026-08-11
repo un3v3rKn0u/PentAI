@@ -202,6 +202,12 @@ environment resolver identity cannot grant authority.
 **Primary enforcement:** Policy/budget service<br>
 **Verification:** Concurrency and race-condition tests.
 
+**Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
+and canonical-host token in the same immediate transaction as total-request and
+connection capacity. Refill uses persisted policy rates, burst capacity, and a
+nondecreasing wall clock. Exhaustion or rollback denies; concurrent contenders cannot
+oversubscribe. Abort and recovery return only uncommitted tokens and cap every refund.
+
 ## 7. Agent and AI Invariants
 
 ### INV-AGENT-001 — No agent authority
