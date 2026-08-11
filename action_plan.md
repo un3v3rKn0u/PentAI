@@ -305,7 +305,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     CNAME extraction, and direct linkage to the attested resolver identity. Resolver
     mode, identity, and allowed addresses are loaded per assessment from the current
     durable policy-bound network profile; duplicated environment resolver values
-    cannot authorize DNS. Existing
+    cannot authorize DNS. The gateway authorization service now validates the signed
+    grant, active policy, revocation epoch, safety state, and matching live attestation
+    before it requests that assessment-scoped resolver, then revalidates all authority
+    atomically when persisting the decision. Existing
     destination authorization rechecks scope, SNI/Host, port, protocol, redirects,
     CNAMEs, IPv6, and rebinding without enabling execution. Hosted live resolver and
     firewall bypass matrices remain required before this item is complete.
