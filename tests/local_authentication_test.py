@@ -159,6 +159,7 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("GET", "/api/v1/runtime-supervision"),
         ("GET", "/api/v1/network-safety-supervision"),
         ("GET", "/api/v1/network-profile-proposal"),
+        ("GET", "/api/v1/network-profiles"),
         ("GET", "/api/v1/safety-state"),
         ("GET", "/api/v1/audit"),
         ("POST", "/api/v1/shutdown"),
@@ -173,6 +174,8 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("POST", "/api/v1/action-grants"),
         ("POST", "/api/v1/action-grants/consume"),
         ("POST", "/api/v1/safety-state"),
+        ("POST", "/api/v1/network-profiles/activate"),
+        ("POST", "/api/v1/network-profiles/unknown/revoke"),
         ("POST", "/api/v1/engagements/unknown/safety-state"),
     ],
 )
@@ -211,6 +214,41 @@ def test_authenticated_network_profile_discovery_is_review_only(tmp_path: Path) 
     assert response.json()["status"] == "needs_confirmation"
     assert response.json()["execution_enabled"] is False
     assert response.json()["registered_source_ipv4"] == []
+
+    activated = app_request(
+        app,
+        "POST",
+        "/api/v1/network-profiles/activate",
+        authorization=f"Bearer {settings.launch_credential}",
+        json_body={
+            "proposal_id": response.json()["proposal_id"],
+            "confirm_route": True,
+            "resolver_mode": "tunnel_resolver",
+            "registered_source_ipv4": ["8.8.8.8"],
+            "registered_source_ipv6": [],
+            "ipv6_mode": "disabled",
+        },
+    )
+    assert activated.status_code == 200
+    assert activated.json()["execution_enabled"] is False
+
+    listed = app_request(
+        app,
+        "GET",
+        "/api/v1/network-profiles",
+        authorization=f"Bearer {settings.launch_credential}",
+    )
+    assert listed.json()["profiles"] == [activated.json()]
+
+    revoked = app_request(
+        app,
+        "POST",
+        f"/api/v1/network-profiles/{activated.json()['profile_id']}/revoke",
+        authorization=f"Bearer {settings.launch_credential}",
+        json_body={"reason": "Explicit local test revocation"},
+    )
+    assert revoked.status_code == 200
+    assert revoked.json()["status"] == "revoked"
 
 
 def test_network_profile_discovery_failure_is_fixed_and_non_sensitive(tmp_path: Path) -> None:

@@ -28,6 +28,7 @@ class MigrationTests(unittest.TestCase):
                     "0009",
                     "0010",
                     "0011",
+                    "0012",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -56,6 +57,8 @@ class MigrationTests(unittest.TestCase):
                     "budget_reservations",
                     "gateway_sessions",
                     "gateway_runtime_instances",
+                    "network_profile_proposals",
+                    "network_profiles",
                 }
                 <= tables
             )
@@ -246,6 +249,47 @@ class MigrationTests(unittest.TestCase):
                     connection.execute(
                         "UPDATE manifest_versions SET document_json = '{}' WHERE id = 'm'"
                     )
+
+    def test_network_profile_upgrade_is_additive_and_history_is_protected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("*.sql")):
+                if path.name >= "0012_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+
+            migration = repository_migrations / "0012_network_profiles.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0012"])
+                self.assertEqual(migrate(database), [])
+
+            with closing(sqlite3.connect(database)) as connection, connection:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+                    )
+                }
+            self.assertIn("network_profile_proposals", tables)
+            self.assertIn("network_profiles", tables)
+            self.assertIn("network_profiles_no_delete", triggers)
 
 
 if __name__ == "__main__":

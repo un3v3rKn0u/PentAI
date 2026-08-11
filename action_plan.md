@@ -277,10 +277,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     contacted by tests; deployment independence and live VPN/interface matrices remain
     required before this item is complete.
   - A supervised setup assistant now proposes canonical host interface, gateway, and
-    resolver values with deterministic identities and a short expiry. It does not
-    persist or activate a profile, contact public observers, or infer registered
-    source IPs. Confirmation, durable activation, revocation, and audit linkage remain
-    required.
+    resolver values with deterministic identities and a short expiry. Proposal
+    persistence remains non-authoritative; discovery does not activate a profile,
+    contact public observers, or infer registered source IPs.
+  - Human confirmation now persists one immutable active network profile with validated
+    public source addresses and resolver/IPv6 choices. Stale, replayed, conflicting,
+    or incomplete confirmation denies; activation and revocation are audit-linked and
+    cannot enable execution. Observer enrollment, policy binding, and live attestation
+    remain required.
 - [x] Implement global and assessment-level pause, stop, and grant revocation.
 - [ ] Implement route failure and public-IP change kill switches.
   - The application-owned network safety supervisor now verifies every current

@@ -847,3 +847,38 @@ prohibited.
 compromised local state, so every value remains an untrusted proposal. This review is
 self-authored and non-independent and does not satisfy an external independent-review
 requirement.
+
+## 2026-08-11 — Durable network profile confirmation and revocation
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Immutable proposal persistence, explicit route confirmation,
+resolver and IPv6 choice validation, registered public source-IP validation, proposal
+expiry/replay checks, one-active-profile enforcement, revocation, API/UI states,
+bounded pending-proposal capacity, contract validation, migration constraints, and
+hash-chained audit linkage.
+
+**Evidence examined:** Unit, migration, API authentication, contract, and UI tests
+cover activation and revocation, missing confirmation, stale/missing/replayed
+proposals, non-public or absent source addresses, resolver and IPv6 conflicts, active
+profile collision, database mutation/deletion attempts, audit integrity, and omission
+of raw source addresses from audit data.
+
+**Findings:** Only the authenticated human principal can confirm or revoke. Activation
+uses the exact stored proposal rather than accepting route data from the client. It
+cannot replace an active profile or enable execution. Database constraints retain
+immutable history and require an explicit active-to-revoked transition.
+
+**Limitations and deferred work:** A confirmed profile is configuration, not an
+attestation. Observer designation, live public-IP comparison, controlled resolver
+provisioning, policy binding, continuous re-attestation, and hosted live platform
+evidence remain required. Target-facing execution remains prohibited.
+
+**Residual risk accepted:** The sole local bearer principal represents the human
+operator, and public source-IP ownership is asserted rather than independently proven
+at confirmation time. This self-authored review is non-independent and cannot satisfy
+an external independent-review requirement.

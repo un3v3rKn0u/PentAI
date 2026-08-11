@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/network-profile-v1.schema.json",
+  "title": "PentAI Network Profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profile_id", "proposal_id", "route_profile_id", "route_interface", "route_gateway", "resolver_mode", "resolver_id", "resolver_addresses", "registered_source_ipv4", "registered_source_ipv6", "ipv6_mode", "status", "confirmed_by", "confirmed_at", "revoked_at", "revocation_reason", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "profile_id": {"type": "string", "format": "uuid"},
+    "proposal_id": {"type": "string", "format": "uuid"},
+    "route_profile_id": {"type": "string", "pattern": "^route-[a-f0-9]{24}$"},
+    "route_interface": {"type": "string", "minLength": 1, "maxLength": 128},
+    "route_gateway": {"oneOf": [{"type": "string", "format": "ipv4"}, {"type": "string", "format": "ipv6"}, {"type": "null"}]},
+    "resolver_mode": {"enum": ["tunnel_resolver", "approved_resolver"]},
+    "resolver_id": {"type": "string", "pattern": "^resolver-[a-f0-9]{24}$"},
+    "resolver_addresses": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"oneOf": [{"type": "string", "format": "ipv4"}, {"type": "string", "format": "ipv6"}]}},
+    "registered_source_ipv4": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"type": "string", "format": "ipv4"}},
+    "registered_source_ipv6": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"type": "string", "format": "ipv6"}},
+    "ipv6_mode": {"enum": ["disabled", "approved_only"]},
+    "status": {"enum": ["active", "revoked"]},
+    "confirmed_by": {"type": "string", "minLength": 1, "maxLength": 128},
+    "confirmed_at": {"type": "string", "format": "date-time"},
+    "revoked_at": {"oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "revocation_reason": {"oneOf": [{"type": "string", "minLength": 1, "maxLength": 500}, {"type": "null"}]},
+    "execution_enabled": {"const": false}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "active"}}},
+      "then": {"properties": {"revoked_at": {"const": null}, "revocation_reason": {"const": null}}},
+      "else": {"properties": {"revoked_at": {"type": "string", "format": "date-time"}, "revocation_reason": {"type": "string", "minLength": 1, "maxLength": 500}}}
+    }
+  ]
+}

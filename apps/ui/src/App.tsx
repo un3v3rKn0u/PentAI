@@ -22,7 +22,7 @@ type WorkflowState =
 type SourceMode = "pasted_text" | "file" | "url";
 type IntakeState = "empty" | "ready" | "loading" | "denied" | "degraded" | "error";
 type SafetyState = "loading" | "active" | "paused" | "stopped" | "error";
-type NetworkSetupState = "empty" | "loading" | "needs_confirmation" | "degraded" | "error";
+type NetworkSetupState = "empty" | "loading" | "needs_confirmation" | "active" | "revoked" | "degraded" | "error";
 
 const maxSourceBytes = 2 * 1024 * 1024;
 
@@ -90,6 +90,10 @@ export function networkSetupRequirement(code: string) {
     ENTER_REGISTERED_SOURCE_IP: "Enter the public source IP registered for the assessment."
   };
   return messages[code] ?? "Resolve an unknown setup requirement before activation.";
+}
+
+export function parseSourceAddresses(value: string) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 function buildManifest(program: Json, engagement: Json, source: Json) {
@@ -247,6 +251,10 @@ export function App() {
   const [networkSetupState, setNetworkSetupState] = useState<NetworkSetupState>("empty");
   const [networkProposal, setNetworkProposal] = useState<Json | null>(null);
   const [networkSetupError, setNetworkSetupError] = useState("");
+  const [networkProfiles, setNetworkProfiles] = useState<Json[]>([]);
+  const [registeredSourceIpv4, setRegisteredSourceIpv4] = useState("");
+  const [resolverMode, setResolverMode] = useState("tunnel_resolver");
+  const [routeConfirmed, setRouteConfirmed] = useState(false);
   const [error, setError] = useState("");
 
   const canImport = Boolean(program);
@@ -310,6 +318,17 @@ export function App() {
       .catch(() => {
         if (active) setSafetyState("error");
       });
+    coreRequest(connection, "/network-profiles")
+      .then((result) => {
+        if (!active) return;
+        setNetworkProfiles(result.profiles);
+        if (result.profiles.some((item: Json) => item.status === "active")) {
+          setNetworkSetupState("active");
+        }
+      })
+      .catch(() => {
+        if (active) setNetworkSetupState("degraded");
+      });
     return () => { active = false; };
   }, [connection]);
 
@@ -330,6 +349,7 @@ export function App() {
     try {
       const proposal = await request("/network-profile-proposal");
       setNetworkProposal(proposal);
+      setRouteConfirmed(false);
       setNetworkSetupState("needs_confirmation");
     } catch (reason) {
       const code = reason instanceof Error ? reason.message : "REQUEST_FAILED";
@@ -340,6 +360,50 @@ export function App() {
           ? "degraded"
           : "error"
       );
+    }
+  }
+
+  async function refreshNetworkProfiles() {
+    const result = await request("/network-profiles");
+    setNetworkProfiles(result.profiles);
+    const activeProfile = result.profiles.find((item: Json) => item.status === "active");
+    if (activeProfile) setNetworkSetupState("active");
+  }
+
+  async function activateNetworkProfile() {
+    if (!networkProposal) return;
+    setNetworkSetupState("loading");
+    setNetworkSetupError("");
+    try {
+      await request("/network-profiles/activate", {
+        proposal_id: networkProposal.proposal_id,
+        confirm_route: routeConfirmed,
+        resolver_mode: resolverMode,
+        registered_source_ipv4: parseSourceAddresses(registeredSourceIpv4),
+        registered_source_ipv6: [],
+        ipv6_mode: "disabled"
+      });
+      await refreshNetworkProfiles();
+      setNetworkProposal(null);
+      await refreshAudit();
+    } catch (reason) {
+      setNetworkSetupError(reason instanceof Error ? reason.message : "REQUEST_FAILED");
+      setNetworkSetupState("error");
+    }
+  }
+
+  async function revokeNetworkProfile(profileId: string) {
+    setNetworkSetupState("loading");
+    try {
+      await request(`/network-profiles/${profileId}/revoke`, {
+        reason: "Explicit supervised network profile revocation"
+      });
+      await refreshNetworkProfiles();
+      setNetworkSetupState("revoked");
+      await refreshAudit();
+    } catch (reason) {
+      setNetworkSetupError(reason instanceof Error ? reason.message : "REQUEST_FAILED");
+      setNetworkSetupState("error");
     }
   }
 
@@ -611,7 +675,7 @@ export function App() {
         <div>
           <p className="eyebrow">Guided network setup</p>
           <h2>Discover local settings for review</h2>
-          <p>This creates a short-lived proposal only. It does not save, approve, or activate networking.</p>
+          <p>Discovery saves a short-lived proposal only. Human confirmation is required before a non-executing profile becomes active.</p>
         </div>
         <button onClick={discoverNetworkProfile} disabled={!connection || networkSetupState === "loading"}>
           {networkSetupState === "loading" ? "Discovering…" : "Discover network settings"}
@@ -619,7 +683,15 @@ export function App() {
         {networkSetupState === "empty" && <p className="setup-status">No network proposal has been created.</p>}
         {networkSetupState === "loading" && <p className="setup-status">Reading the local route and resolver. No external observer is contacted.</p>}
         {networkSetupState === "degraded" && <p className="setup-status bad" role="alert">Discovery unavailable: {networkSetupError}. Nothing was activated.</p>}
-        {networkSetupState === "error" && <p className="setup-status bad" role="alert">Discovery failed safely: {networkSetupError}</p>}
+        {networkSetupState === "error" && <p className="setup-status bad" role="alert">Network setup failed safely: {networkSetupError}</p>}
+        {networkSetupState === "revoked" && <p className="setup-status">The profile was revoked. Networking remains disabled.</p>}
+        {networkProfiles.filter((item) => item.status === "active").map((item) => (
+          <div className="setup-proposal active-profile" role="status" key={item.profile_id}>
+            <strong>Confirmed profile — execution still disabled</strong>
+            <p>{item.route_interface} · {item.resolver_mode} · {item.registered_source_ipv4.join(", ")}</p>
+            <button className="danger" onClick={() => revokeNetworkProfile(item.profile_id)}>Revoke profile</button>
+          </div>
+        ))}
         {networkProposal && networkSetupState === "needs_confirmation" && (
           <div className="setup-proposal" role="status">
             <dl>
@@ -630,6 +702,24 @@ export function App() {
             </dl>
             <strong>Human confirmation still required</strong>
             <ul>{networkProposal.requirements.map((item: string) => <li key={item}>{networkSetupRequirement(item)}</li>)}</ul>
+            <label>
+              Registered public IPv4 address
+              <input value={registeredSourceIpv4} onChange={(event) => setRegisteredSourceIpv4(event.target.value)} placeholder="Public IP registered for this assessment" />
+            </label>
+            <label>
+              Controlled resolver mode
+              <select value={resolverMode} onChange={(event) => setResolverMode(event.target.value)}>
+                <option value="tunnel_resolver">Resolver supplied by the approved route</option>
+                <option value="approved_resolver">Explicit approved resolver</option>
+              </select>
+            </label>
+            <label className="confirmation-check">
+              <input type="checkbox" checked={routeConfirmed} onChange={(event) => setRouteConfirmed(event.target.checked)} />
+              I confirm the detected interface, gateway, and resolver addresses.
+            </label>
+            <button onClick={activateNetworkProfile} disabled={!routeConfirmed || parseSourceAddresses(registeredSourceIpv4).length === 0}>
+              Confirm and activate profile
+            </button>
           </div>
         )}
       </section>

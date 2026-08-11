@@ -6,10 +6,16 @@ PentAI can inspect the host's current default interface, gateway, and resolver
 addresses and present them as a short-lived `Network Profile Proposal v1`. This reduces
 manual transcription while preserving the human authorization boundary.
 
-The proposal is not a profile, approval, attestation, or grant. It is never persisted
-and cannot enable execution. The authenticated local API and UI always leave route
-confirmation, resolver-mode selection, and registered public source-IP entry
-unresolved. Discovery does not call public-IP observers or any target.
+The proposal is not a profile, approval, attestation, or grant. It is persisted only
+as immutable, expiring review input and cannot enable execution. The authenticated
+local API and UI leave route confirmation, resolver-mode selection, and registered
+public source-IP entry unresolved. Discovery does not call public-IP observers or any
+target.
+
+After explicit human confirmation, PentAI creates one durable `Network Profile v1`.
+The profile remains non-executing, is immutable except for an active-to-revoked
+transition, and is linked to the exact stored proposal and hash-chained audit event.
+An active profile must be explicitly revoked before another can be activated.
 
 ## Failure and authority boundaries
 
@@ -18,22 +24,31 @@ unresolved. Discovery does not call public-IP observers or any target.
 - Identical resolver entries emitted by the OS are canonicalized to one value.
 - Raw command output and exception details are not returned to the UI.
 - Proposal lifetime is bounded to ten minutes; the default is five minutes.
+- Expired pending proposals are closed before new storage, and no more than 64
+  proposals may await confirmation.
 - Route and resolver identifiers are deterministic hashes of canonical local
   observations, but the proposal identifier is unique.
 - Empty registered source-IP arrays and `execution_enabled: false` are contract
   constants. A consumer cannot reinterpret the object as authority.
-- Discovery creates no audit event because no authorization-bearing state changes.
-  The later confirmation/activation slice must persist and audit every human choice.
+- Proposal creation creates no audit event because no authorization-bearing choice is
+  made. Activation and revocation are human-only authenticated operations and append
+  privacy-minimized audit events without raw registered source addresses.
+- Activation rejects missing confirmation, stale/unknown/replayed proposals,
+  malformed or non-public source addresses, resolver/IPv6 conflicts, and an existing
+  active profile.
 
 ## Compatibility and rollback
 
-This is an additive authenticated endpoint and a new v1 contract. There is no schema
-migration and no persisted data to roll back. Older clients can ignore the endpoint.
-Rollback removes the endpoint and UI card without changing existing policy,
-attestation, or runtime records.
+Migration `0012_network_profiles.sql` adds proposal and profile tables, immutable
+history triggers, and the one-active-profile constraint without transforming existing
+rows. The API and v1 contract are additive, so older clients remain compatible.
+Rollback disables the endpoints and UI while retaining inert history; dropping the
+tables is intentionally not automated because it would destroy security audit linkage.
 
 ## Deferred work
 
-Durable profile persistence, explicit confirmation, resolver-mode configuration,
-registered source-IP validation, observer designation, activation, revocation, and
-audit linkage remain deferred. Target-facing execution remains prohibited.
+Observer designation and availability proof, profile-to-policy binding, live
+source-IP observation, route re-attestation, controlled resolver provisioning, and
+cross-platform live evidence remain deferred. A confirmed profile is configuration,
+not a network attestation or execution authority. Target-facing execution remains
+prohibited.
