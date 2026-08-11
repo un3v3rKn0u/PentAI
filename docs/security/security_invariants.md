@@ -134,6 +134,12 @@ assessment safety, and exact unexpired attestation. The assessment used for reso
 selection is derived from those records. Authority is checked again transactionally
 when the immutable destination decision is stored.
 
+**Phase 1 redirect note:** Each redirect is derived from one prior immutable allowed
+decision for the same grant and attestation. Persisted lineage supplies the hop count
+and permits only one child, preventing caller-controlled count reset, branching, and
+replay. Relative locations are resolved against the exact canonical parent. Same-host
+DNS changes are rebinding denials; changed hosts are independently reauthorized.
+
 ### INV-SCOPE-004 — Discovery does not expand authority
 
 **Statement:** Discovered hosts, URLs, ports, IPs, services, repositories, tenants, and integrations remain denied until added through a new approved policy version.
