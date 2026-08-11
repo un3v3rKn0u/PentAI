@@ -38,6 +38,12 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   human-supervised assessment; it never grants execution authority.
 - `workflow-task-v1.schema.json` — idempotent, persistent task intent with dispatch
   and external effects explicitly disabled.
+- `workflow-task-lifecycle-v1.schema.json` — version-fenced task attempts, retry,
+  terminal, and dead-letter state without execution authority.
+- `workflow-task-lease-v1.schema.json` — short-lived coordination lease whose token
+  cannot grant worker launch, gateway access, or an external effect.
+- `workflow-task-checkpoint-v1.schema.json` — immutable monotonic progress metadata
+  containing references rather than evidence payloads.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review
@@ -63,6 +69,9 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | WorkerLaunchSpec v1 | Execution Safety Lead | Contract Maintainer | Systems Engineer, independent Security Reviewer |
 | AssessmentWorkflow v1 | Core Maintainer | Contract Maintainer | Product Safety Lead, Security Reviewer |
 | WorkflowTask v1 | Core Maintainer | Contract Maintainer | Execution Safety Lead, Security Reviewer |
+| WorkflowTaskLifecycle v1 | Core Maintainer | Contract Maintainer | Execution Safety Lead, Security Reviewer |
+| WorkflowTaskLease v1 | Core Maintainer | Contract Maintainer | Execution Safety Lead, Security Reviewer |
+| WorkflowTaskCheckpoint v1 | Core Maintainer | Contract Maintainer | Product Safety Lead, Security Reviewer |
 | Canonical Types v1 | Policy Maintainer | Contract Maintainer | Gateway Maintainer, independent Security Reviewer |
 
 The owning role is accountable for semantics and consumers. The Contract Maintainer is

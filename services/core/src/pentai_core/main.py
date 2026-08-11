@@ -160,6 +160,33 @@ class WorkflowTaskRequest(StrictRequest):
     parent_task_id: str | None = None
 
 
+class WorkflowTaskClaimRequest(StrictRequest):
+    expected_version: int = Field(ge=1)
+    lease_seconds: int = Field(ge=5, le=300)
+
+
+class WorkflowTaskLeaseRequest(StrictRequest):
+    expected_version: int = Field(ge=2)
+    lease_token: str = Field(min_length=32, max_length=128)
+    lease_seconds: int = Field(ge=5, le=300)
+
+
+class WorkflowTaskCheckpointRequest(StrictRequest):
+    expected_version: int = Field(ge=2)
+    lease_token: str = Field(min_length=32, max_length=128)
+    progress: int = Field(ge=0, le=100)
+    output_refs: list[str] = Field(default_factory=list, max_length=64)
+
+
+class WorkflowTaskFinalizeRequest(StrictRequest):
+    operation: str
+    expected_version: int = Field(ge=2)
+    lease_token: str = Field(min_length=32, max_length=128)
+    idempotency_key: str = Field(min_length=16, max_length=128)
+    error_code: str | None = None
+    retry_delay_seconds: int = Field(default=0, ge=0, le=3600)
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -619,6 +646,63 @@ def create_app(
         actor = principal(request)
         return workflow_call(
             lambda: workflows.cancel_task(task_id, actor_id=actor.principal_id)
+        )
+
+    @app.post("/api/v1/workflow-tasks/{task_id}/claim")
+    def claim_workflow_task(
+        task_id: str, requested: WorkflowTaskClaimRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return workflow_call(
+            lambda: workflows.claim_task(
+                task_id,
+                expected_version=requested.expected_version,
+                lease_owner=actor.principal_id,
+                lease_seconds=requested.lease_seconds,
+            )
+        )
+
+    @app.post("/api/v1/workflow-tasks/{task_id}/heartbeat")
+    def heartbeat_workflow_task(
+        task_id: str, requested: WorkflowTaskLeaseRequest
+    ) -> dict[str, Any]:
+        return workflow_call(
+            lambda: workflows.heartbeat_task(
+                task_id,
+                expected_version=requested.expected_version,
+                lease_token=requested.lease_token,
+                lease_seconds=requested.lease_seconds,
+            )
+        )
+
+    @app.post("/api/v1/workflow-tasks/{task_id}/checkpoints")
+    def checkpoint_workflow_task(
+        task_id: str, requested: WorkflowTaskCheckpointRequest
+    ) -> dict[str, Any]:
+        return workflow_call(
+            lambda: workflows.checkpoint_task(
+                task_id,
+                expected_version=requested.expected_version,
+                lease_token=requested.lease_token,
+                progress=requested.progress,
+                output_refs=requested.output_refs,
+            )
+        )
+
+    @app.post("/api/v1/workflow-tasks/{task_id}/finalize")
+    def finalize_workflow_task(
+        task_id: str, requested: WorkflowTaskFinalizeRequest
+    ) -> dict[str, Any]:
+        return workflow_call(
+            lambda: workflows.finalize_task(
+                task_id,
+                operation=requested.operation,
+                expected_version=requested.expected_version,
+                lease_token=requested.lease_token,
+                idempotency_key=requested.idempotency_key,
+                error_code=requested.error_code,
+                retry_delay_seconds=requested.retry_delay_seconds,
+            )
         )
 
     return app

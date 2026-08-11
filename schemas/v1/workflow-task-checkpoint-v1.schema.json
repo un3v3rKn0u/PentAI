@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/workflow-task-checkpoint-v1.schema.json",
+  "title": "PentAI WorkflowTaskCheckpoint v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "checkpoint_id", "task_id", "task_version", "sequence", "progress", "output_refs", "created_at"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "checkpoint_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "task_version": {"type": "integer", "minimum": 2},
+    "sequence": {"type": "integer", "minimum": 1},
+    "progress": {"type": "integer", "minimum": 0, "maximum": 100},
+    "output_refs": {"type": "array", "items": {"type": "string", "format": "uuid"}, "maxItems": 64, "uniqueItems": true},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}

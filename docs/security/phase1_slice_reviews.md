@@ -1303,3 +1303,41 @@ intent; an operator must cancel tasks before completing a workflow. Future claim
 semantics will require a separate security review and crash-window proof. This
 self-authored review is non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-11 — Durable task leases and crash-safe retry lifecycle
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development without worker dispatch or external effects<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Additive lifecycle migration and backfill, lease/lifecycle/
+checkpoint contracts, authenticated claiming, version and token fencing, bounded
+heartbeats, monotonic checkpoints, idempotent terminal receipts, retry exhaustion,
+dead letters, workflow cancellation, startup recovery, audit/outbox linkage,
+compatibility, and rollback.
+
+**Evidence examined:** Concurrent claim tests prove one winner. Negative tests reject
+stale versions, mismatched or expired tokens, inactive authority, paused workflows,
+decreasing progress, premature retry, malformed clocks, and attempts beyond the fixed
+maximum. Recovery tests invalidate live leases without automatic reclaim. Migration
+tests cover additive application, old-task backfill, transition triggers, immutable
+checkpoints/receipts, and idempotence. The full audit chain remains valid.
+
+**Findings:** A task mutation requires the latest durable version and matching opaque
+lease token; the database stores only its digest. API claim identity comes from the
+authenticated principal rather than request data. Terminal retries return an immutable
+receipt without repeating the state transition. Startup converts interrupted attempts
+to retry wait or dead letter and pauses running workflows before future work.
+
+**Limitations and deferred work:** Claims are coordination authority only. No worker
+is launched, no task is dispatched, and no gateway or target-facing action is enabled.
+Checkpoint output values are UUID references only; evidence storage is deferred. The
+UI does not yet expose task recovery or dead-letter controls.
+
+**Residual risk accepted:** Lease owners currently use local API principals rather
+than independently attested worker identities because worker dispatch remains absent.
+Future worker binding must introduce runtime identity and revalidate every external
+effect through the existing authorization/gateway chain. This self-authored review is
+non-independent and cannot satisfy an external independent-review requirement.

@@ -182,6 +182,10 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("POST", "/api/v1/workflows/unknown/transition"),
         ("POST", "/api/v1/workflows/unknown/tasks"),
         ("POST", "/api/v1/workflow-tasks/unknown/cancel"),
+        ("POST", "/api/v1/workflow-tasks/unknown/claim"),
+        ("POST", "/api/v1/workflow-tasks/unknown/heartbeat"),
+        ("POST", "/api/v1/workflow-tasks/unknown/checkpoints"),
+        ("POST", "/api/v1/workflow-tasks/unknown/finalize"),
     ],
 )
 def test_every_api_route_rejects_missing_credentials(
