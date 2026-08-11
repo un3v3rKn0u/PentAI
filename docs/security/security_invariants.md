@@ -158,6 +158,13 @@ DNS changes are rebinding denials; changed hosts are independently reauthorized.
 **Failure response:** Stop all execution on the affected platform.<br>
 **Verification:** Direct socket, alternate proxy, DNS, IPv4, IPv6, and raw-route bypass tests.
 
+**Phase 1 fixture note:** The first HTTP effect is limited in the image-pinned gateway
+binary to one owned TEST-NET fixture tuple and runs on the managed internal network.
+The core has no socket transport. Hosted rootless evidence must show the fixed request
+succeeds while direct egress, external DNS, IPv6, runtime sockets, host mounts, host
+namespaces, and unconstrained resources remain blocked. This does not yet verify
+worker-to-gateway routing or authorize external destinations.
+
 ### INV-NET-002 — Approved source identity
 
 **Statement:** Network execution is permitted only while the measured public source IPv4/IPv6 and route identity match the active policy.
@@ -210,8 +217,9 @@ oversubscribe. Abort and recovery return only uncommitted tokens and cap every r
 The request-start boundary revalidates current authority and atomically converts both
 rate tokens and total-request capacity to committed state while consuming the grant.
 Its deadline is the earliest of the grant timeout, grant expiry, engagement expiry,
-and attestation expiry. Once committed, request/rate capacity is never refunded; safety recovery only
-cancels the execution-disabled handoff and releases its connection slot.
+and attestation expiry. Once committed, request/rate capacity is never refunded;
+safety recovery only cancels the execution-disabled handoff and releases its
+connection slot.
 Finalization re-derives the deadline and response ceiling from durable state, retains
 at most the authorized bytes, permits only one additional observed proof byte, closes
 the connection slot exactly once, and never refunds committed capacity.

@@ -187,6 +187,31 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
         self.assertEqual(executor.calls[0][0][4], "name=" + NAME)
         self.assertIn("--disable-dns", executor.calls[1][0])
 
+    def test_owned_fixture_subnet_is_explicit_and_test_net_only(self) -> None:
+        executor = FixtureExecutor(
+            [CommandResult(0, b""), CommandResult(0, NETWORK_ID.encode()), listed(), inspected()]
+        )
+        fixture = ManagedGatewayNetworkProvisioner(
+            runtime="docker",
+            executable=DOCKER,
+            network_name=NAME,
+            pentai_instance_id=INSTANCE,
+            executor=executor,
+            fixture_subnet="192.0.2.0/24",
+        )
+        fixture.ensure()
+        command = executor.calls[1][0]
+        self.assertEqual(command[command.index("--subnet") + 1], "192.0.2.0/24")
+        with self.assertRaises(SnapshotCollectionError):
+            ManagedGatewayNetworkProvisioner(
+                runtime="docker",
+                executable=DOCKER,
+                network_name=NAME,
+                pentai_instance_id=INSTANCE,
+                executor=FixtureExecutor([]),
+                fixture_subnet="10.0.0.0/8",
+            )
+
     def test_ambiguous_unowned_and_unsafe_networks_deny(self) -> None:
         unowned = inspected(Labels={})
         cases = (

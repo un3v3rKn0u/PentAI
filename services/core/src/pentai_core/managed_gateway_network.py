@@ -74,6 +74,7 @@ class ManagedGatewayNetworkProvisioner:
         network_name: str,
         pentai_instance_id: str,
         executor: BoundedCommandExecutor,
+        fixture_subnet: str | None = None,
     ) -> None:
         if runtime not in {"docker", "podman"}:
             raise SnapshotCollectionError("RUNTIME_UNSUPPORTED", "runtime is unsupported")
@@ -88,6 +89,11 @@ class ManagedGatewayNetworkProvisioner:
         self._network_name = network_name
         self._pentai_instance_id = pentai_instance_id
         self._executor = executor
+        if fixture_subnet not in {None, "192.0.2.0/24"}:
+            raise SnapshotCollectionError(
+                "NETWORK_FIXTURE_SUBNET_INVALID", "fixture subnet is invalid"
+            )
+        self._fixture_subnet = fixture_subnet
 
     def ensure(self) -> ManagedNetworkResult:
         existing = self._list_networks()
@@ -249,6 +255,8 @@ class ManagedGatewayNetworkProvisioner:
             command.append("--disable-dns")
         else:
             command.extend(("--opt", "com.docker.network.bridge.enable_ip_masquerade=false"))
+        if self._fixture_subnet is not None:
+            command.extend(("--subnet", self._fixture_subnet))
         for label in labels:
             command.extend(("--label", label))
         command.append(self._network_name)

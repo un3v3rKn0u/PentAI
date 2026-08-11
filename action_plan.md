@@ -260,12 +260,17 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     concurrent oversubscription, and returns tokens when a preparation is safely
     aborted before any effect. A final local request-start boundary now revalidates
     authority, consumes the grant, commits request/rate capacity, and persists the
-    earliest safe deadline atomically while keeping execution disabled. Gateway
-    A bounded response reader and atomic finalizer now enforce the committed deadline,
+    earliest safe deadline atomically while keeping execution disabled. A bounded
+    response reader and atomic finalizer now enforce the committed deadline,
     retain no more than the response ceiling, preserve immutable outcome/authorization
     linkage, and close concurrency exactly once using synthetic in-memory chunks.
-    Gateway sockets, process enforcement, and external effects remain required before
-    this item is complete.
+    The image-pinned Rust gateway now performs a fixed GET against an owned TEST-NET
+    fixture inside the rootless internal network, with a monotonic connect/write/read
+    deadline, strict HTTP framing, and a limit-plus-one body stop. The core cannot open
+    the socket or vary the target tuple. Hosted containment evidence is required for
+    this claim. HTTPS, policy-derived destinations, live controlled DNS, redirects,
+    external routing, and product execution remain required before this item is
+    complete.
   - A durable non-target-facing gateway sentinel lifecycle now records launch intent
     before the external effect, binds the container to fresh containment evidence and
     the exact prepared session/network/image, re-inspects fixed isolation controls,
