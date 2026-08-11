@@ -255,8 +255,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [ ] Build the first gateway supporting HTTP(S), controlled DNS, redirects, and rate enforcement.
   - The non-networking gateway control plane now persists immutable destination
     decisions, atomically reserves total-request/concurrency/response capacity, and
-    prepares durable sessions with execution disabled. Rate token buckets, sockets,
-    containment, and external effects remain required before this item is complete.
+    prepares durable sessions with execution disabled. It also reserves durable global
+    and canonical-host token-bucket capacity atomically, rejects clock rollback and
+    concurrent oversubscription, and returns tokens when a preparation is safely
+    aborted before any effect. Request-start commitment, sockets, containment, and
+    external effects remain required before this item is complete.
   - A durable non-target-facing gateway sentinel lifecycle now records launch intent
     before the external effect, binds the container to fresh containment evidence and
     the exact prepared session/network/image, re-inspects fixed isolation controls,

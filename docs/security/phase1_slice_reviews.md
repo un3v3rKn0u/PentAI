@@ -1022,3 +1022,40 @@ target-facing execution remains prohibited.
 core process rather than a separately isolated gateway binary. This self-authored
 review is non-independent and cannot satisfy an external independent-review
 requirement.
+
+## 2026-08-11 — Durable gateway rate reservations
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Global and per-host token-bucket persistence, canonical host-key
+derivation, atomic preparation, concurrent contention, refill arithmetic, clock
+rollback, abort/pause/stop/startup refunds, capacity bounds, migration compatibility,
+audit linkage, diagnostics, and rollback.
+
+**Evidence examined:** Integration tests cover simultaneous reservations at one burst
+token, deterministic exhaustion, refill after the policy interval, durable global and
+host state, capped abort refunds, existing total/concurrency interaction, safety
+recovery, and additive migration/idempotency. The complete diff and INV-NET-005,
+INV-AUTH-003, INV-GRANT-001/004, INV-REC-001/002, and clock-trust implications were
+reviewed.
+
+**Findings:** The immutable allowed destination supplies the canonical host key. Both
+buckets and existing budgets update under one `BEGIN IMMEDIATE` transaction, so any
+failure rolls back all reservations. A preparation cannot exceed burst capacity,
+concurrent callers serialize safely, and backward wall-clock movement denies new
+capacity. Tokens return only while the session remains prepared and are capped.
+
+**Limitations and deferred work:** Tokens are reservations for non-executing sessions;
+there is no isolated request-start transition that permanently commits them. No HTTP
+socket, worker, live resolver, observer, or target is used. Response bytes, deadlines,
+gateway-process enforcement, and cross-platform live timing evidence remain required.
+Target-facing execution remains prohibited.
+
+**Residual risk accepted:** Refill uses the system wall clock persisted in SQLite;
+rollback denies but forward clock jumps can refill to burst capacity. A future trusted
+clock-health control remains required before execution. This self-authored review is
+non-independent and cannot satisfy an external independent-review requirement.

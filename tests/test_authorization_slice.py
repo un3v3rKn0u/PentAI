@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.controlled_dns import ControlledResolver, RawDnsAnswer
+from pentai_core.database import transaction
 from pentai_core.migrate import migrate
 from pentai_core.network_attestation import NetworkAttestor, RouteSnapshot, SourceObservation
 from pentai_core.policy_signing import PolicySigner
@@ -618,6 +619,10 @@ class AuthorizationSliceTests(unittest.TestCase):
                 "SELECT status FROM gateway_sessions WHERE session_id = ?",
                 (session["session_id"],),
             ).fetchone()[0]
+            rate_status = connection.execute(
+                "SELECT status FROM gateway_rate_reservations WHERE reservation_id = ?",
+                (session["reservation_id"],),
+            ).fetchone()[0]
             account = connection.execute(
                 """
                 SELECT reserved_requests, active_connections FROM budget_accounts
@@ -629,6 +634,7 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertIsNotNone(grant_revoked)
         self.assertEqual(attestation_status, "invalidated")
         self.assertEqual(session_status, "aborted")
+        self.assertEqual(rate_status, "released")
         self.assertEqual(tuple(account), (0, 0))
 
     def test_network_health_refresh_replaces_the_only_valid_attestation(self) -> None:
@@ -788,6 +794,19 @@ class AuthorizationSliceTests(unittest.TestCase):
                 """,
                 (self.engagement["id"],),
             ).fetchone()
+            rate_status = connection.execute(
+                """
+                SELECT status FROM gateway_rate_reservations WHERE reservation_id = ?
+                """,
+                (session["reservation_id"],),
+            ).fetchone()[0]
+            rate_tokens = connection.execute(
+                """
+                SELECT tokens FROM gateway_rate_buckets
+                WHERE engagement_id = ? AND bucket_key = 'global'
+                """,
+                (self.engagement["id"],),
+            ).fetchone()[0]
             with self.assertRaisesRegex(sqlite3.IntegrityError, "status transition"):
                 connection.execute(
                     """
@@ -797,8 +816,115 @@ class AuthorizationSliceTests(unittest.TestCase):
                     (session["session_id"],),
                 )
         self.assertEqual(tuple(account), (0, 0, 0))
+        self.assertEqual(rate_status, "released")
+        self.assertEqual(rate_tokens, 1)
+
+    def test_gateway_rate_tokens_are_atomic_durable_and_refill(self) -> None:
+        self.manifest["operational_limits"]["concurrent_connections"] = 2  # type: ignore[index]
+        first_intent, first_grant, attestation = self.network_authority()
+        with closing(sqlite3.connect(self.database)) as connection:
+            policy_hash = connection.execute(
+                """
+                SELECT content_hash FROM policy_bundles
+                WHERE id = (SELECT active_policy_id FROM engagements WHERE id = ?)
+                """,
+                (self.engagement["id"],),
+            ).fetchone()[0]
+        second_intent = intent_for(self.engagement["id"], policy_hash)
+        second_decision = self.service.evaluate_intent(self.engagement["id"], second_intent)
+        second_grant = self.service.mint_action_grant(
+            second_decision["decision_id"], audience="pentai-egress-gateway"
+        )
+        pairs = []
+        for intent, grant, address in (
+            (first_intent, first_grant, "192.0.2.20"),
+            (second_intent, second_grant, "192.0.2.21"),
+        ):
+            destination = self.service.resolve_and_authorize_network_destination(
+                grant_id=grant["grant_id"],
+                attestation_id=attestation["attestation_id"],
+                candidate_url=intent["target"]["canonical_url"],
+                resolver_source=FixtureResolverSource(fixture_resolver((address,))),
+                sni_host="example.test",
+                host_header="example.test",
+            )
+            pairs.append((grant["grant_id"], destination["authorization_id"]))
+
+        instant = datetime.now(UTC)
+        def reserve(pair: tuple[str, str]) -> tuple[tuple[str, str], str, dict[str, object] | None]:
+            try:
+                session = self.service.prepare_gateway_session(
+                    grant_id=pair[0], destination_authorization_id=pair[1]
+                )
+            except DomainError as exc:
+                return pair, exc.code, None
+            return pair, "prepared", session
+
+        with (
+            patch("pentai_core.authorization._now", return_value=instant),
+            ThreadPoolExecutor(max_workers=2) as executor,
+        ):
+            outcomes = list(executor.map(reserve, pairs))
+        self.assertEqual(sorted(item[1] for item in outcomes), ["RATE_LIMITED", "prepared"])
+        prepared = next(item[2] for item in outcomes if item[1] == "prepared")
+        denied_pair = next(item[0] for item in outcomes if item[1] == "RATE_LIMITED")
+        assert prepared is not None
+
+        with patch(
+            "pentai_core.authorization._now", return_value=instant + timedelta(seconds=1)
+        ):
+            second = self.service.prepare_gateway_session(
+                grant_id=denied_pair[0],
+                destination_authorization_id=denied_pair[1],
+            )
+        with closing(sqlite3.connect(self.database)) as connection:
+            buckets = connection.execute(
+                """
+                SELECT bucket_key, tokens FROM gateway_rate_buckets
+                WHERE engagement_id = ? ORDER BY bucket_key
+                """,
+                (self.engagement["id"],),
+            ).fetchall()
+            reservations = connection.execute(
+                """
+                SELECT reservation_id, status FROM gateway_rate_reservations
+                ORDER BY reserved_at, reservation_id
+                """
+            ).fetchall()
+        self.assertEqual([row[0] for row in buckets], ["global", "host:example.test"])
+        self.assertTrue(all(abs(row[1]) < 1e-9 for row in buckets))
+        self.assertEqual(
+            {row[0]: row[1] for row in reservations},
+            {prepared["reservation_id"]: "reserved", second["reservation_id"]: "reserved"},
+        )
+        with transaction(self.database) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                UPDATE gateway_rate_buckets SET updated_at = ?
+                WHERE engagement_id = ? AND bucket_key = 'global'
+                """,
+                (timestamp(timedelta(seconds=2)), self.engagement["id"]),
+            )
+            with self.assertRaises(DomainError) as raised:
+                self.service._reserve_rate_bucket(
+                    connection,
+                    engagement_id=self.engagement["id"],
+                    policy_bundle_id=connection.execute(
+                        """
+                        SELECT active_policy_id FROM engagements WHERE id = ?
+                        """,
+                        (self.engagement["id"],),
+                    ).fetchone()[0],
+                    bucket_key="global",
+                    refill_rate=1,
+                    capacity=1,
+                    reserved_at=instant,
+                )
+        self.assertEqual(raised.exception.code, "CLOCK_UNTRUSTED")
 
     def test_concurrent_gateway_reservations_cannot_exceed_connection_budget(self) -> None:
+        self.manifest["operational_limits"]["burst_limit"] = 2  # type: ignore[index]
         first_intent, first_grant, attestation = self.network_authority()
         with closing(sqlite3.connect(self.database)) as connection, connection:
             policy_hash = connection.execute(
