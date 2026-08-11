@@ -41,7 +41,7 @@ packages = [
 "migrations" = "pentai_core/migrations"
 
 [tool.pytest.ini_options]
-pythonpath = ["services/core/src", "packages/policy/src"]
+pythonpath = [".", "services/core/src", "packages/policy/src"]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 

@@ -16,8 +16,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from owned_fixture_authority import prepare_owned_fixture_session
 from pentai_core.config import Settings
-from pentai_core.gateway_http_fixture import OciGatewayHttpFixtureTransport
+from pentai_core.gateway_http_fixture import (
+    GatewayHttpFixtureExecution,
+    OciGatewayHttpFixtureTransport,
+)
 from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
 from pentai_core.gateway_runtime_lifecycle import (
     GatewayRuntimeLifecycle,
@@ -190,7 +194,12 @@ def _run_http_fixture(
     network_id: str,
     image_digest: str,
     containment: dict[str, object],
-) -> None:
+    execution: GatewayHttpFixtureExecution,
+    start_id: str,
+    expected_outcome: str,
+    expected_observed: int,
+    expected_retained: int,
+) -> dict[str, Any]:
     launched = executor.execute(
         (
             str(executable),
@@ -229,60 +238,16 @@ def _run_http_fixture(
             "HTTP_FIXTURE_SERVER_FAILED", "fixture server launch failed"
         )
     try:
-        transport = OciGatewayHttpFixtureTransport(
-            executable=executable, executor=executor
-        )
-        now = datetime.now(UTC)
-        claim = {
-            "schema_version": "1.0.0",
-            "claim_id": str(uuid.uuid4()),
-            "start_id": str(uuid.uuid4()),
-            "session_id": str(uuid.uuid4()),
-            "runtime_id": str(uuid.uuid4()),
-            "containment_attestation_id": containment["attestation_id"],
-            "gateway_network_id": network_id,
-            "image_digest": image_digest,
-            "method": "GET",
-            "target_ip": "192.0.2.20",
-            "port": 8080,
-            "host": "example.test",
-            "path": "/fixture",
-            "response_bytes_limit": 32,
-            "deadline_at": (now + timedelta(seconds=5)).isoformat().replace("+00:00", "Z"),
-            "claimed_at": now.isoformat().replace("+00:00", "Z"),
-            "status": "claimed",
-            "fixture_execution_enabled": True,
-            "external_execution_enabled": False,
-        }
-        completed = transport.execute(
-            claim=claim,
-            containment=containment,
-        )
+        completed = execution.execute(start_id, containment=containment)
         if (
-            completed.outcome != "completed"
-            or completed.observed_response_bytes != 17
-            or completed.retained_response_bytes != 17
+            completed["outcome"] != expected_outcome
+            or completed["observed_response_bytes"] != expected_observed
+            or completed["retained_response_bytes"] != expected_retained
         ):
             raise SnapshotCollectionError(
                 "HTTP_FIXTURE_REQUEST_FAILED", "bounded fixture request failed"
             )
-        claim["claim_id"] = str(uuid.uuid4())
-        claim["start_id"] = str(uuid.uuid4())
-        claim["session_id"] = str(uuid.uuid4())
-        claim["runtime_id"] = str(uuid.uuid4())
-        claim["response_bytes_limit"] = 8
-        limited = transport.execute(
-            claim=claim,
-            containment=containment,
-        )
-        if (
-            limited.outcome != "response_limit_exceeded"
-            or limited.observed_response_bytes != 9
-            or limited.retained_response_bytes != 8
-        ):
-            raise SnapshotCollectionError(
-                "HTTP_FIXTURE_LIMIT_FAILED", "fixture response limit was not enforced"
-            )
+        return completed
     finally:
         cleanup = [str(executable), "rm", "--force"]
         if runtime == "podman":
@@ -296,6 +261,94 @@ def _run_http_fixture(
         if stopped.returncode != 0:
             raise SnapshotCollectionError(
                 "HTTP_FIXTURE_CLEANUP_FAILED", "fixture server cleanup failed"
+            )
+
+
+def _run_authorized_http_fixture(
+    *,
+    runtime: str,
+    executable: Path,
+    executor: LocalBoundedCommandExecutor,
+    image_digest: str,
+    attestor: RuntimeContainmentAttestor,
+    controller: OciGatewayFixtureController,
+    maximum_response_bytes: int,
+    expected_outcome: str,
+    expected_observed: int,
+    expected_retained: int,
+) -> None:
+    with tempfile.TemporaryDirectory(prefix="pentai-authorized-fixture-") as temporary:
+        root = Path(temporary)
+        database = root / "authority.db"
+        migrate(database)
+        authority, session = prepare_owned_fixture_session(
+            database_path=database,
+            source_store_path=root / "sources",
+            maximum_response_bytes=maximum_response_bytes,
+        )
+        safety = HarnessSafety()
+        lifecycle = GatewayRuntimeLifecycle(
+            database_path=database,
+            controller=controller,
+            monitor=HarnessMonitor(attestor),
+            safety=safety,
+        )
+        containment = attestor.measure()
+        runtime_record = lifecycle.launch(
+            session=session, containment=containment, image_digest=image_digest
+        )
+        try:
+            start = authority.commit_gateway_request_start(str(session["session_id"]))
+            result = _run_http_fixture(
+                runtime=runtime,
+                executable=executable,
+                executor=executor,
+                network_id=str(containment["gateway_network_id"]),
+                image_digest=image_digest,
+                containment=containment,
+                execution=GatewayHttpFixtureExecution(
+                    authority=authority,
+                    transport=OciGatewayHttpFixtureTransport(
+                        executable=executable, executor=executor
+                    ),
+                ),
+                start_id=str(start["start_id"]),
+                expected_outcome=expected_outcome,
+                expected_observed=expected_observed,
+                expected_retained=expected_retained,
+            )
+        finally:
+            lifecycle.terminate(
+                str(runtime_record["runtime_id"]), reason="authorized fixture completed"
+            )
+        events = authority.audit_events()
+        actions = [event["action"] for event in events]
+        required_actions = {
+            "source.imported",
+            "policy.approval",
+            "policy.activation",
+            "policy.evaluation",
+            "action_grant.issued",
+            "action_grant.consumed",
+            "network.attested",
+            "network.destination_decided",
+            "gateway.session_prepared",
+            "gateway.request_start_committed",
+            "gateway.runtime_started",
+            "gateway.fixture_execution_claimed",
+            "gateway.request_finalized",
+            "gateway.runtime_finalized",
+        }
+        audit_verification = authority.verify_audit_chain()
+        if not required_actions.issubset(actions) or audit_verification["valid"] is not True:
+            raise SnapshotCollectionError(
+                "HTTP_FIXTURE_AUDIT_FAILED", "fixture authorization audit is incomplete"
+            )
+        if result["start_id"] != start["start_id"] or safety.calls != [
+            (str(session["session_id"]), "authorized fixture completed")
+        ]:
+            raise SnapshotCollectionError(
+                "HTTP_FIXTURE_LINKAGE_FAILED", "fixture result linkage is invalid"
             )
 
 
@@ -332,19 +385,35 @@ def _run_gateway_lifecycle(
         network_conformance=probe,
     )
     attestor = RuntimeContainmentAttestor(collector)
-    _run_http_fixture(
-        runtime=runtime,
-        executable=executable,
-        executor=executor,
-        network_id=network_id,
-        image_digest=image_digest,
-        containment=attestor.measure(),
-    )
     controller = OciGatewayFixtureController(
         runtime=runtime,
         executable=executable,
         executor=executor,
         capability_monitor=LinuxProcCapabilityMonitor() if runtime == "podman" else None,
+    )
+    _run_authorized_http_fixture(
+        runtime=runtime,
+        executable=executable,
+        executor=executor,
+        image_digest=image_digest,
+        attestor=attestor,
+        controller=controller,
+        maximum_response_bytes=32,
+        expected_outcome="completed",
+        expected_observed=17,
+        expected_retained=17,
+    )
+    _run_authorized_http_fixture(
+        runtime=runtime,
+        executable=executable,
+        executor=executor,
+        image_digest=image_digest,
+        attestor=attestor,
+        controller=controller,
+        maximum_response_bytes=8,
+        expected_outcome="response_limit_exceeded",
+        expected_observed=9,
+        expected_retained=8,
     )
     safety = HarnessSafety()
     with tempfile.TemporaryDirectory(prefix="pentai-gateway-lifecycle-") as temporary:

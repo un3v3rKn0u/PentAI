@@ -166,7 +166,9 @@ runtime, image, network, and fresh containment identity all match. Claim-bound
 finalization or fail-closed recovery prevents reuse. The core has no socket transport.
 Hosted rootless evidence must show the fixed request
 succeeds while direct egress, external DNS, IPv6, runtime sockets, host mounts, host
-namespaces, and unconstrained resources remain blocked. This does not yet verify
+namespaces, and unconstrained resources remain blocked. The hosted proof must derive
+the live claim from the complete durable supervised authorization chain, verify the
+linked result and audit hash chain, and terminate the runtime. This does not yet verify
 worker-to-gateway routing or authorize external destinations.
 
 ### INV-NET-002 — Approved source identity

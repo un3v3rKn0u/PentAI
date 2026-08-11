@@ -6,6 +6,7 @@ on:
     paths:
       - "tools/network-probe/**"
       - "scripts/run_network_probe_conformance.py"
+      - "scripts/owned_fixture_authority.py"
       - "services/core/src/pentai_core/managed_gateway_network.py"
       - "services/core/src/pentai_core/gateway_http_fixture.py"
       - "services/core/src/pentai_core/authorization.py"

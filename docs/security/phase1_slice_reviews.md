@@ -1222,3 +1222,43 @@ isolated adapter; compromise of that same core is not independently checked insi
 probe. Runtime termination after a successful one-shot request remains owned by the
 existing lifecycle supervisor. This self-authored review is non-independent and cannot
 satisfy an external independent-review requirement.
+
+## 2026-08-11 — Owned fixture end-to-end hosted proof
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without external target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Hosted composition of source provenance, manifest validation,
+signed policy lifecycle, supervised intent, deterministic decision, single-use grant,
+network attestation, controlled fixture DNS, budget/rate commitment, request start,
+verified runtime lifecycle, execution claim, isolated effect, result finalization,
+audit verification, response overflow, and cleanup.
+
+**Evidence examined:** Local tests create the full committed authority chain, validate
+its session/start contracts and audit hash chain, inspect committed grant and budget
+state, confirm the fixed pinned address, and reject invalid response ceilings and
+every alternate DNS tuple. The rootless workflow is configured to run two independent
+durable chains: one completes the owned 17-byte response and one proves the eight-byte
+limit with exactly one additional observation byte. It also requires every privileged
+audit action, exact start/result linkage, a valid complete audit chain, verified
+runtime termination, and the existing direct-egress bypass matrix and crash recovery.
+
+**Findings:** The hosted HTTP effect no longer relies on a synthetic host-created
+claim. It is reachable only after all deterministic authority and containment layers
+produce matching durable state. Separate chains avoid grant, start, claim, runtime,
+and budget reuse. Failure of any expected link or cleanup step fails the workflow.
+
+**Limitations and deferred work:** Hosted results are not claimed until the Linux
+rootless workflow passes. The only destination remains the repository-owned HTTP
+TEST-NET fixture. HTTPS/TLS, live resolver transport in the isolated gateway,
+policy-derived external destinations, redirect execution, response evidence, worker
+routing, product API/UI exposure, and all public/customer targets remain prohibited.
+
+**Residual risk accepted:** The conformance harness uses deterministic synthetic
+source, route, observer, and DNS adapters and local-development signing/storage keys.
+It proves component composition and live containment, not production observer
+independence, key custody, or an external route. This self-authored review is
+non-independent and cannot satisfy an external independent-review requirement.

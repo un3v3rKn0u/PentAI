@@ -275,6 +275,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     this claim. HTTPS, policy-derived destinations, live controlled DNS, redirects,
     external routing, and product execution remain required before this item is
     complete.
+    The hosted rootless harness now builds that fixed effect through real source
+    provenance, manifest validation, signed policy approval/activation, supervised
+    intent, deterministic decision, single-use gateway grant, network attestation,
+    controlled fixture DNS authorization, budget/rate commitment, verified runtime
+    launch, execution claim, bounded result finalization, hash-chain verification, and
+    cleanup. It proves both a completed 17-byte action and a limit-plus-one stop using
+    separate durable authority chains. This evidence is valid only after the hosted
+    workflow passes and does not authorize general or external execution.
   - A durable non-target-facing gateway sentinel lifecycle now records launch intent
     before the external effect, binds the container to fresh containment evidence and
     the exact prepared session/network/image, re-inspects fixed isolation controls,
