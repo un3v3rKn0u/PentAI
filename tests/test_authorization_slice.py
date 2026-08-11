@@ -15,6 +15,7 @@ from uuid import uuid4
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.controlled_dns import ControlledResolver, RawDnsAnswer
 from pentai_core.database import transaction
+from pentai_core.gateway_response import GatewayResponseMeasurement
 from pentai_core.migrate import migrate
 from pentai_core.network_attestation import NetworkAttestor, RouteSnapshot, SourceObservation
 from pentai_core.policy_signing import PolicySigner
@@ -961,6 +962,109 @@ class AuthorizationSliceTests(unittest.TestCase):
             ).fetchone()
         self.assertEqual(tuple(account), (0, 1, 0))
         self.assertEqual(tuple(states), ("cancelled", "aborted", "committed", "committed"))
+
+    def test_gateway_request_finalization_closes_connection_and_preserves_commit(self) -> None:
+        intent, grant, attestation = self.network_authority()
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
+            sni_host="example.test",
+            host_header="example.test",
+        )
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
+        started = self.service.commit_gateway_request_start(session["session_id"])
+        completed_at = parse_time(started["committed_at"]) + timedelta(milliseconds=1)
+
+        result = self.service.finalize_gateway_request(
+            started["start_id"],
+            GatewayResponseMeasurement("completed", 5, 5, completed_at),
+        )
+
+        self.assertEqual(contract_issues(result, "gateway-request-result-v1.schema.json"), ())
+        self.assertEqual(result["outcome"], "completed")
+        self.assertFalse(result["execution_enabled"])
+        with closing(sqlite3.connect(self.database)) as connection:
+            account = connection.execute(
+                """
+                SELECT reserved_requests, committed_requests, active_connections
+                FROM budget_accounts WHERE engagement_id = ?
+                """,
+                (self.engagement["id"],),
+            ).fetchone()
+            states = connection.execute(
+                """
+                SELECT gs.status, br.status, grr.status
+                FROM gateway_sessions gs
+                JOIN budget_reservations br USING (reservation_id)
+                JOIN gateway_rate_reservations grr USING (reservation_id)
+                WHERE gs.session_id = ?
+                """,
+                (session["session_id"],),
+            ).fetchone()
+        self.assertEqual(tuple(account), (0, 1, 0))
+        self.assertEqual(tuple(states), ("closed", "committed", "committed"))
+        with self.assertRaises(DomainError) as replayed:
+            self.service.finalize_gateway_request(
+                started["start_id"],
+                GatewayResponseMeasurement("completed", 5, 5, completed_at),
+            )
+        self.assertEqual(replayed.exception.code, "GATEWAY_RESULT_REPLAYED")
+
+    def test_gateway_request_finalization_derives_and_enforces_hard_limits(self) -> None:
+        intent, grant, attestation = self.network_authority()
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
+            sni_host="example.test",
+            host_header="example.test",
+        )
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
+        started = self.service.commit_gateway_request_start(session["session_id"])
+        before_deadline = parse_time(started["committed_at"]) + timedelta(milliseconds=1)
+
+        with self.assertRaises(DomainError) as invalid:
+            self.service.finalize_gateway_request(
+                started["start_id"],
+                GatewayResponseMeasurement("completed", 100001, 100000, before_deadline),
+            )
+        self.assertEqual(invalid.exception.code, "GATEWAY_ACCOUNTING_INVALID")
+        with self.assertRaises(DomainError) as before_start:
+            self.service.finalize_gateway_request(
+                started["start_id"],
+                GatewayResponseMeasurement(
+                    "transport_error",
+                    0,
+                    0,
+                    parse_time(started["committed_at"]) - timedelta(milliseconds=1),
+                ),
+            )
+        self.assertEqual(before_start.exception.code, "GATEWAY_ACCOUNTING_INVALID")
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT status FROM gateway_sessions WHERE session_id = ?",
+                    (session["session_id"],),
+                ).fetchone()[0],
+                "prepared",
+            )
+
+        result = self.service.finalize_gateway_request(
+            started["start_id"],
+            GatewayResponseMeasurement(
+                "deadline_exceeded", 0, 0, parse_time(started["deadline_at"])
+            ),
+        )
+        self.assertEqual(result["outcome"], "deadline_exceeded")
 
     def test_gateway_rate_tokens_are_atomic_durable_and_refill(self) -> None:
         self.manifest["operational_limits"]["concurrent_connections"] = 2  # type: ignore[index]

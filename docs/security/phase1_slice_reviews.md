@@ -1096,3 +1096,41 @@ remains prohibited until the remaining containment and bypass proofs exist.
 wall-clock deadline. A compromised process or forward clock jump is not independently
 contained. This self-authored review is non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-11 — Bounded gateway response accounting
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Chunk bounds, proof-byte semantics, absolute deadline checks,
+trusted-clock rejection, durable outcome derivation, request/session/grant linkage,
+concurrency release, replay, recovery interaction, audit data, schema/migration
+compatibility, diagnostics, and rollback.
+
+**Evidence examined:** Unit tests cover exact-limit completion, split-chunk overflow,
+deadline crossings, invalid/empty chunks, and naive clocks. Integration tests cover
+atomic successful finalization, immutable contract output, committed capacity
+preservation, exact concurrency release, replay denial, contradictory limit outcome
+rollback, and durable deadline outcome. Migration tests cover additive installation,
+idempotency, immutable rows, and non-deletable history. The complete diff and
+INV-NET-005, INV-AUTH-003, INV-GRANT-001/004, and INV-REC-001/002 were reviewed.
+
+**Findings:** The reader never retains more than the policy/grant response ceiling and
+records at most one additional byte to prove overflow. The transactional finalizer
+does not trust the reported hard-limit outcome: it re-derives it from durable deadline
+and reservation state before closing the connection slot and writing linked immutable
+history. Any disagreement rolls back all state.
+
+**Limitations and deferred work:** Tests use in-memory chunks. The reader cannot
+interrupt a transport blocked between chunks, so a future isolated gateway must apply
+the absolute deadline to every I/O operation. There is no socket, HTTP parser, TLS,
+live resolver, redirect fetch, evidence body, worker, or target contact. Target-facing
+execution remains prohibited.
+
+**Residual risk accepted:** Accounting remains in the local core process and trusts a
+future isolated gateway to report its bounded measurement. A compromised reporter is
+not yet independently contained. This self-authored review is non-independent and
+cannot satisfy an external independent-review requirement.

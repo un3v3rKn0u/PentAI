@@ -45,6 +45,7 @@ released compatibly; new code requires rate state for every new preparation.
 
 ## Deferred enforcement
 
-Actual response-byte accounting, gateway sockets, isolated process enforcement, and
-live active-session termination are deferred. The request-start record is an
-irreversible local handoff boundary, not target-facing execution authority.
+Gateway sockets, isolated process enforcement, and live active-session termination
+are deferred. Bounded response-byte accounting and durable finalization now exist for
+synthetic in-memory chunks only. The request-start record is an irreversible local
+handoff boundary, not target-facing execution authority.

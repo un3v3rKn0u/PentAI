@@ -25,6 +25,7 @@ from pentai_policy.document import contract_issues, parse_time
 
 from pentai_core.controlled_dns import ControlledDnsError, ControlledResolver
 from pentai_core.database import transaction
+from pentai_core.gateway_response import GatewayResponseMeasurement
 from pentai_core.network_attestation import AttestationError, NetworkAttestor
 from pentai_core.network_control import authorize_destination, validate_attestation
 from pentai_core.policy_signing import PolicySigner
@@ -2911,6 +2912,161 @@ class AuthorizationService:
                 occurred_at=prepared_at,
             )
         return document
+
+    def finalize_gateway_request(
+        self, start_id: str, measurement: GatewayResponseMeasurement
+    ) -> dict[str, Any]:
+        if (
+            not isinstance(measurement.completed_at, datetime)
+            or measurement.completed_at.tzinfo is None
+            or measurement.completed_at.utcoffset() is None
+        ):
+            raise DomainError("GATEWAY_ACCOUNTING_INVALID", "completion time is untrusted")
+        completed_at = _timestamp(measurement.completed_at)
+        if measurement.outcome not in {
+            "completed",
+            "deadline_exceeded",
+            "response_limit_exceeded",
+            "transport_error",
+        }:
+            raise DomainError("GATEWAY_ACCOUNTING_INVALID", "request outcome is invalid")
+        if (
+            measurement.observed_response_bytes < 0
+            or measurement.retained_response_bytes < 0
+            or measurement.retained_response_bytes > measurement.observed_response_bytes
+        ):
+            raise DomainError("GATEWAY_ACCOUNTING_INVALID", "response accounting is invalid")
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT grs.*, gs.status AS session_status, br.engagement_id,
+                       br.response_bytes_limit
+                FROM gateway_request_starts grs
+                JOIN gateway_sessions gs ON gs.session_id = grs.session_id
+                JOIN budget_reservations br ON br.reservation_id = grs.reservation_id
+                WHERE grs.start_id = ?
+                """,
+                (start_id,),
+            ).fetchone()
+            if row is None:
+                raise DomainError("GATEWAY_REQUEST_NOT_FOUND", "request start does not exist")
+            if connection.execute(
+                "SELECT 1 FROM gateway_request_results WHERE start_id = ?", (start_id,)
+            ).fetchone() is not None:
+                raise DomainError("GATEWAY_RESULT_REPLAYED", "request result already exists")
+            if row["status"] != "committed" or row["session_status"] != "prepared":
+                raise DomainError("GATEWAY_REQUEST_INACTIVE", "request start is inactive")
+            deadline = parse_time(row["deadline_at"])
+            committed_at = parse_time(row["committed_at"])
+            limit = int(row["response_bytes_limit"])
+            observed = measurement.observed_response_bytes
+            retained = measurement.retained_response_bytes
+            if observed > limit + 1 or retained > limit:
+                raise DomainError(
+                    "GATEWAY_ACCOUNTING_INVALID", "response reader exceeded its hard bound"
+                )
+            if measurement.completed_at < committed_at:
+                raise DomainError(
+                    "GATEWAY_ACCOUNTING_INVALID", "completion predates request commitment"
+                )
+            expected_outcome: str | None = None
+            if measurement.completed_at >= deadline:
+                expected_outcome = "deadline_exceeded"
+            elif observed > limit:
+                expected_outcome = "response_limit_exceeded"
+            if expected_outcome is not None and measurement.outcome != expected_outcome:
+                raise DomainError(
+                    "GATEWAY_ACCOUNTING_INVALID", "request outcome contradicts hard limits"
+                )
+            if measurement.outcome == "response_limit_exceeded" and observed != limit + 1:
+                raise DomainError(
+                    "GATEWAY_ACCOUNTING_INVALID", "response limit proof is invalid"
+                )
+            if measurement.outcome != "response_limit_exceeded" and retained != observed:
+                raise DomainError(
+                    "GATEWAY_ACCOUNTING_INVALID", "response accounting is incomplete"
+                )
+            result_id = str(uuid4())
+            result = {
+                "schema_version": "1.0.0",
+                "result_id": result_id,
+                "start_id": start_id,
+                "session_id": row["session_id"],
+                "reservation_id": row["reservation_id"],
+                "grant_id": row["grant_id"],
+                "outcome": measurement.outcome,
+                "observed_response_bytes": observed,
+                "retained_response_bytes": retained,
+                "deadline_at": row["deadline_at"],
+                "completed_at": completed_at,
+                "execution_enabled": False,
+            }
+            if contract_issues(result, "gateway-request-result-v1.schema.json"):
+                raise DomainError("GATEWAY_ACCOUNTING_INVALID", "request result is invalid")
+            closed = connection.execute(
+                """
+                UPDATE gateway_sessions SET status = 'closed', finalized_at = ?
+                WHERE session_id = ? AND status = 'prepared'
+                """,
+                (completed_at, row["session_id"]),
+            )
+            if closed.rowcount != 1:
+                raise DomainError("GATEWAY_REQUEST_INACTIVE", "request session is inactive")
+            released = connection.execute(
+                """
+                UPDATE budget_accounts
+                SET active_connections = active_connections - 1, updated_at = ?
+                WHERE engagement_id = ? AND active_connections >= 1
+                """,
+                (completed_at, row["engagement_id"]),
+            )
+            if released.rowcount != 1:
+                raise DomainError(
+                    "GATEWAY_ACCOUNTING_INVALID", "connection accounting is inconsistent"
+                )
+            connection.execute(
+                """
+                INSERT INTO gateway_request_results(
+                    result_id, start_id, session_id, reservation_id, grant_id,
+                    outcome, observed_response_bytes, retained_response_bytes,
+                    deadline_at, completed_at, execution_enabled
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """,
+                (
+                    result_id,
+                    start_id,
+                    row["session_id"],
+                    row["reservation_id"],
+                    row["grant_id"],
+                    measurement.outcome,
+                    observed,
+                    retained,
+                    row["deadline_at"],
+                    completed_at,
+                ),
+            )
+            self._audit(
+                connection,
+                action="gateway.request_finalized",
+                subject_type="gateway_session",
+                subject_id=row["session_id"],
+                actor_type="service",
+                actor_id="gateway-control",
+                data={
+                    "result_id": result_id,
+                    "start_id": start_id,
+                    "grant_id": row["grant_id"],
+                    "reservation_id": row["reservation_id"],
+                    "outcome": measurement.outcome,
+                    "observed_response_bytes": observed,
+                    "retained_response_bytes": retained,
+                    "deadline_at": row["deadline_at"],
+                    "execution_enabled": False,
+                },
+                occurred_at=completed_at,
+            )
+        return result
 
     def abort_gateway_session(self, session_id: str, *, reason: str) -> dict[str, Any]:
         if not reason.strip():
