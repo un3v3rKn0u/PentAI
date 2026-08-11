@@ -207,6 +207,11 @@ and canonical-host token in the same immediate transaction as total-request and
 connection capacity. Refill uses persisted policy rates, burst capacity, and a
 nondecreasing wall clock. Exhaustion or rollback denies; concurrent contenders cannot
 oversubscribe. Abort and recovery return only uncommitted tokens and cap every refund.
+The request-start boundary revalidates current authority and atomically converts both
+rate tokens and total-request capacity to committed state while consuming the grant.
+Its deadline is the earliest of the grant timeout, grant expiry, engagement expiry,
+and attestation expiry. Once committed, request/rate capacity is never refunded; safety recovery only
+cancels the execution-disabled handoff and releases its connection slot.
 
 ## 7. Agent and AI Invariants
 

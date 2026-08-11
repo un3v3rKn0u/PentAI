@@ -20,7 +20,7 @@ from pentai_core.network_attestation import NetworkAttestor, RouteSnapshot, Sour
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_policy import canonicalize_url, content_hash, evaluate
-from pentai_policy.document import contract_issues
+from pentai_policy.document import contract_issues, parse_time
 
 
 def timestamp(offset: timedelta) -> str:
@@ -818,6 +818,149 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertEqual(tuple(account), (0, 0, 0))
         self.assertEqual(rate_status, "released")
         self.assertEqual(rate_tokens, 1)
+
+    def test_gateway_request_start_atomically_consumes_and_commits_without_execution(
+        self,
+    ) -> None:
+        intent, grant, attestation = self.network_authority()
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
+            sni_host="example.test",
+            host_header="example.test",
+        )
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
+
+        started = self.service.commit_gateway_request_start(session["session_id"])
+
+        self.assertEqual(
+            contract_issues(started, "gateway-request-start-v1.schema.json"), ()
+        )
+        self.assertEqual(started["status"], "committed")
+        self.assertFalse(started["execution_enabled"])
+        self.assertLessEqual(
+            parse_time(started["deadline_at"]), parse_time(grant["expires_at"])
+        )
+        with closing(sqlite3.connect(self.database)) as connection:
+            account = connection.execute(
+                """
+                SELECT reserved_requests, committed_requests, active_connections
+                FROM budget_accounts WHERE engagement_id = ?
+                """,
+                (self.engagement["id"],),
+            ).fetchone()
+            statuses = connection.execute(
+                """
+                SELECT br.status, grr.status, ag.used_at
+                FROM budget_reservations br
+                JOIN gateway_rate_reservations grr USING (reservation_id)
+                JOIN action_grants ag ON ag.grant_id = br.grant_id
+                WHERE br.reservation_id = ?
+                """,
+                (session["reservation_id"],),
+            ).fetchone()
+        self.assertEqual(tuple(account), (0, 1, 1))
+        self.assertEqual(statuses[0:2], ("committed", "committed"))
+        self.assertIsNotNone(statuses[2])
+        with self.assertRaises(DomainError) as replayed:
+            self.service.commit_gateway_request_start(session["session_id"])
+        self.assertEqual(replayed.exception.code, "GATEWAY_REQUEST_REPLAYED")
+        with self.assertRaises(DomainError) as abort:
+            self.service.abort_gateway_session(
+                session["session_id"], reason="must not refund committed capacity"
+            )
+        self.assertEqual(abort.exception.code, "GATEWAY_REQUEST_COMMITTED")
+
+    def test_gateway_request_start_denies_expired_attestation_without_consumption(
+        self,
+    ) -> None:
+        intent, grant, attestation = self.network_authority()
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
+            sni_host="example.test",
+            host_header="example.test",
+        )
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
+
+        with self.assertRaises(DomainError) as denied:
+            self.service.commit_gateway_request_start(
+                session["session_id"], now=parse_time(attestation["expires_at"])
+            )
+        self.assertEqual(denied.exception.code, "GATEWAY_REQUEST_DENIED")
+        with closing(sqlite3.connect(self.database)) as connection:
+            grant_state = connection.execute(
+                "SELECT used_at FROM action_grants WHERE grant_id = ?", (grant["grant_id"],)
+            ).fetchone()[0]
+            reservation = connection.execute(
+                "SELECT status FROM budget_reservations WHERE reservation_id = ?",
+                (session["reservation_id"],),
+            ).fetchone()[0]
+        self.assertIsNone(grant_state)
+        self.assertEqual(reservation, "reserved")
+
+    def test_gateway_request_start_concurrency_and_recovery_are_fail_closed(self) -> None:
+        intent, grant, attestation = self.network_authority()
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
+            sni_host="example.test",
+            host_header="example.test",
+        )
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
+
+        def commit() -> str:
+            try:
+                return str(
+                    self.service.commit_gateway_request_start(session["session_id"])[
+                        "status"
+                    ]
+                )
+            except DomainError as exc:
+                return exc.code
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = list(executor.map(lambda _: commit(), range(2)))
+        self.assertEqual(sorted(outcomes), ["GATEWAY_REQUEST_REPLAYED", "committed"])
+
+        recovered = self.service.recover_startup()
+        self.assertEqual(recovered["aborted_gateway_sessions"], 1)
+        with closing(sqlite3.connect(self.database)) as connection:
+            account = connection.execute(
+                """
+                SELECT reserved_requests, committed_requests, active_connections
+                FROM budget_accounts WHERE engagement_id = ?
+                """,
+                (self.engagement["id"],),
+            ).fetchone()
+            states = connection.execute(
+                """
+                SELECT grs.status, gs.status, br.status, grr.status
+                FROM gateway_request_starts grs
+                JOIN gateway_sessions gs USING (session_id)
+                JOIN budget_reservations br USING (reservation_id)
+                JOIN gateway_rate_reservations grr USING (reservation_id)
+                WHERE grs.session_id = ?
+                """,
+                (session["session_id"],),
+            ).fetchone()
+        self.assertEqual(tuple(account), (0, 1, 0))
+        self.assertEqual(tuple(states), ("cancelled", "aborted", "committed", "committed"))
 
     def test_gateway_rate_tokens_are_atomic_durable_and_refill(self) -> None:
         self.manifest["operational_limits"]["concurrent_connections"] = 2  # type: ignore[index]
