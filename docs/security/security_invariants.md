@@ -159,7 +159,8 @@ short-lived proposals only. They cannot satisfy this invariant, supply a registe
 source identity, or enable execution without explicit human confirmation and a later
 attestation against active policy. Human-confirmed profiles are durable configuration,
 but still cannot satisfy the invariant until independent observations match the active
-policy; profile activation always records `execution_enabled: false`.
+policy. Attestor composition now requires the active policy and profile to match
+exactly; profile activation always records `execution_enabled: false`.
 
 ### INV-NET-003 — Controlled DNS
 

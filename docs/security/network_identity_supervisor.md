@@ -38,16 +38,17 @@ verify their identity.
 
 ## Production composition
 
-Production adapters are disabled unless `PENTAI_NETWORK_ATTESTATION_ENABLED=1` and
-every required identity is configured:
+Production adapters are disabled unless `PENTAI_NETWORK_ATTESTATION_ENABLED=1`, the
+active policy exactly matches one confirmed active `Network Profile v1`, and observer
+configuration is complete:
 
 - `PENTAI_NETWORK_OBSERVERS`: two to four semicolon-separated
   `<id>|<ipv4-or-ipv6>|<https-url>` records. Each observed family needs two distinct
   HTTPS origins that return exactly `{"ip":"<public-address>"}` without redirects.
-- `PENTAI_NETWORK_ROUTE_PROFILE_ID`, `PENTAI_NETWORK_ROUTE_INTERFACE`, and optional
-  `PENTAI_NETWORK_ROUTE_GATEWAY` identify the expected default route.
-- `PENTAI_NETWORK_RESOLVER_MODE`, `PENTAI_NETWORK_RESOLVER_ID`, and comma-separated
-  `PENTAI_NETWORK_RESOLVER_ADDRESSES` identify the complete expected resolver set.
+- The durable profile supplies the expected interface, optional gateway, route profile
+  identity, resolver mode and identity, complete resolver set, IPv6 mode, and
+  registered source addresses. UI manifest drafts copy those exact values rather than
+  requiring duplicate operator entry.
 - Optional observer, route, and watchdog timeouts are bounded from 0.1 through 10
   seconds.
 
@@ -59,9 +60,12 @@ Host route inspection uses fixed operating-system commands without a shell and f
 closed on ambiguous or malformed output. Incomplete or invalid enabled composition
 pauses global safety with a fixed diagnostic and degrades readiness.
 
-Configuration values are trusted local deployment inputs. Endpoint independence must
-be established and reviewed by the deployer; different DNS names alone do not prove
-different operators or infrastructure.
+Observer configuration values are trusted local deployment inputs. Legacy
+`PENTAI_NETWORK_ROUTE_*` and `PENTAI_NETWORK_RESOLVER_*` values do not participate in
+attestor composition; controlled DNS still consumes resolver fields until its own
+durable-profile binding slice. Endpoint independence must be established and reviewed
+by the deployer; different DNS names alone do not prove different operators or
+infrastructure.
 
 ## Deferred enforcement
 

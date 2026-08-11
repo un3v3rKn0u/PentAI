@@ -47,12 +47,28 @@ class FixtureSafetyControl:
     assessment_ids: tuple[str, ...] = ("assessment-a",)
     pauses: list[tuple[str, str, str]] = field(default_factory=list)
     measurements: list[dict[str, object]] = field(default_factory=list)
+    profile: dict[str, object] = field(
+        default_factory=lambda: {
+            "route_profile_id": "fixture-route",
+            "route_interface": "utun9",
+            "route_gateway": "10.0.0.1",
+            "resolver_mode": "tunnel_resolver",
+            "resolver_id": "fixture-resolver",
+            "resolver_addresses": ["10.0.0.53"],
+        }
+    )
+    profile_failure: Exception | None = None
 
     def has_network_authority(self) -> bool:
         return bool(self.assessment_ids)
 
     def network_authority_assessments(self) -> tuple[str, ...]:
         return self.assessment_ids
+
+    def network_profile_for_assessment(self, engagement_id: str) -> dict[str, Any]:
+        if self.profile_failure is not None:
+            raise self.profile_failure
+        return self.profile
 
     def verify_network_identity(
         self, engagement_id: str, *, attestor: Any, attestor_id: str
@@ -224,10 +240,16 @@ class NetworkAttestationAdapterTests(unittest.TestCase):
                 test_mode=True,
                 network_observers=("observer-a|ipv4|https://observer.invalid/ip",),
             ).validate()
-        with self.assertRaisesRegex(ValueError, "incomplete"):
-            Settings(
-                environment="test", test_mode=True, network_attestation_enabled=True
-            ).validate()
+        observer_only = Settings(
+            environment="test",
+            test_mode=True,
+            network_attestation_enabled=True,
+            network_observers=(
+                "observer-a|ipv4|https://a.invalid/ip",
+                "observer-b|ipv4|https://b.invalid/ip",
+            ),
+        )
+        observer_only.validate()
 
     def test_environment_parses_network_configuration(self) -> None:
         environment = {
@@ -238,21 +260,27 @@ class NetworkAttestationAdapterTests(unittest.TestCase):
                 "observer-a|ipv4|https://a.invalid/ip;"
                 "observer-b|ipv4|https://b.invalid/ip"
             ),
-            "PENTAI_NETWORK_ROUTE_PROFILE_ID": "fixture-route",
-            "PENTAI_NETWORK_ROUTE_INTERFACE": "tun0",
-            "PENTAI_NETWORK_ROUTE_GATEWAY": "10.0.0.1",
-            "PENTAI_NETWORK_RESOLVER_MODE": "tunnel_resolver",
-            "PENTAI_NETWORK_RESOLVER_ID": "fixture-resolver",
-            "PENTAI_NETWORK_RESOLVER_ADDRESSES": "10.0.0.53,10.0.0.54",
         }
         with patch.dict(os.environ, environment, clear=True):
             settings = Settings.from_environment()
         self.assertTrue(settings.network_attestation_enabled)
-        self.assertEqual(settings.network_route_interface, "tun0")
-        self.assertEqual(settings.network_resolver_addresses, ("10.0.0.53", "10.0.0.54"))
+        self.assertIsNone(settings.network_route_interface)
+        self.assertEqual(settings.network_resolver_addresses, ())
 
     def test_composition_attests_before_ready_and_fails_closed(self) -> None:
-        settings = configured_settings()
+        settings = Settings(
+            **(
+                configured_settings().__dict__
+                | {
+                    "network_route_profile_id": "ignored-legacy-route",
+                    "network_route_interface": "ignored0",
+                    "network_route_gateway": "192.0.2.99",
+                    "network_resolver_mode": "approved_resolver",
+                    "network_resolver_id": "ignored-legacy-resolver",
+                    "network_resolver_addresses": ("192.0.2.53",),
+                }
+            )
+        )
         settings.validate()
         transport = FixtureTransport(
             {
@@ -272,6 +300,7 @@ class NetworkAttestationAdapterTests(unittest.TestCase):
         supervisor.start()
         self.assertEqual(supervisor.status()["status"], "ready")
         self.assertEqual(control.measurements[0]["source_ipv4"], "1.1.1.1")
+        self.assertEqual(control.measurements[0]["route_profile_id"], "fixture-route")
         supervisor.stop()
 
         invalid = Settings(**(settings.__dict__ | {"network_observers": ("invalid", "invalid2")}))
@@ -282,6 +311,19 @@ class NetworkAttestationAdapterTests(unittest.TestCase):
         self.assertEqual(
             degraded.status()["reason_code"], "NETWORK_ATTESTATION_COMPOSITION_FAILED"
         )
+
+        missing_profile = FixtureSafetyControl(profile_failure=ValueError("missing"))
+        unavailable = compose_network_safety_supervisor(
+            settings=configured_settings(),
+            safety_control=missing_profile,
+            transport=transport,
+            route_probe=FixtureRouteProbe(
+                HostRouteSnapshot("utun9", "10.0.0.1", ("10.0.0.53",))
+            ),
+        )
+        unavailable.start()
+        self.assertEqual(unavailable.status()["reason_code"], "NETWORK_IDENTITY_STARTUP_FAILED")
+        self.assertEqual(missing_profile.pauses[-1][0], "paused")
 
 
 if __name__ == "__main__":

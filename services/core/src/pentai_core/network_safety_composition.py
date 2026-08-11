@@ -27,6 +27,8 @@ class NetworkSafetyControl(Protocol):
 
     def network_authority_assessments(self) -> tuple[str, ...]: ...
 
+    def network_profile_for_assessment(self, engagement_id: str) -> dict[str, Any]: ...
+
     def verify_network_identity(
         self, engagement_id: str, *, attestor: Any, attestor_id: str
     ) -> dict[str, Any]: ...
@@ -81,20 +83,26 @@ def compose_network_safety_supervisor(
             settings.network_observer_timeout_seconds,
             transport,
         )
-        inspector = ExactRouteInspector(
-            probe=route_probe
-            or SystemRouteProbe(timeout_seconds=settings.network_route_timeout_seconds),
-            route_profile_id=_required(settings.network_route_profile_id),
-            expected_interface=_required(settings.network_route_interface),
-            expected_gateway=settings.network_route_gateway,
-            resolver_mode=_required(settings.network_resolver_mode),
-            resolver_id=_required(settings.network_resolver_id),
-            expected_resolvers=settings.network_resolver_addresses,
+        probe = route_probe or SystemRouteProbe(
+            timeout_seconds=settings.network_route_timeout_seconds
         )
-        attestor = NetworkAttestor(observers, inspector)
+
+        def attestor_for(assessment_id: str) -> NetworkAttestor:
+            profile = safety_control.network_profile_for_assessment(assessment_id)
+            inspector = ExactRouteInspector(
+                probe=probe,
+                route_profile_id=str(profile["route_profile_id"]),
+                expected_interface=str(profile["route_interface"]),
+                expected_gateway=profile["route_gateway"],
+                resolver_mode=str(profile["resolver_mode"]),
+                resolver_id=str(profile["resolver_id"]),
+                expected_resolvers=tuple(profile["resolver_addresses"]),
+            )
+            return NetworkAttestor(observers, inspector)
+
         monitor = AuthorizationNetworkIdentityMonitor(
             control=safety_control,
-            attestor_for=lambda _assessment_id: attestor,
+            attestor_for=attestor_for,
             attestor_id="system-network-attestor",
         )
         return NetworkSafetySupervisor(
@@ -131,9 +139,3 @@ def _observers(
         )
         for endpoint_id, address_family, url in parsed
     )
-
-
-def _required(value: str | None) -> str:
-    if value is None:
-        raise ValueError("network attestation configuration is incomplete")
-    return value

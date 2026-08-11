@@ -385,6 +385,8 @@ class ControlledDnsTransportTests(unittest.TestCase):
             {"controlled_dns_server_ip": "10.0.0.54"},
             {"network_attestation_enabled": False},
             {"controlled_dns_tls_hostname": "unexpected.example"},
+            {"network_resolver_mode": "ambient"},
+            {"network_resolver_id": "invalid resolver"},
             {
                 "network_resolver_mode": "approved_resolver",
                 "controlled_dns_tls_hostname": "bad host",

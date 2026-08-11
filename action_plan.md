@@ -285,6 +285,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     or incomplete confirmation denies; activation and revocation are audit-linked and
     cannot enable execution. Observer enrollment, policy binding, and live attestation
     remain required.
+  - The application now resolves attestor route/source expectations from that durable
+    profile and requires its route ID, source arrays, IPv6 mode, and resolver mode to
+    match the active policy exactly. Manifest drafts reuse the confirmed values; legacy
+    environment route values cannot influence attestation. Explicit observer
+    designation and live cross-platform evidence remain required.
 - [x] Implement global and assessment-level pause, stop, and grant revocation.
 - [ ] Implement route failure and public-IP change kill switches.
   - The application-owned network safety supervisor now verifies every current

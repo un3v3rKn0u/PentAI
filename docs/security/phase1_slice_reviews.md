@@ -882,3 +882,37 @@ evidence remain required. Target-facing execution remains prohibited.
 operator, and public source-IP ownership is asserted rather than independently proven
 at confirmation time. This self-authored review is non-independent and cannot satisfy
 an external independent-review requirement.
+
+## 2026-08-11 — Durable profile-to-policy attestor binding
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Active profile lookup, active-policy matching, dynamic route
+inspector/attestor composition, removal of duplicated environment authority, observer
+configuration validation, startup/watchdog failure behavior, and manifest draft
+population from confirmed profile state.
+
+**Evidence examined:** Core and UI tests cover exact binding, missing and mismatched
+profiles, observer-only configuration, legacy environment values being ignored by
+attestation, profile-derived route measurements, startup degradation and safety pause,
+and profile-derived versus unresolved manifest network sections.
+
+**Findings:** The attestor is constructed only after the active profile and policy
+match on route ID, registered IPv4/IPv6 arrays, IPv6 mode, and resolver mode. Route
+interface, gateway, resolver ID, and resolver addresses come only from the durable
+profile. Missing or malformed state fails closed before measurement. No API, UI, AI,
+worker, or legacy route environment value can replace the selected profile.
+
+**Limitations and deferred work:** Observer URLs remain explicit trusted deployment
+configuration and no real observer is designated or contacted in tests. Controlled
+DNS still has a separate legacy resolver configuration path. Live public-IP/route
+matrices and cross-platform evidence remain required. Target-facing execution remains
+prohibited.
+
+**Residual risk accepted:** Profile confirmation asserts source-IP ownership, while
+observer independence remains an operator responsibility. This self-authored review
+is non-independent and cannot satisfy an external independent-review requirement.

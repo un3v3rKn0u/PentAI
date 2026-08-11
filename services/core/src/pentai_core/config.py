@@ -182,18 +182,9 @@ class Settings:
             if any(value is not None and value != "" for value in configured):
                 raise ValueError("Network attestation configuration requires explicit enablement")
             return
-        required = (
-            self.network_route_profile_id,
-            self.network_route_interface,
-            self.network_resolver_mode,
-            self.network_resolver_id,
-        )
         if (
-            any(value is None for value in required)
-            or len(self.network_observers) < 2
+            len(self.network_observers) < 2
             or len(self.network_observers) > 4
-            or not self.network_resolver_addresses
-            or self.network_resolver_mode not in {"tunnel_resolver", "approved_resolver"}
             or any(
                 not 0.1 <= value <= 10
                 for value in (
@@ -214,8 +205,10 @@ class Settings:
         if (
             not self.network_attestation_enabled
             or self.controlled_dns_server_ip is None
-            or self.network_resolver_mode is None
+            or self.network_resolver_mode not in {"tunnel_resolver", "approved_resolver"}
             or self.network_resolver_id is None
+            or not _IDENTIFIER_PATTERN.fullmatch(self.network_resolver_id)
+            or not self.network_resolver_addresses
             or not 0.1 <= self.controlled_dns_timeout_seconds <= 10
         ):
             raise ValueError("Enabled controlled DNS configuration is incomplete")
