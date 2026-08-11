@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/workflow-task-lifecycle-v1.schema.json",
+  "title": "PentAI WorkflowTaskLifecycle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "task_id", "state", "version", "attempt_count", "max_attempts", "next_attempt_at", "lease_owner", "lease_expires_at", "last_error_code", "updated_at", "finalized_at", "dispatch_enabled", "external_effect_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "state": {"enum": ["queued", "leased", "retry_wait", "succeeded", "dead_letter", "cancelled"]},
+    "version": {"type": "integer", "minimum": 1},
+    "attempt_count": {"type": "integer", "minimum": 0},
+    "max_attempts": {"type": "integer", "minimum": 1, "maximum": 10},
+    "next_attempt_at": {"oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "lease_owner": {"oneOf": [{"type": "string", "minLength": 1, "maxLength": 128}, {"type": "null"}]},
+    "lease_expires_at": {"oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "last_error_code": {"oneOf": [{"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$"}, {"type": "null"}]},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "finalized_at": {"oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "dispatch_enabled": {"const": false},
+    "external_effect_enabled": {"const": false}
+  }
+}

@@ -41,6 +41,25 @@ not reversed: retained immutable records preserve audit and recovery evidence.
 
 ## Deferred behavior
 
-Task claiming, leases, heartbeats, retries, checkpoints, fencing tokens for workers,
-dead-letter handling, and any dispatch integration are deferred. Until those controls
-exist and are reviewed, no workflow task can reach a worker or gateway.
+Worker launch, dispatch integration, external effects, and evidence payload storage
+are deferred. No workflow task can reach a worker or gateway through these contracts.
+
+## Durable lifecycle extension
+
+Migration `0019_workflow_task_leases.sql` adds a lifecycle beside each immutable v1
+task intent. Existing tasks are backfilled as queued or cancelled without changing the
+task contract. Claims are atomic and require the current task version, a running
+human-supervised workflow, and active authority. A successful claim returns an opaque
+short-lived token; only its SHA-256 digest is persisted. Every heartbeat, checkpoint,
+completion, and failure requires both the current version and matching unexpired token.
+
+Checkpoints are append-only and progress cannot decrease. Failures enter a bounded
+retry wait or dead letter after the third claimed attempt. Completion and failure use
+immutable idempotency receipts so a lost response can be replayed without repeating
+the mutation. Startup invalidates all outstanding leases, pauses their workflows, and
+makes non-exhausted tasks retryable without automatically reclaiming them.
+
+The lifecycle, lease, and checkpoint contracts all remain coordination-only.
+`dispatch_enabled` and `external_effect_enabled` are fixed to false. Worker launch,
+gateway access, and evidence payload storage remain deferred and require their own
+authorization.

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/workflow-task-lease-v1.schema.json",
+  "title": "PentAI WorkflowTaskLease v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "task_id", "task_version", "lease_owner", "lease_token", "lease_expires_at", "attempt_count", "dispatch_enabled", "external_effect_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "task_version": {"type": "integer", "minimum": 2},
+    "lease_owner": {"type": "string", "minLength": 1, "maxLength": 128},
+    "lease_token": {"type": "string", "minLength": 32, "maxLength": 128},
+    "lease_expires_at": {"type": "string", "format": "date-time"},
+    "attempt_count": {"type": "integer", "minimum": 1, "maximum": 10},
+    "dispatch_enabled": {"const": false},
+    "external_effect_enabled": {"const": false}
+  }
+}

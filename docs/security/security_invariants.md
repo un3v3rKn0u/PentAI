@@ -334,6 +334,11 @@ cause an external effect. Workflow and task contracts fix those capabilities to
 `false`; execution remains exclusively governed by the authorization and gateway
 chains.
 
+Task attempts additionally require both the current lifecycle version and an opaque,
+unexpired lease token whose digest alone is persisted. Completion/failure receipts
+make terminal retries idempotent; competing or stale lease holders cannot mutate the
+task. Leases remain coordination records and never substitute for execution grants.
+
 ### INV-REL-002 — Recovery revalidates safety
 
 **Statement:** Startup recovery revokes stale grants and revalidates policy, time, storage, route, DNS controls, and public IP before network work can resume.
@@ -344,6 +349,10 @@ chains.
 Running assessment workflows are synchronously changed to `paused` on core startup.
 They cannot resume without a fresh human transition and revalidation of active policy,
 engagement expiry, revocation, and global safety state.
+
+Startup also invalidates every outstanding task lease before any future claim. An
+exhausted task enters dead letter; other interrupted tasks enter retry wait with no
+automatic claimant.
 
 ### INV-REL-003 — Clock uncertainty denies
 

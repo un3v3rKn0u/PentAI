@@ -93,7 +93,10 @@ def test_workflow_and_task_queue_are_durable_idempotent_and_non_executing(
     assert task["dispatch_enabled"] is False
     assert task["external_effect_enabled"] is False
     loaded = workflow.get(str(created["workflow_id"]))
-    assert loaded == {"workflow": ready, "tasks": [task]}
+    assert loaded["workflow"] == ready
+    assert loaded["tasks"] == [task]
+    assert loaded["task_lifecycles"][0]["state"] == "queued"
+    assert loaded["checkpoints"] == []
     assert authorization.verify_audit_chain()["valid"] is True
     with closing(sqlite3.connect(workflow.database_path)) as connection:
         outbox_types = {
@@ -296,3 +299,282 @@ def test_invalid_clock_and_inputs_write_nothing(tmp_path: Path) -> None:
     assert key.value.code == "WORKFLOW_IDEMPOTENCY_INVALID"
     with closing(sqlite3.connect(workflow.database_path)) as connection:
         assert connection.execute("SELECT COUNT(*) FROM assessment_workflows").fetchone()[0] == 0
+
+
+def running_task(
+    workflow: AssessmentWorkflowService, engagement_id: str
+) -> tuple[str, str]:
+    ready = create_ready(workflow, engagement_id)
+    workflow_id = str(ready["workflow_id"])
+    workflow.transition(
+        workflow_id,
+        target_status="running",
+        expected_version=2,
+        actor_type="human",
+        actor_id="test-human",
+    )
+    task = workflow.enqueue(
+        workflow_id,
+        task_kind="manual_checkpoint",
+        idempotency_key="task-lease-key-000001",
+        input_refs=[],
+        parent_task_id=None,
+        actor_id="test-human",
+    )
+    return workflow_id, str(task["task_id"])
+
+
+def test_task_claim_is_atomic_fenced_and_non_executing(tmp_path: Path) -> None:
+    _, workflow, engagement_id = authority(tmp_path)
+    _, task_id = running_task(workflow, engagement_id)
+
+    def claim(owner: str) -> dict[str, object] | str:
+        try:
+            return workflow.claim_task(
+                task_id,
+                expected_version=1,
+                lease_owner=owner,
+                lease_seconds=30,
+            )
+        except WorkflowError as exc:
+            return exc.code
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(claim, ("worker-one", "worker-two")))
+    lease = next(result for result in outcomes if isinstance(result, dict))
+    denial = next(result for result in outcomes if isinstance(result, str))
+    assert denial == "WORKFLOW_TASK_FENCED"
+    assert lease["dispatch_enabled"] is False
+    assert lease["external_effect_enabled"] is False
+    with closing(sqlite3.connect(workflow.database_path)) as connection:
+        stored = connection.execute(
+            "SELECT lease_token_hash FROM workflow_task_lifecycles WHERE task_id = ?",
+            (task_id,),
+        ).fetchone()[0]
+    assert stored != lease["lease_token"]
+    assert len(stored) == 64
+
+
+def test_heartbeat_checkpoint_and_completion_are_fenced_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    authorization, workflow, engagement_id = authority(tmp_path)
+    workflow_id, task_id = running_task(workflow, engagement_id)
+    lease = workflow.claim_task(
+        task_id,
+        expected_version=1,
+        lease_owner="worker-one",
+        lease_seconds=30,
+    )
+    heartbeat = workflow.heartbeat_task(
+        task_id,
+        expected_version=2,
+        lease_token=str(lease["lease_token"]),
+        lease_seconds=30,
+    )
+    checkpoint = workflow.checkpoint_task(
+        task_id,
+        expected_version=3,
+        lease_token=str(lease["lease_token"]),
+        progress=50,
+        output_refs=[str(uuid4())],
+    )
+    completed = workflow.finalize_task(
+        task_id,
+        operation="complete",
+        expected_version=4,
+        lease_token=str(lease["lease_token"]),
+        idempotency_key="task-complete-receipt-01",
+    )
+    replay = workflow.finalize_task(
+        task_id,
+        operation="complete",
+        expected_version=4,
+        lease_token=str(lease["lease_token"]),
+        idempotency_key="task-complete-receipt-01",
+    )
+
+    assert heartbeat["version"] == 3
+    assert checkpoint["sequence"] == 1
+    assert completed == replay
+    assert completed["state"] == "succeeded"
+    assert workflow.get(workflow_id)["checkpoints"] == [checkpoint]
+    assert workflow.transition(
+        workflow_id,
+        target_status="completed",
+        expected_version=3,
+        actor_type="human",
+        actor_id="test-human",
+    )["status"] == "completed"
+    assert authorization.verify_audit_chain()["valid"] is True
+    with pytest.raises(WorkflowError) as stale:
+        workflow.heartbeat_task(
+            task_id,
+            expected_version=2,
+            lease_token=str(lease["lease_token"]),
+            lease_seconds=30,
+        )
+    assert stale.value.code == "WORKFLOW_TASK_FENCED"
+
+
+def test_bounded_retries_end_in_dead_letter(tmp_path: Path) -> None:
+    _, workflow, engagement_id = authority(tmp_path)
+    _, task_id = running_task(workflow, engagement_id)
+    expected_version = 1
+    for attempt in range(1, 4):
+        lease = workflow.claim_task(
+            task_id,
+            expected_version=expected_version,
+            lease_owner="worker-one",
+            lease_seconds=30,
+        )
+        expected_version += 1
+        failed = workflow.finalize_task(
+            task_id,
+            operation="fail",
+            expected_version=expected_version,
+            lease_token=str(lease["lease_token"]),
+            idempotency_key=f"task-failure-receipt-{attempt:02d}",
+            error_code="SYNTHETIC_FAILURE",
+            retry_delay_seconds=0,
+        )
+        expected_version += 1
+        expected_state = "dead_letter" if attempt == 3 else "retry_wait"
+        assert failed["state"] == expected_state
+    with pytest.raises(WorkflowError) as exhausted:
+        workflow.claim_task(
+            task_id,
+            expected_version=expected_version,
+            lease_owner="worker-one",
+            lease_seconds=30,
+        )
+    assert exhausted.value.code == "WORKFLOW_TASK_DENIED"
+
+
+def test_startup_recovers_lease_without_automatic_reclaim(tmp_path: Path) -> None:
+    _, workflow, engagement_id = authority(tmp_path)
+    workflow_id, task_id = running_task(workflow, engagement_id)
+    lease = workflow.claim_task(
+        task_id,
+        expected_version=1,
+        lease_owner="worker-one",
+        lease_seconds=300,
+    )
+
+    assert workflow.recover_startup() == 1
+    recovered = workflow.get(workflow_id)
+    assert recovered["workflow"]["status"] == "paused"
+    assert recovered["task_lifecycles"][0]["state"] == "retry_wait"
+    assert recovered["task_lifecycles"][0]["last_error_code"] == "LEASE_RECOVERED"
+    with pytest.raises(WorkflowError) as old_lease:
+        workflow.heartbeat_task(
+            task_id,
+            expected_version=2,
+            lease_token=str(lease["lease_token"]),
+            lease_seconds=30,
+        )
+    assert old_lease.value.code == "WORKFLOW_TASK_FENCED"
+
+
+def test_lease_negative_paths_deny_without_mutation(tmp_path: Path) -> None:
+    authorization, workflow, engagement_id = authority(tmp_path)
+    _, task_id = running_task(workflow, engagement_id)
+    claimed_at = datetime.now(UTC)
+    lease = workflow.claim_task(
+        task_id,
+        expected_version=1,
+        lease_owner="worker-one",
+        lease_seconds=30,
+        now=claimed_at,
+    )
+
+    with pytest.raises(WorkflowError) as wrong_token:
+        workflow.heartbeat_task(
+            task_id,
+            expected_version=2,
+            lease_token="x" * 43,
+            lease_seconds=30,
+            now=claimed_at + timedelta(seconds=1),
+        )
+    assert wrong_token.value.code == "WORKFLOW_LEASE_DENIED"
+    with pytest.raises(WorkflowError) as expired:
+        workflow.heartbeat_task(
+            task_id,
+            expected_version=2,
+            lease_token=str(lease["lease_token"]),
+            lease_seconds=30,
+            now=claimed_at + timedelta(seconds=31),
+        )
+    assert expired.value.code == "WORKFLOW_LEASE_EXPIRED"
+
+    checkpoint = workflow.checkpoint_task(
+        task_id,
+        expected_version=2,
+        lease_token=str(lease["lease_token"]),
+        progress=60,
+        output_refs=[],
+        now=claimed_at + timedelta(seconds=2),
+    )
+    with pytest.raises(WorkflowError) as decreasing:
+        workflow.checkpoint_task(
+            task_id,
+            expected_version=3,
+            lease_token=str(lease["lease_token"]),
+            progress=59,
+            output_refs=[],
+            now=claimed_at + timedelta(seconds=3),
+        )
+    assert decreasing.value.code == "WORKFLOW_CHECKPOINT_INVALID"
+    assert checkpoint["progress"] == 60
+
+    authorization.set_global_safety(
+        status="paused", reason="synthetic lease pause", actor_id="test-human"
+    )
+    with pytest.raises(WorkflowError) as paused:
+        workflow.heartbeat_task(
+            task_id,
+            expected_version=3,
+            lease_token=str(lease["lease_token"]),
+            lease_seconds=30,
+            now=claimed_at + timedelta(seconds=4),
+        )
+    assert paused.value.code == "WORKFLOW_AUTHORITY_DENIED"
+    with closing(sqlite3.connect(workflow.database_path)) as connection:
+        lifecycle = connection.execute(
+            "SELECT state, version FROM workflow_task_lifecycles WHERE task_id = ?",
+            (task_id,),
+        ).fetchone()
+    assert lifecycle == ("leased", 3)
+
+
+def test_retry_delay_prevents_early_reclaim(tmp_path: Path) -> None:
+    _, workflow, engagement_id = authority(tmp_path)
+    _, task_id = running_task(workflow, engagement_id)
+    claimed_at = datetime.now(UTC)
+    lease = workflow.claim_task(
+        task_id,
+        expected_version=1,
+        lease_owner="worker-one",
+        lease_seconds=30,
+        now=claimed_at,
+    )
+    failed = workflow.finalize_task(
+        task_id,
+        operation="fail",
+        expected_version=2,
+        lease_token=str(lease["lease_token"]),
+        idempotency_key="task-delayed-receipt-01",
+        error_code="SYNTHETIC_FAILURE",
+        retry_delay_seconds=60,
+        now=claimed_at + timedelta(seconds=1),
+    )
+    with pytest.raises(WorkflowError) as early:
+        workflow.claim_task(
+            task_id,
+            expected_version=3,
+            lease_owner="worker-two",
+            lease_seconds=30,
+            now=claimed_at + timedelta(seconds=30),
+        )
+    assert failed["state"] == "retry_wait"
+    assert early.value.code == "WORKFLOW_TASK_NOT_READY"

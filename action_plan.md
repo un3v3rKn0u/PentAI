@@ -349,7 +349,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   transitions and idempotent task intent. Startup recovery pauses running workflows;
   tasks cannot dispatch, grant authority, or cause external effects. Lease claiming,
   retries, checkpoints, and dead letters remain in the next item.
-- [ ] Add leases, heartbeats, checkpoints, retries, fencing, idempotency, outbox, and dead letters.
+- [x] Add leases, heartbeats, checkpoints, retries, fencing, idempotency, outbox, and dead letters.
+  Durable task lifecycle records now provide short leases, version/token fencing,
+  monotonic immutable checkpoints, bounded retry and dead-letter handling,
+  idempotent terminal receipts, transactional outbox events, and startup lease
+  invalidation. Dispatch and external effects remain contractually disabled.
 - [ ] Create an append-only hash-chained audit ledger.
 - [ ] Link every execution to its intent, decision, policy rules, grant, tool version, and outputs.
 - [x] Build recovery startup that revokes stale grants before reclaiming tasks.

@@ -35,6 +35,7 @@ class MigrationTests(unittest.TestCase):
                     "0016",
                     "0017",
                     "0018",
+                    "0019",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -68,6 +69,9 @@ class MigrationTests(unittest.TestCase):
                     "gateway_fixture_execution_claims",
                     "assessment_workflows",
                     "workflow_tasks",
+                    "workflow_task_lifecycles",
+                    "workflow_task_checkpoints",
+                    "workflow_task_receipts",
                     "network_profile_proposals",
                     "network_profiles",
                 }
@@ -549,6 +553,66 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("workflow_tasks_identity_immutable", triggers)
             self.assertIn("workflow_tasks_transition", triggers)
             self.assertIn("workflow_tasks_no_delete", triggers)
+
+    def test_workflow_task_lease_upgrade_backfills_and_protects_history(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("*.sql")):
+                if path.name >= "0019_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            with closing(sqlite3.connect(database)) as connection, connection:
+                connection.execute("PRAGMA foreign_keys = OFF")
+                connection.execute(
+                    """INSERT INTO assessment_workflows(
+                        workflow_id, engagement_id, policy_bundle_id, idempotency_key,
+                        status, version, created_at, updated_at, execution_enabled
+                    ) VALUES ('w', 'e', 'p', 'workflow-upgrade-key-01', 'ready', 1,
+                              '2026-08-11T00:00:00Z', '2026-08-11T00:00:00Z', 0)"""
+                )
+                connection.execute(
+                    """INSERT INTO workflow_tasks(
+                        task_id, workflow_id, task_kind, state, idempotency_key,
+                        input_refs_json, created_at, dispatch_enabled,
+                        external_effect_enabled
+                    ) VALUES ('t', 'w', 'manual_checkpoint', 'queued',
+                              'task-upgrade-key-0001', '[]',
+                              '2026-08-11T00:00:00Z', 0, 0)"""
+                )
+
+            migration = repository_migrations / "0019_workflow_task_leases.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0019"])
+                self.assertEqual(migrate(database), [])
+
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+                    )
+                }
+                lifecycle = connection.execute(
+                    """SELECT state, version, attempt_count, max_attempts,
+                              dispatch_enabled, external_effect_enabled
+                    FROM workflow_task_lifecycles WHERE task_id = 't'"""
+                ).fetchone()
+            self.assertEqual(lifecycle, ("queued", 1, 0, 3, 0, 0))
+            self.assertIn("workflow_task_lifecycles_version_fenced", triggers)
+            self.assertIn("workflow_task_lifecycles_no_delete", triggers)
+            self.assertIn("workflow_task_checkpoints_immutable", triggers)
+            self.assertIn("workflow_task_receipts_immutable", triggers)
 
 
 if __name__ == "__main__":
