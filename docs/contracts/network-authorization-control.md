@@ -15,6 +15,11 @@ grant to one attestation and one canonical destination evaluation.
   startup recovery permanently invalidate affected attestations.
 - Destination authorization requires an unused, unrevoked, unexpired, correctly
   signed `pentai-egress-gateway` grant with exact policy and revocation-epoch linkage.
+- Before controlled DNS is contacted, the core validates that grant, the active signed
+  policy, global and assessment safety, and the exact unexpired attestation. Only then
+  does it derive the assessment identifier used to select the durable-profile resolver.
+- The same authority is revalidated inside the transaction that persists the
+  destination decision, so a policy, safety, grant, or attestation race denies.
 - Destination decisions are immutable audit records. They never consume the grant and
   always carry `execution_enabled: false` in this slice.
 
@@ -61,7 +66,9 @@ uses the explicit `fixture:` resolver namespace. This supports owned, determinis
 tests and is not available to production resolver identities.
 
 The production-composable resolver backend sends DNS directly to one literal server
-address from the attested resolver set. Tunnel mode permits only bounded TCP/53;
+address from the active policy-bound profile. Resolver selection is assessment-scoped;
+callers cannot supply a resolver identity independently of the grant and attestation.
+Tunnel mode permits only bounded TCP/53;
 approved-resolver mode permits only bounded TLS/853 with TLS 1.2 or newer and normal
 certificate/hostname validation. There is no ambient system resolver, search-domain,
 proxy, UDP, or transport fallback.
@@ -81,6 +88,10 @@ policies remain readable, but cannot gain network authority without a fresh matc
 attestation and destination decision. Rolling code back leaves the new tables unused;
 the migration is not destructively reversed. Historical decisions and attestations
 must remain available for audit.
+
+This slice changes only an internal core method boundary from a resolver instance to a
+trusted assessment-scoped resolver source. There is no public API compatibility impact
+and no new schema or migration.
 
 ## Deferred enforcement
 

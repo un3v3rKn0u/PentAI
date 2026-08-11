@@ -951,3 +951,38 @@ evidence remain required. Target-facing execution remains prohibited.
 remain trusted local deployment choices constrained by the profile rather than
 automatically provisioned network resources. This self-authored review is
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-11 — Gateway DNS authorization preflight
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Pre-resolution grant and attestation validation, assessment
+derivation, trusted resolver-source selection, policy/safety/revocation checks,
+post-resolution transactional revalidation, diagnostics, compatibility, and rollback.
+
+**Evidence examined:** Integration tests cover exact assessment derivation, invalid
+grant and paused/inactivated attestation denial with zero resolver-source calls,
+profile-bound resolver identity, DNS rebinding, special-address and IPv6 denial,
+SNI/Host mismatch, and the existing transactional destination decision. The complete
+diff and INV-AUTH-001/002/003, INV-GRANT-001/004, INV-SCOPE-003, and INV-NET-002/003
+were reviewed.
+
+**Findings:** Controlled DNS no longer occurs before runtime authority validation.
+Neither a caller-provided assessment identifier nor a resolver identity can replace
+the engagement derived from the signed grant and matching attestation. The second
+transactional check preserves default denial if authority changes during resolution.
+
+**Limitations and deferred work:** The trusted resolver source is an internal Python
+composition boundary, not an isolated gateway process. Tests use synthetic DNS packets
+and do not contact a live resolver, worker, observer, or target. Live redirects, HTTP
+sockets, firewall enforcement, and cross-platform containment evidence remain required.
+Target-facing execution remains prohibited.
+
+**Residual risk accepted:** A compromise of the local core process can replace in-memory
+dependencies; process isolation and gateway binary enforcement remain future controls.
+This self-authored review is non-independent and cannot satisfy an external
+independent-review requirement.

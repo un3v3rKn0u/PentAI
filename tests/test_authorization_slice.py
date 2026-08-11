@@ -38,6 +38,16 @@ def fixture_resolver(
     )
 
 
+class FixtureResolverSource:
+    def __init__(self, resolver: ControlledResolver) -> None:
+        self.resolver = resolver
+        self.assessment_ids: list[str] = []
+
+    def for_assessment(self, assessment_id: str) -> ControlledResolver:
+        self.assessment_ids.append(assessment_id)
+        return self.resolver
+
+
 def manifest_for(engagement: dict[str, object], source: dict[str, object]) -> dict[str, object]:
     return {
         "schema_version": "2.0.0",
@@ -264,7 +274,9 @@ class AuthorizationSliceTests(unittest.TestCase):
             grant_id=grant["grant_id"],
             attestation_id=attestation["attestation_id"],
             candidate_url=intent["target"]["canonical_url"],
-            resolver=fixture_resolver(("192.0.2.20",), ("example.test",)),
+            resolver_source=FixtureResolverSource(
+                fixture_resolver(("192.0.2.20",), ("example.test",))
+            ),
             sni_host="example.test",
             host_header="example.test",
             redirect_count=0,
@@ -286,7 +298,9 @@ class AuthorizationSliceTests(unittest.TestCase):
             grant_id=grant["grant_id"],
             attestation_id=attestation["attestation_id"],
             candidate_url=intent["target"]["canonical_url"],
-            resolver=fixture_resolver(("192.0.2.21",), ("example.test",)),
+            resolver_source=FixtureResolverSource(
+                fixture_resolver(("192.0.2.21",), ("example.test",))
+            ),
             sni_host="example.test",
             host_header="example.test",
             redirect_count=0,
@@ -307,7 +321,7 @@ class AuthorizationSliceTests(unittest.TestCase):
                     grant_id=grant["grant_id"],
                     attestation_id=attestation["attestation_id"],
                     candidate_url=intent["target"]["canonical_url"],
-                    resolver=fixture_resolver(tuple(addresses)),
+                    resolver_source=FixtureResolverSource(fixture_resolver(tuple(addresses))),
                     sni_host=sni_host,
                     host_header="example.test",
                     redirect_count=0,
@@ -321,18 +335,20 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.service.set_assessment_safety(
             self.engagement["id"], status="paused", reason="operator pause", actor_id="reviewer"
         )
+        resolver_source = FixtureResolverSource(fixture_resolver(("192.0.2.20",)))
 
         with self.assertRaises(DomainError) as raised:
             self.service.resolve_and_authorize_network_destination(
                 grant_id=grant["grant_id"],
                 attestation_id=attestation["attestation_id"],
                 candidate_url=intent["target"]["canonical_url"],
-                resolver=fixture_resolver(("192.0.2.20",)),
+                resolver_source=resolver_source,
                 sni_host="example.test",
                 host_header="example.test",
                 redirect_count=0,
             )
         self.assertEqual(raised.exception.code, "NETWORK_AUTHORIZATION_DENIED")
+        self.assertEqual(resolver_source.assessment_ids, [])
         with closing(sqlite3.connect(self.database)) as connection, connection:
             self.assertEqual(
                 connection.execute(
@@ -355,6 +371,56 @@ class AuthorizationSliceTests(unittest.TestCase):
                     "DELETE FROM network_attestations WHERE attestation_id = ?",
                     (attestation["attestation_id"],),
                 )
+
+    def test_gateway_dns_preflight_derives_assessment_and_blocks_wrong_grant(self) -> None:
+        intent, grant, attestation = self.network_authority()
+        resolver_source = FixtureResolverSource(fixture_resolver(("192.0.2.20",)))
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.resolve_and_authorize_network_destination(
+                grant_id=str(uuid4()),
+                attestation_id=attestation["attestation_id"],
+                candidate_url=intent["target"]["canonical_url"],
+                resolver_source=resolver_source,
+                sni_host="example.test",
+                host_header="example.test",
+                redirect_count=0,
+            )
+        self.assertEqual(raised.exception.code, "NETWORK_AUTHORIZATION_DENIED")
+        self.assertEqual(resolver_source.assessment_ids, [])
+
+        result = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver_source=resolver_source,
+            sni_host="example.test",
+            host_header="example.test",
+            redirect_count=0,
+        )
+        self.assertEqual(result["outcome"], "allow")
+        self.assertEqual(resolver_source.assessment_ids, [self.engagement["id"]])
+
+    def test_gateway_dns_preserves_profile_binding_denial(self) -> None:
+        intent, grant, attestation = self.network_authority()
+        resolver_source = Mock()
+        resolver_source.for_assessment.side_effect = DomainError(
+            "NETWORK_PROFILE_POLICY_MISMATCH",
+            "active policy and network profile do not match",
+        )
+
+        with self.assertRaises(DomainError) as raised:
+            self.service.resolve_and_authorize_network_destination(
+                grant_id=grant["grant_id"],
+                attestation_id=attestation["attestation_id"],
+                candidate_url=intent["target"]["canonical_url"],
+                resolver_source=resolver_source,
+                sni_host="example.test",
+                host_header="example.test",
+                redirect_count=0,
+            )
+        self.assertEqual(raised.exception.code, "NETWORK_PROFILE_POLICY_MISMATCH")
+        resolver_source.for_assessment.assert_called_once_with(self.engagement["id"])
 
     def test_network_attestation_denies_route_source_and_resolver_mismatch(self) -> None:
         _, _, attestation = self.network_authority()
@@ -382,7 +448,7 @@ class AuthorizationSliceTests(unittest.TestCase):
             grant_id=grant["grant_id"],
             attestation_id=attestation["attestation_id"],
             candidate_url=intent["target"]["canonical_url"],
-            resolver=fixture_resolver(("192.0.2.20",)),
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
             sni_host="example.test",
             host_header="example.test",
             redirect_count=0,
@@ -506,7 +572,7 @@ class AuthorizationSliceTests(unittest.TestCase):
             grant_id=grant["grant_id"],
             attestation_id=attestation["attestation_id"],
             candidate_url=intent["target"]["canonical_url"],
-            resolver=fixture_resolver(("192.0.2.20",)),
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
             sni_host="example.test",
             host_header="example.test",
             redirect_count=0,
@@ -567,7 +633,7 @@ class AuthorizationSliceTests(unittest.TestCase):
             grant_id=grant["grant_id"],
             attestation_id=attestation["attestation_id"],
             candidate_url=intent["target"]["canonical_url"],
-            resolver=fixture_resolver(("192.0.2.20",)),
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
             sni_host="example.test",
             host_header="example.test",
             redirect_count=0,
@@ -633,7 +699,7 @@ class AuthorizationSliceTests(unittest.TestCase):
                 grant_id=grant["grant_id"],
                 attestation_id=attestation["attestation_id"],
                 candidate_url=intent["target"]["canonical_url"],
-                resolver=fixture_resolver((address,)),
+                resolver_source=FixtureResolverSource(fixture_resolver((address,))),
                 sni_host="example.test",
                 host_header="example.test",
                 redirect_count=0,

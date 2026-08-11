@@ -7,7 +7,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
 from pathlib import Path, PurePath
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 
 from pentai_policy import (
@@ -50,6 +50,10 @@ class DomainError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+class ControlledResolverSource(Protocol):
+    def for_assessment(self, assessment_id: str) -> ControlledResolver: ...
 
 
 def _now() -> datetime:
@@ -1971,21 +1975,20 @@ class AuthorizationService:
         grant_id: str,
         attestation_id: str,
         candidate_url: str,
-        resolver: ControlledResolver,
+        resolver_source: ControlledResolverSource,
         sni_host: str,
         host_header: str,
         redirect_count: int,
     ) -> dict[str, Any]:
-        with transaction(self.database_path) as connection:
-            row = connection.execute(
-                """
-                SELECT resolver_mode, resolver_id
-                FROM network_attestations WHERE attestation_id = ? AND status = 'valid'
-                """,
-                (attestation_id,),
-            ).fetchone()
-        if row is None:
-            raise DomainError("NETWORK_AUTHORIZATION_DENIED", "network attestation is inactive")
+        assessment_id, resolver_mode, resolver_id = self._network_resolution_context(
+            grant_id=grant_id, attestation_id=attestation_id
+        )
+        try:
+            resolver = resolver_source.for_assessment(assessment_id)
+        except DomainError:
+            raise
+        except (KeyError, TypeError, ValueError) as exc:
+            raise DomainError("DNS_INVALID", "controlled DNS composition failed") from exc
         try:
             candidate = canonicalize_url(candidate_url)
             host = candidate["host"]
@@ -1996,8 +1999,8 @@ class AuthorizationService:
                 str(host["value"]),
                 port,
                 attestation={
-                    "resolver_mode": row["resolver_mode"],
-                    "resolver_id": row["resolver_id"],
+                    "resolver_mode": resolver_mode,
+                    "resolver_id": resolver_id,
                 },
             )
         except (CanonicalizationError, KeyError, TypeError, ValueError) as exc:
@@ -2013,6 +2016,76 @@ class AuthorizationService:
             host_header=host_header,
             redirect_count=redirect_count,
         )
+
+    def _network_resolution_context(
+        self, *, grant_id: str, attestation_id: str
+    ) -> tuple[str, str, str]:
+        with transaction(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT ag.*, p.policy_json, p.revoked_at AS policy_revoked_at,
+                       e.active_policy_id, e.revocation_epoch AS current_epoch,
+                       e.status AS engagement_status, s.global_status,
+                       na.engagement_id AS attestation_engagement_id,
+                       na.policy_bundle_id AS attestation_policy_bundle_id,
+                       na.attestation_id, na.policy_hash AS attestation_policy_hash,
+                       na.status AS attestation_status,
+                       na.resolver_mode, na.resolver_id, na.route_profile_id,
+                       na.source_ipv4, na.source_ipv6, na.observations_json,
+                       na.observed_at, na.expires_at
+                FROM action_grants ag
+                JOIN policy_bundles p ON p.id = ag.policy_bundle_id
+                JOIN engagements e ON e.id = ag.engagement_id
+                JOIN network_attestations na ON na.attestation_id = ?
+                CROSS JOIN safety_state s
+                WHERE ag.grant_id = ?
+                """,
+                (attestation_id, grant_id),
+            ).fetchone()
+        if row is None:
+            raise DomainError("NETWORK_AUTHORIZATION_DENIED", "runtime authority is missing")
+        try:
+            grant = json.loads(row["grant_json"])
+            policy = json.loads(row["policy_json"])
+            attestation = self._attestation_document(row)
+            now = _now()
+            invalid = (
+                contract_issues(grant, "action-grant-v1.schema.json")
+                or content_hash(grant) != row["grant_hash"]
+                or parse_time(grant["not_before"]) > now
+                or parse_time(grant["expires_at"]) <= now
+                or row["used_at"] is not None
+                or row["revoked_at"] is not None
+                or row["policy_revoked_at"] is not None
+                or row["active_policy_id"] != row["policy_bundle_id"]
+                or row["revocation_epoch"] != row["current_epoch"]
+                or row["engagement_status"] != "active"
+                or row["global_status"] != "active"
+                or row["audience"] != "pentai-egress-gateway"
+                or grant.get("audience") != "pentai-egress-gateway"
+                or row["attestation_status"] != "valid"
+                or row["attestation_engagement_id"] != row["engagement_id"]
+                or row["attestation_policy_bundle_id"] != row["policy_bundle_id"]
+                or row["attestation_policy_hash"] != grant["policy_hash"]
+                or self.policy_signer is None
+                or not self.policy_signer.verify(
+                    _grant_payload(grant),
+                    str(grant.get("signature", {}).get("value", "")),
+                    str(grant.get("signature", {}).get("key_id", "")),
+                )
+            )
+            if invalid:
+                raise DomainError(
+                    "NETWORK_AUTHORIZATION_DENIED", "runtime authority is inactive"
+                )
+            validate_attestation(attestation, policy, now=now)
+        except DomainError:
+            raise
+        except (AttestationError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise DomainError(
+                "NETWORK_AUTHORIZATION_DENIED", "runtime authority is invalid"
+            ) from exc
+        return str(row["engagement_id"]), str(row["resolver_mode"]), str(row["resolver_id"])
 
     def _authorize_network_destination(
         self,

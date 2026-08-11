@@ -128,6 +128,12 @@ exist.
 **Primary enforcement:** Gateway<br>
 **Verification:** Controlled DNS and redirect integration suite.
 
+**Phase 1 pre-resolution note:** Controlled DNS is not contacted until the core has
+validated the signed gateway grant, active policy and revocation epoch, global and
+assessment safety, and exact unexpired attestation. The assessment used for resolver
+selection is derived from those records. Authority is checked again transactionally
+when the immutable destination decision is stored.
+
 ### INV-SCOPE-004 — Discovery does not expand authority
 
 **Statement:** Discovered hosts, URLs, ports, IPs, services, repositories, tenants, and integrations remain denied until added through a new approved policy version.
