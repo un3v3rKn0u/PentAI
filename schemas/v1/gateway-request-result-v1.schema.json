@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/gateway-request-result-v1.schema.json",
+  "title": "PentAI GatewayRequestResult v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "result_id", "start_id", "session_id", "reservation_id", "grant_id", "outcome", "observed_response_bytes", "retained_response_bytes", "deadline_at", "completed_at", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "result_id": {"type": "string", "format": "uuid"},
+    "start_id": {"type": "string", "format": "uuid"},
+    "session_id": {"type": "string", "format": "uuid"},
+    "reservation_id": {"type": "string", "format": "uuid"},
+    "grant_id": {"type": "string", "format": "uuid"},
+    "outcome": {"enum": ["completed", "deadline_exceeded", "response_limit_exceeded", "transport_error"]},
+    "observed_response_bytes": {"type": "integer", "minimum": 0},
+    "retained_response_bytes": {"type": "integer", "minimum": 0},
+    "deadline_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "execution_enabled": {"const": false}
+  }
+}

@@ -24,6 +24,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   gateway session preparation.
 - `gateway-request-start-v1.schema.json` — irreversible, deadline-bounded, still
   non-executing request-start commitment.
+- `gateway-request-result-v1.schema.json` — immutable request outcome, deadline, and
+  bounded response-byte accounting linked to committed authority.
 - `gateway-runtime-instance-v1.schema.json` — durable identity and fail-closed state
   for a non-target-facing gateway fixture runtime.
 - `worker-containment-attestation-v1.schema.json` — short-lived runtime measurements
@@ -48,6 +50,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | DestinationDecision v1 | Gateway Maintainer | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
 | GatewaySession v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | GatewayRequestStart v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
+| GatewayRequestResult v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | GatewayRuntimeInstance v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | WorkerContainmentAttestation v1 | Systems Engineer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | WorkerLaunchSpec v1 | Execution Safety Lead | Contract Maintainer | Systems Engineer, independent Security Reviewer |

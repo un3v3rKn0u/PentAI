@@ -212,6 +212,9 @@ rate tokens and total-request capacity to committed state while consuming the gr
 Its deadline is the earliest of the grant timeout, grant expiry, engagement expiry,
 and attestation expiry. Once committed, request/rate capacity is never refunded; safety recovery only
 cancels the execution-disabled handoff and releases its connection slot.
+Finalization re-derives the deadline and response ceiling from durable state, retains
+at most the authorized bytes, permits only one additional observed proof byte, closes
+the connection slot exactly once, and never refunds committed capacity.
 
 ## 7. Agent and AI Invariants
 
