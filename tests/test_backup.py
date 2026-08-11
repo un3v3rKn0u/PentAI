@@ -249,3 +249,188 @@ def test_shared_digest_remains_backed_up_until_final_reference_is_deleted(tmp_pa
     final = service.create(tmp_path / "final.pentai-backup", actor_id="local-reviewer")
     assert final["evidence_blob_count"] == 0
     assert final["deletion_tombstone_count"] == 1
+
+
+def test_inventory_authenticates_archives_and_rotation_only_proposes_candidates(
+    tmp_path: Path,
+) -> None:
+    service, _, _, _ = service_fixture(tmp_path)
+    root = tmp_path / "backups"
+    identifiers = [
+        "10000000-0000-4000-8000-000000000001",
+        "10000000-0000-4000-8000-000000000002",
+        "10000000-0000-4000-8000-000000000003",
+        "10000000-0000-4000-8000-000000000004",
+    ]
+    for backup_id in identifiers:
+        service.create(
+            root / f"{backup_id}.pentai-backup",
+            actor_id="local-reviewer",
+            backup_id=backup_id,
+        )
+    service.restore_drill(
+        root / f"{identifiers[0]}.pentai-backup",
+        root / "restore-drills" / identifiers[0],
+        actor_id="local-reviewer",
+    )
+
+    inventory = service.inventory(root, actor_id="local-reviewer")
+    plan = service.rotation_plan(root, retain_count=2, actor_id="local-reviewer")
+
+    assert inventory["backup_count"] == 4
+    items = {item["backup_id"]: item for item in inventory["items"]}
+    assert items[identifiers[0]]["restore_verified"] is True
+    assert all(item["forensic_erase_guaranteed"] is False for item in items.values())
+    assert identifiers[0] in plan["protected_backup_ids"]
+    assert len(plan["protected_backup_ids"]) == 3
+    assert len(plan["purge_candidates"]) == 1
+    assert plan["automatic_deletion_performed"] is False
+    assert all((root / f"{backup_id}.pentai-backup").exists() for backup_id in identifiers)
+
+
+def test_inventory_rejects_tampered_and_symlinked_matching_entries(tmp_path: Path) -> None:
+    service, _, _, _ = service_fixture(tmp_path)
+    tampered_root = tmp_path / "tampered-backups"
+    backup_id = "15000000-0000-4000-8000-000000000001"
+    path = tampered_root / f"{backup_id}.pentai-backup"
+    service.create(path, actor_id="local-reviewer", backup_id=backup_id)
+    payload = bytearray(path.read_bytes())
+    payload[-1] ^= 1
+    path.write_bytes(payload)
+    with pytest.raises(BackupError, match="authentication failed"):
+        service.inventory(tampered_root, actor_id="local-reviewer")
+
+    symlink_root = tmp_path / "symlink-backups"
+    symlink_root.mkdir()
+    linked_id = "15000000-0000-4000-8000-000000000002"
+    (symlink_root / f"{linked_id}.pentai-backup").symlink_to(path)
+    with pytest.raises(BackupError, match="entry is unsafe"):
+        service.inventory(symlink_root, actor_id="local-reviewer")
+
+
+def test_purge_requires_exact_confirmation_and_protects_last_verified_backup(
+    tmp_path: Path,
+) -> None:
+    service, _, _, _ = service_fixture(tmp_path)
+    root = tmp_path / "backups"
+    first_id = "20000000-0000-4000-8000-000000000001"
+    second_id = "20000000-0000-4000-8000-000000000002"
+    first = service.create(
+        root / f"{first_id}.pentai-backup", actor_id="local-reviewer", backup_id=first_id
+    )
+    second = service.create(
+        root / f"{second_id}.pentai-backup", actor_id="local-reviewer", backup_id=second_id
+    )
+    service.restore_drill(
+        root / f"{first_id}.pentai-backup",
+        root / "restore-drills" / first_id,
+        actor_id="local-reviewer",
+    )
+
+    with pytest.raises(BackupError, match="explicit human confirmation"):
+        service.purge(
+            root,
+            second_id,
+            expected_sha256=str(second["encrypted_backup_sha256"]),
+            reason="Synthetic rotation",
+            confirm_permanent_deletion=False,
+            actor_id="local-reviewer",
+        )
+    with pytest.raises(BackupError, match="digest does not match"):
+        service.purge(
+            root,
+            second_id,
+            expected_sha256="0" * 64,
+            reason="Synthetic rotation",
+            confirm_permanent_deletion=True,
+            actor_id="local-reviewer",
+        )
+    with pytest.raises(BackupError, match="last restore-verified backup"):
+        service.purge(
+            root,
+            first_id,
+            expected_sha256=str(first["encrypted_backup_sha256"]),
+            reason="Synthetic rotation",
+            confirm_permanent_deletion=True,
+            actor_id="local-reviewer",
+        )
+
+    service.restore_drill(
+        root / f"{second_id}.pentai-backup",
+        root / "restore-drills" / second_id,
+        actor_id="local-reviewer",
+    )
+    purged = service.purge(
+        root,
+        first_id,
+        expected_sha256=str(first["encrypted_backup_sha256"]),
+        reason="Synthetic rotation",
+        confirm_permanent_deletion=True,
+        actor_id="local-reviewer",
+    )
+    assert purged["disposition"] == "unlinked"
+    assert purged["forensic_erase_guaranteed"] is False
+    assert not (root / f"{first_id}.pentai-backup").exists()
+
+
+def test_interrupted_purge_recovers_as_already_absent(tmp_path: Path) -> None:
+    service, database, _, _ = service_fixture(tmp_path)
+    root = tmp_path / "backups"
+    first_id = "30000000-0000-4000-8000-000000000001"
+    second_id = "30000000-0000-4000-8000-000000000002"
+    first = service.create(
+        root / f"{first_id}.pentai-backup", actor_id="local-reviewer", backup_id=first_id
+    )
+    service.create(
+        root / f"{second_id}.pentai-backup", actor_id="local-reviewer", backup_id=second_id
+    )
+    service.restore_drill(
+        root / f"{first_id}.pentai-backup",
+        root / "restore-drills" / first_id,
+        actor_id="local-reviewer",
+    )
+    service.restore_drill(
+        root / f"{second_id}.pentai-backup",
+        root / "restore-drills" / second_id,
+        actor_id="local-reviewer",
+    )
+
+    def crash() -> None:
+        raise RuntimeError("synthetic crash after unlink")
+
+    interrupted = BackupService(
+        database,
+        service.evidence_store,
+        b"k" * 32,
+        source_store=service.source_store,
+        purge_after_unlink_handler=crash,
+    )
+    with pytest.raises(RuntimeError, match="synthetic crash"):
+        interrupted.purge(
+            root,
+            first_id,
+            expected_sha256=str(first["encrypted_backup_sha256"]),
+            reason="Synthetic interrupted rotation",
+            confirm_permanent_deletion=True,
+            actor_id="local-reviewer",
+        )
+    assert not (root / f"{first_id}.pentai-backup").exists()
+
+    recovered = service.purge(
+        root,
+        first_id,
+        expected_sha256=str(first["encrypted_backup_sha256"]),
+        reason="Synthetic interrupted rotation",
+        confirm_permanent_deletion=True,
+        actor_id="local-reviewer",
+    )
+    replay = service.purge(
+        root,
+        first_id,
+        expected_sha256=str(first["encrypted_backup_sha256"]),
+        reason="Synthetic interrupted rotation",
+        confirm_permanent_deletion=True,
+        actor_id="local-reviewer",
+    )
+    assert recovered["disposition"] == "already_absent"
+    assert replay == recovered

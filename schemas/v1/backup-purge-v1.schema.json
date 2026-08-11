@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/backup-purge-v1.schema.json",
+  "title": "PentAI BackupPurge v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "backup_id", "expected_sha256", "disposition", "forensic_erase_guaranteed", "live_data_replaced"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "backup_id": {"type": "string", "format": "uuid"},
+    "expected_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "disposition": {"enum": ["unlinked", "already_absent"]},
+    "forensic_erase_guaranteed": {"const": false},
+    "live_data_replaced": {"const": false}
+  }
+}

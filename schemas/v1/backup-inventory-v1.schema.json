@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/backup-inventory-v1.schema.json",
+  "title": "PentAI BackupInventory v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "backup_count", "items", "live_data_replaced"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "backup_count": {"type": "integer", "minimum": 0, "maximum": 1000},
+    "items": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/item"}},
+    "live_data_replaced": {"const": false}
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backup_id", "schema_version", "created_at", "encrypted_backup_sha256", "size_bytes", "evidence_blob_count", "source_blob_count", "deletion_tombstone_count", "restore_verified", "contains_currently_deleted_evidence", "forensic_erase_guaranteed"],
+      "properties": {
+        "backup_id": {"type": "string", "format": "uuid"},
+        "schema_version": {"enum": ["1.0.0", "2.0.0"]},
+        "created_at": {"type": "string", "format": "date-time"},
+        "encrypted_backup_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "size_bytes": {"type": "integer", "minimum": 1, "maximum": 268435456},
+        "evidence_blob_count": {"type": "integer", "minimum": 0},
+        "source_blob_count": {"type": "integer", "minimum": 0},
+        "deletion_tombstone_count": {"type": "integer", "minimum": 0},
+        "restore_verified": {"type": "boolean"},
+        "contains_currently_deleted_evidence": {"type": "boolean"},
+        "forensic_erase_guaranteed": {"const": false}
+      }
+    }
+  }
+}

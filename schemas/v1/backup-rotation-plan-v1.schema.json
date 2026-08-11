@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/backup-rotation-plan-v1.schema.json",
+  "title": "PentAI BackupRotationPlan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "retain_count", "protected_backup_ids", "purge_candidates", "requires_human_confirmation", "automatic_deletion_performed"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "retain_count": {"type": "integer", "minimum": 2, "maximum": 20},
+    "protected_backup_ids": {"type": "array", "uniqueItems": true, "maxItems": 1000, "items": {"type": "string", "format": "uuid"}},
+    "purge_candidates": {"type": "array", "uniqueItems": true, "maxItems": 1000, "items": {"type": "string", "format": "uuid"}},
+    "requires_human_confirmation": {"const": true},
+    "automatic_deletion_performed": {"const": false}
+  }
+}

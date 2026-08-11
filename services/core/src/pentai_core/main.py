@@ -229,6 +229,16 @@ class BackupRestoreDrillRequest(StrictRequest):
     confirm_restore_drill: bool
 
 
+class BackupRotationRequest(StrictRequest):
+    retain_count: int = Field(ge=2, le=20)
+
+
+class BackupPurgeRequest(StrictRequest):
+    expected_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reason: str = Field(min_length=1, max_length=500)
+    confirm_permanent_deletion: bool
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -777,6 +787,42 @@ def create_app(
         destination = runtime.backup_store_path / f"{backup_id}.pentai-backup"
         return backup_call(
             lambda: backups.create(destination, actor_id=actor.principal_id, backup_id=backup_id)
+        )
+
+    @app.get("/api/v1/backups/inventory")
+    def backup_inventory(request: Request) -> dict[str, object]:
+        actor = principal(request)
+        return backup_call(
+            lambda: backups.inventory(runtime.backup_store_path, actor_id=actor.principal_id)
+        )
+
+    @app.post("/api/v1/backups/rotation-plan")
+    def backup_rotation_plan(
+        requested: BackupRotationRequest, request: Request
+    ) -> dict[str, object]:
+        actor = principal(request)
+        return backup_call(
+            lambda: backups.rotation_plan(
+                runtime.backup_store_path,
+                retain_count=requested.retain_count,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.post("/api/v1/backups/{backup_id}/purge")
+    def purge_backup(
+        backup_id: str, requested: BackupPurgeRequest, request: Request
+    ) -> dict[str, object]:
+        actor = principal(request)
+        return backup_call(
+            lambda: backups.purge(
+                runtime.backup_store_path,
+                backup_id,
+                expected_sha256=requested.expected_sha256,
+                reason=requested.reason,
+                confirm_permanent_deletion=requested.confirm_permanent_deletion,
+                actor_id=actor.principal_id,
+            )
         )
 
     @app.post("/api/v1/backups/{backup_id}/restore-drill")

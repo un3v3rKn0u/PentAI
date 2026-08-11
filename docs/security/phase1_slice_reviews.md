@@ -1571,3 +1571,38 @@ disk-full/power-loss drills remain open. V1 archives do not contain source blobs
 and intake sources, but complete-device-loss recovery and operational backup lifecycle
 are not yet proven. This review is self-authored and non-independent and cannot satisfy
 an external independent-review requirement.
+
+## 2026-08-11 — Supervised backup inventory, rotation, and purge
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Authenticated bounded inventory, server-controlled paths,
+filename/manifest identity, symlink and type rejection, live tombstone reporting,
+deterministic retention planning, verified-copy protection, exact purge confirmation,
+pre-unlink audit ordering, on-disk digest recheck, directory synchronization,
+interrupted-purge replay, erasure claims, compatibility, and rollback.
+
+**Evidence examined:** Tests authenticate multi-backup inventory, distinguish verified
+archives, protect the newest configured set and newest verified copy, prove that
+rotation performs no deletion, reject absent confirmation and digest mismatch, protect
+the last verified archive, complete an authorized unlink, and recover a synthetic crash
+after unlink as an idempotent `already_absent` result. All earlier backup tamper,
+source/evidence integrity, v1 compatibility, and tombstone tests remain required.
+
+**Findings:** Neither AI nor a caller can choose arbitrary paths or cause automatic
+rotation. A purge is bound to a canonical ID, authenticated envelope digest, reason,
+human confirmation, and durable audit request. The last verified recovery point is
+preserved, and an exact retry can only advance an interrupted purge to completion.
+
+**Limitations and deferred work:** Inventory covers only the configured local backup
+directory. Off-device copies, automatic scheduling, storage quotas, production restore,
+full-device-loss tombstones, and disk-full/power-loss drills remain open. Filesystem
+unlink cannot prove SSD or copy-on-write forensic erasure.
+
+**Residual risk accepted:** Local rotation is supervised and auditable but does not
+control copies outside PentAI's local directory. This review is self-authored and
+non-independent and cannot satisfy an external independent-review requirement.

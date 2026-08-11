@@ -379,8 +379,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   preserve shared blobs and immutable tombstones. Authenticated encrypted snapshots now
   exclude fully tombstoned blobs, and isolated restore drills reject older snapshots
   that conflict with live tombstones. General sandboxed file/image previews, backup
-  inventory/purge, full-device-loss tombstone custody, and per-object-key cryptographic
-  erasure remain required before this combined item is complete.
+  inventory and bounded rotation planning now authenticate local archives, and exact
+  human-confirmed purge is crash-recoverable while protecting the last verified copy.
+  Off-device-copy purge, full-device-loss tombstone custody, and per-object-key
+  cryptographic erasure remain required before this combined item is complete.
 - [ ] Implement finding lifecycle, CVSS/CWE, affected assets, confidence, and validation status.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
 - [ ] Generate Markdown, HTML, JSON, and PDF report drafts.
