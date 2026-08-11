@@ -1537,3 +1537,37 @@ disk-full drills remain required for the Phase 1 exit gate.
 snapshots on the current device; it is not yet a complete disaster-recovery mechanism.
 This review is self-authored and non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-11 — Complete source-provenance backup integrity
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** V2 archive/report versioning, source metadata-to-blob binding,
+authenticated source reads, exact member inventory, isolated source-store restoration,
+database/source reconciliation, v1 restore compatibility, API composition, failure
+cleanup, compatibility, rollback, and privacy.
+
+**Evidence examined:** Tests cover v2 source creation and isolated restoration, exact
+restored plaintext digest and database provenance, missing-source denial before archive
+commit, v1 database/evidence restore compatibility with truthful zero-source reporting,
+and all prior tamper, wrong-key, tombstone, shared-digest, missing-evidence, and cleanup
+proofs. Full contract, lint, type, and Python suites are required before publication.
+
+**Findings:** New backups cannot silently omit a referenced source. Metadata must be
+available, use the supported encryption version, and name the exact content digest;
+the store must authenticate that digest before the encrypted outer archive is written.
+Restore requires the v2 manifest, database inventory, archive paths, decrypted source
+content, and digest to agree. V1 remains a deliberately narrower restore-only format.
+
+**Limitations and deferred work:** Live replacement, automatic rotation, backup
+inventory/purge, off-device custody, full-device-loss tombstone preservation, and
+disk-full/power-loss drills remain open. V1 archives do not contain source blobs.
+
+**Residual risk accepted:** Backup completeness now covers local database, evidence,
+and intake sources, but complete-device-loss recovery and operational backup lifecycle
+are not yet proven. This review is self-authored and non-independent and cannot satisfy
+an external independent-review requirement.

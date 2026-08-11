@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sqlite3
+import tempfile
 from datetime import timedelta
 from pathlib import Path
 
+import pentai_core.backup as backup_module
 import pytest
+from pentai_core.authorization import AuthorizationService
 from pentai_core.backup import BackupError, BackupService
+from pentai_core.source_store import EncryptedSourceStore
 from pentai_policy.document import parse_time
 from test_evidence_originals import capture, evidence_fixture
 
@@ -14,7 +19,8 @@ from test_evidence_originals import capture, evidence_fixture
 def service_fixture(tmp_path: Path) -> tuple[BackupService, Path, object, dict[str, object]]:
     database, workflow_id, evidence, store = evidence_fixture(tmp_path)
     original = capture(evidence, workflow_id)
-    service = BackupService(database, store, b"k" * 32)
+    source_store = EncryptedSourceStore(tmp_path / "source-blobs", b"k" * 32)
+    service = BackupService(database, store, b"k" * 32, source_store=source_store)
     return service, database, evidence, original
 
 
@@ -58,6 +64,77 @@ def test_encrypted_backup_restores_to_isolated_verified_drill(tmp_path: Path) ->
     ]
 
 
+def test_v2_backup_authenticates_and_restores_source_provenance(tmp_path: Path) -> None:
+    service, database, _, _ = service_fixture(tmp_path)
+    assert service.source_store is not None
+    with sqlite3.connect(database) as connection:
+        program_id = str(connection.execute("SELECT id FROM programs").fetchone()[0])
+    source = AuthorizationService(database, source_store=service.source_store).import_source(
+        program_id,
+        authority="contract",
+        reference="synthetic://backup-source",
+        content="Synthetic source provenance for an owned local fixture.",
+        actor_id="local-reviewer",
+    )
+    backup = tmp_path / "source-complete.pentai-backup"
+
+    created = service.create(backup, actor_id="local-reviewer")
+    drill = tmp_path / "source-drill"
+    verified = service.restore_drill(backup, drill, actor_id="local-reviewer")
+
+    assert created["schema_version"] == "2.0.0"
+    assert created["source_blob_count"] == 1
+    assert verified["source_blob_count"] == 1
+    restored_store = EncryptedSourceStore(drill / "source-blobs", b"k" * 32)
+    assert restored_store.load(str(source["content_hash"])) == (
+        b"Synthetic source provenance for an owned local fixture."
+    )
+    with sqlite3.connect(drill / "pentai.db") as connection:
+        assert connection.execute(
+            "SELECT content_hash FROM source_documents WHERE id = ?", (source["id"],)
+        ).fetchone() == (source["content_hash"],)
+
+
+def test_merged_v1_database_and_evidence_backup_remains_restore_compatible(
+    tmp_path: Path,
+) -> None:
+    service, database, _, _ = service_fixture(tmp_path)
+    assert service.source_store is not None
+    with sqlite3.connect(database) as connection:
+        program_id = str(connection.execute("SELECT id FROM programs").fetchone()[0])
+    AuthorizationService(database, source_store=service.source_store).import_source(
+        program_id,
+        authority="contract",
+        reference="synthetic://legacy-v1-omitted-source",
+        content="Synthetic source intentionally absent from the legacy v1 archive.",
+    )
+    with tempfile.TemporaryDirectory() as temporary:
+        snapshot = Path(temporary) / "pentai.db"
+        service._snapshot_database(snapshot)
+        manifest, members = service._build_archive(
+            snapshot, actor_id="local-reviewer", backup_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        )
+    manifest["schema_version"] = "1.0.0"
+    del manifest["source_sha256"]
+    members = {
+        name: content for name, content in members.items() if not name.startswith("sources/")
+    }
+    archive = service._archive(manifest, members)
+    nonce = os.urandom(12)
+    assert service._cipher is not None
+    envelope = (
+        backup_module._MAGIC + nonce + service._cipher.encrypt(nonce, archive, backup_module._MAGIC)
+    )
+    backup = tmp_path / "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.pentai-backup"
+    backup.write_bytes(envelope)
+
+    restored = service.restore_drill(backup, tmp_path / "v1-drill", actor_id="local-reviewer")
+
+    assert restored["schema_version"] == "2.0.0"
+    assert restored["source_blob_count"] == 0
+    assert restored["status"] == "verified"
+
+
 def test_tampering_wrong_key_and_conflicting_destination_deny_without_partial_restore(
     tmp_path: Path,
 ) -> None:
@@ -73,7 +150,12 @@ def test_tampering_wrong_key_and_conflicting_destination_deny_without_partial_re
         service.restore_drill(tampered, tmp_path / "tampered-drill")
     assert not (tmp_path / "tampered-drill").exists()
 
-    wrong_key = BackupService(database, service.evidence_store, b"x" * 32)
+    wrong_key = BackupService(
+        database,
+        service.evidence_store,
+        b"x" * 32,
+        source_store=EncryptedSourceStore(tmp_path / "wrong-source-blobs", b"x" * 32),
+    )
     with pytest.raises(BackupError, match="authentication failed"):
         wrong_key.restore_drill(backup, tmp_path / "wrong-key-drill")
     assert not (tmp_path / "wrong-key-drill").exists()
@@ -92,6 +174,24 @@ def test_missing_or_corrupt_evidence_blocks_backup_creation(tmp_path: Path) -> N
     with pytest.raises(BackupError, match="failed closed"):
         service.create(tmp_path / "missing.pentai-backup", actor_id="local-reviewer")
     assert not (tmp_path / "missing.pentai-backup").exists()
+
+
+def test_missing_source_blob_blocks_backup_creation(tmp_path: Path) -> None:
+    service, database, _, _ = service_fixture(tmp_path)
+    assert service.source_store is not None
+    with sqlite3.connect(database) as connection:
+        program_id = str(connection.execute("SELECT id FROM programs").fetchone()[0])
+    source = AuthorizationService(database, source_store=service.source_store).import_source(
+        program_id,
+        authority="contract",
+        reference="synthetic://missing-source",
+        content="Synthetic source scheduled for a missing-blob test.",
+    )
+    service.source_store._path(str(source["content_hash"])).unlink()
+
+    with pytest.raises(BackupError, match="source backup failed closed"):
+        service.create(tmp_path / "missing-source.pentai-backup", actor_id="local-reviewer")
+    assert not (tmp_path / "missing-source.pentai-backup").exists()
 
 
 def test_current_deletion_tombstone_prevents_stale_backup_restore(tmp_path: Path) -> None:

@@ -25,7 +25,9 @@ This contract does not authorize live replacement, automatic recovery, or automa
 resumption of target-facing activity. Loss of the live database and its deletion
 tombstones at the same time can make an older backup's later deletion state
 unverifiable. Off-device backup custody, rotation, full-device-loss deletion journals,
-source-blob inclusion, and production restore remain deferred.
+source-blob inclusion, and production restore remain deferred. Source-blob coverage is
+provided by the separately versioned v2 contract; this v1 contract remains frozen for
+restore compatibility.
 
 Rollback removes the new API/service code. Existing `.pentai-backup` files remain
 opaque encrypted artifacts and must be retained or deleted according to operator

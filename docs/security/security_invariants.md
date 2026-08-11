@@ -363,6 +363,12 @@ replaces live data. Current deletion tombstones take precedence over older backu
 content, including shared-digest last-reference semantics. Missing keys, inconsistent
 members, corruption, path conflicts, or stale deletion state deny the operation and
 remove the incomplete drill directory.
+V2 backups additionally require every source-provenance row to bind an available,
+supported encrypted blob reference to its exact content hash. Creation authenticates
+each source blob; restore reconstructs a separate source store, re-authenticates every
+blob, and compares the complete source digest inventory with the restored database.
+The narrower authenticated v1 format remains restore-only compatible and is reported
+with zero source blobs rather than being represented as a complete provenance backup.
 
 ## 10. Reliability Invariants
 

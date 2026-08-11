@@ -21,6 +21,7 @@ from pentai_policy.document import contract_issues
 from pentai_core.audit import append_audit_event
 from pentai_core.database import transaction
 from pentai_core.evidence_store import EncryptedEvidenceStore, EvidenceStoreError
+from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
 
 _MAGIC = b"PENTAI-ENCRYPTED-BACKUP-V1\x00"
 _NONCE_SIZE = 12
@@ -43,9 +44,12 @@ class BackupService:
         database_path: Path,
         evidence_store: EncryptedEvidenceStore | None,
         master_key: bytes | None,
+        *,
+        source_store: EncryptedSourceStore | None = None,
     ) -> None:
         self.database_path = database_path
         self.evidence_store = evidence_store
+        self.source_store = source_store
         self._master_key = master_key
         if master_key is None:
             self._cipher = None
@@ -155,7 +159,7 @@ class BackupService:
         return self._report(manifest, envelope, destination, status="verified")
 
     def _available(self, actor_id: str) -> None:
-        if self._cipher is None or self.evidence_store is None:
+        if self._cipher is None or self.evidence_store is None or self.source_store is None:
             raise BackupError("BACKUP_KEY_UNAVAILABLE", "backup encryption is unavailable")
         if not actor_id or len(actor_id) > 128:
             raise BackupError("BACKUP_ACTOR_INVALID", "backup actor is invalid")
@@ -216,6 +220,7 @@ class BackupService:
                 str(row[0]) for row in connection.execute("SELECT sha256 FROM evidence_deletions")
             }
             active = self._active_digests(connection)
+            sources = self._source_digests(connection)
         finally:
             connection.close()
         deleted -= active
@@ -229,9 +234,16 @@ class BackupService:
                 raise BackupError(
                     "BACKUP_EVIDENCE_INVALID", "evidence backup failed closed"
                 ) from exc
+        assert self.source_store is not None
+        for digest in sorted(sources):
+            try:
+                self.source_store.load(digest)
+                members[f"sources/{digest}.blob"] = self.source_store._path(digest).read_bytes()
+            except (SourceStoreError, OSError) as exc:
+                raise BackupError("BACKUP_SOURCE_INVALID", "source backup failed closed") from exc
         created_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         manifest: dict[str, object] = {
-            "schema_version": "1.0.0",
+            "schema_version": "2.0.0",
             "backup_id": backup_id,
             "created_at": created_at,
             "created_by": actor_id,
@@ -240,6 +252,7 @@ class BackupService:
             "migration_versions": migrations,
             "evidence_sha256": sorted(active),
             "deletion_tombstones": sorted(deleted),
+            "source_sha256": sorted(sources),
         }
         self._validate_manifest(manifest)
         return manifest, members
@@ -270,9 +283,12 @@ class BackupService:
                 manifest = cast(dict[str, object], json.loads(archive.read(_MANIFEST_MEMBER)))
                 self._validate_manifest(manifest)
                 evidence = set(cast(list[str], manifest["evidence_sha256"]))
-                expected = {_MANIFEST_MEMBER, _DATABASE_MEMBER} | {
-                    f"evidence/{digest}.blob" for digest in evidence
-                }
+                sources = set(cast(list[str], manifest.get("source_sha256", [])))
+                expected = (
+                    {_MANIFEST_MEMBER, _DATABASE_MEMBER}
+                    | {f"evidence/{digest}.blob" for digest in evidence}
+                    | {f"sources/{digest}.blob" for digest in sources}
+                )
                 if set(names) != expected:
                     raise BackupError(
                         "BACKUP_MEMBERS_INVALID", "backup members do not match manifest"
@@ -292,12 +308,27 @@ class BackupService:
                     path = evidence_root / digest[:2] / f"{digest}.blob"
                     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                     path.write_bytes(archive.read(f"evidence/{digest}.blob"))
+                source_root = destination / "source-blobs"
+                for digest in sorted(sources):
+                    path = source_root / digest[:2] / f"{digest}.blob"
+                    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    path.write_bytes(archive.read(f"sources/{digest}.blob"))
             self._verify_restored_database(database_path, manifest)
             assert self._master_key is not None
             restored_store = EncryptedEvidenceStore(evidence_root, self._master_key)
             for digest in cast(list[str], manifest["evidence_sha256"]):
                 restored_store.load(digest)
-        except (OSError, zipfile.BadZipFile, json.JSONDecodeError, EvidenceStoreError) as exc:
+            if manifest["schema_version"] == "2.0.0":
+                restored_sources = EncryptedSourceStore(source_root, self._master_key)
+                for digest in cast(list[str], manifest["source_sha256"]):
+                    restored_sources.load(digest)
+        except (
+            OSError,
+            zipfile.BadZipFile,
+            json.JSONDecodeError,
+            EvidenceStoreError,
+            SourceStoreError,
+        ) as exc:
             if isinstance(exc, BackupError):
                 raise
             raise BackupError(
@@ -323,6 +354,11 @@ class BackupService:
                 str(item[0]) for item in connection.execute("SELECT sha256 FROM evidence_deletions")
             }
             tombstones = sorted(deleted - set(active))
+            sources = (
+                sorted(self._source_digests(connection))
+                if manifest["schema_version"] == "2.0.0"
+                else []
+            )
         except sqlite3.Error as exc:
             raise BackupError("BACKUP_DATABASE_INVALID", "restored database is invalid") from exc
         finally:
@@ -334,6 +370,7 @@ class BackupService:
             or (str(audit[0]) if audit is not None else None) != manifest["audit_head_hash"]
             or active != manifest["evidence_sha256"]
             or tombstones != manifest["deletion_tombstones"]
+            or (manifest["schema_version"] == "2.0.0" and sources != manifest["source_sha256"])
         ):
             raise BackupError("BACKUP_DATABASE_INVALID", "restored database verification failed")
         from pentai_core.authorization import AuthorizationService
@@ -368,13 +405,20 @@ class BackupService:
             "evidence_sha256",
             "deletion_tombstones",
         }
-        if not isinstance(manifest, dict) or set(manifest) != required:
+        if not isinstance(manifest, dict):
+            raise BackupError("BACKUP_MANIFEST_INVALID", "backup manifest is invalid")
+        version = manifest.get("schema_version")
+        if version == "2.0.0":
+            required.add("source_sha256")
+        elif version != "1.0.0":
+            raise BackupError("BACKUP_MANIFEST_INVALID", "backup manifest is invalid")
+        if set(manifest) != required:
             raise BackupError("BACKUP_MANIFEST_INVALID", "backup manifest is invalid")
         digests = manifest.get("evidence_sha256")
         tombstones = manifest.get("deletion_tombstones")
+        sources = manifest.get("source_sha256", [])
         if (
-            manifest.get("schema_version") != "1.0.0"
-            or not _uuid(manifest.get("backup_id"))
+            not _uuid(manifest.get("backup_id"))
             or not isinstance(manifest.get("created_at"), str)
             or not isinstance(manifest.get("created_by"), str)
             or not 1 <= len(cast(str, manifest.get("created_by"))) <= 128
@@ -389,9 +433,11 @@ class BackupService:
             )
             or not isinstance(digests, list)
             or not isinstance(tombstones, list)
+            or not isinstance(sources, list)
             or digests != sorted(set(digests))
             or tombstones != sorted(set(tombstones))
-            or any(not _digest(value) for value in [*digests, *tombstones])
+            or sources != sorted(set(sources))
+            or any(not _digest(value) for value in [*digests, *tombstones, *sources])
             or set(digests) & set(tombstones)
         ):
             raise BackupError("BACKUP_MANIFEST_INVALID", "backup manifest is invalid")
@@ -414,6 +460,25 @@ class BackupService:
                    )"""
             )
         }
+
+    @staticmethod
+    def _source_digests(connection: sqlite3.Connection) -> set[str]:
+        rows = connection.execute(
+            """SELECT content_hash, encrypted_blob_ref, blob_status, encryption_version
+               FROM source_documents"""
+        ).fetchall()
+        digests: set[str] = set()
+        for row in rows:
+            digest = str(row[0])
+            if (
+                not _digest(digest)
+                or row[1] != f"encrypted-source:v1:{digest}"
+                or row[2] != "available"
+                or row[3] != "aes-256-gcm-v1"
+            ):
+                raise BackupError("BACKUP_SOURCE_INVALID", "source metadata is invalid")
+            digests.add(digest)
+        return digests
 
     @staticmethod
     def _atomic_write(destination: Path, content: bytes) -> None:
@@ -460,19 +525,20 @@ class BackupService:
         self, manifest: dict[str, object], envelope: bytes, destination: Path, *, status: str
     ) -> dict[str, object]:
         report = {
-            "schema_version": "1.0.0",
+            "schema_version": "2.0.0",
             "backup_id": manifest["backup_id"],
             "status": status,
             "created_at": manifest["created_at"],
             "database_sha256": manifest["database_sha256"],
             "audit_head_hash": manifest["audit_head_hash"],
             "evidence_blob_count": len(cast(list[object], manifest["evidence_sha256"])),
+            "source_blob_count": len(cast(list[object], manifest.get("source_sha256", []))),
             "deletion_tombstone_count": len(cast(list[object], manifest["deletion_tombstones"])),
             "encrypted_backup_sha256": hashlib.sha256(envelope).hexdigest(),
             "destination": destination.name,
             "live_data_replaced": False,
         }
-        if contract_issues(report, "backup-restore-report-v1.schema.json"):
+        if contract_issues(report, "backup-restore-report-v2.schema.json"):
             raise BackupError("BACKUP_CONTRACT_INVALID", "backup report contract is invalid")
         return report
 
