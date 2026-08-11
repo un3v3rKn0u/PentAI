@@ -2345,6 +2345,23 @@ class AuthorizationService:
             if contract_issues(document, "gateway-request-start-v1.schema.json"):
                 raise DomainError("GATEWAY_REQUEST_DENIED", "generated request start is invalid")
             self._audit(
+                connection,
+                action="action_grant.consumed",
+                subject_type="action_grant",
+                subject_id=row["grant_id"],
+                actor_type="service",
+                actor_id=row["audience"],
+                data={
+                    "intent_id": grant["intent_id"],
+                    "decision_id": grant["decision_id"],
+                    "policy_hash": grant["policy_hash"],
+                    "grant_hash": row["grant_hash"],
+                    "session_id": session_id,
+                    "start_id": start_id,
+                },
+                occurred_at=committed_at,
+            )
+            self._audit(
                 connection, action="gateway.request_start_committed",
                 subject_type="gateway_session", subject_id=session_id,
                 actor_type="service", actor_id="gateway-control",

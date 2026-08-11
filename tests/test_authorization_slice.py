@@ -949,9 +949,24 @@ class AuthorizationSliceTests(unittest.TestCase):
                 """,
                 (session["reservation_id"],),
             ).fetchone()
+            consumption = connection.execute(
+                """
+                SELECT actor_id, subject_id, data_json
+                FROM audit_events WHERE action = 'action_grant.consumed'
+                ORDER BY sequence DESC LIMIT 1
+                """
+            ).fetchone()
         self.assertEqual(tuple(account), (0, 1, 1))
         self.assertEqual(statuses[0:2], ("committed", "committed"))
         self.assertIsNotNone(statuses[2])
+        self.assertEqual(consumption[0:2], ("pentai-egress-gateway", grant["grant_id"]))
+        consumption_data = json.loads(consumption[2])
+        self.assertEqual(consumption_data["start_id"], started["start_id"])
+        self.assertEqual(consumption_data["session_id"], session["session_id"])
+        self.assertEqual(consumption_data["intent_id"], intent["intent_id"])
+        self.assertEqual(consumption_data["decision_id"], grant["decision_id"])
+        self.assertEqual(consumption_data["policy_hash"], grant["policy_hash"])
+        self.assertEqual(consumption_data["grant_hash"], content_hash(grant))
         with self.assertRaises(DomainError) as replayed:
             self.service.commit_gateway_request_start(session["session_id"])
         self.assertEqual(replayed.exception.code, "GATEWAY_REQUEST_REPLAYED")
@@ -1067,8 +1082,12 @@ class AuthorizationSliceTests(unittest.TestCase):
                 "SELECT status FROM budget_reservations WHERE reservation_id = ?",
                 (session["reservation_id"],),
             ).fetchone()[0]
+            consumed_events = connection.execute(
+                "SELECT COUNT(*) FROM audit_events WHERE action = 'action_grant.consumed'"
+            ).fetchone()[0]
         self.assertIsNone(grant_state)
         self.assertEqual(reservation, "reserved")
+        self.assertEqual(consumed_events, 0)
 
     def test_gateway_request_start_concurrency_and_recovery_are_fail_closed(self) -> None:
         intent, grant, attestation = self.network_authority()

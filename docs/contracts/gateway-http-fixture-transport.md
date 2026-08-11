@@ -36,13 +36,19 @@ the authorized limit plus one proof byte.
 ## Hosted containment proof
 
 The Linux rootless Podman workflow creates a unique internal network on the TEST-NET
-subnet, launches the fixed fixture server at the fixed address, and verifies both a
-successful 17-byte response and an 8-byte overflow stop. The same run continues to
+subnet and constructs two complete supervised authorization chains through source
+provenance, manifest validation, policy approval/activation, intent, decision, grant,
+network attestation, controlled fixture DNS, budget/rate commitment, runtime launch,
+one-use execution claim, result finalization, audit verification, and cleanup. It
+launches the fixed fixture server at the fixed address and verifies both a successful
+17-byte response and an 8-byte overflow stop. The same run continues to
 prove direct egress, external DNS, IPv6, runtime sockets, host mounts, and host
 namespaces are blocked and that resource limits and lifecycle recovery remain intact.
 
-This proof becomes evidence only when the hosted workflow passes. Local unit tests
-mock the OCI boundary and do not claim live containment.
+The harness fails unless every expected audit action exists, the result links to the
+committed start, and the full hash chain verifies. This proof becomes evidence only
+when the hosted workflow passes. Local unit tests mock the OCI boundary and do not
+claim live containment.
 
 ## Compatibility and rollback
 
