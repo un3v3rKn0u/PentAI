@@ -50,6 +50,63 @@ def activate(
         return service.activate_network_profile(str(proposal["proposal_id"]), **values)
 
 
+def insert_active_policy(
+    database: Path,
+    profile: dict[str, Any] | None,
+    *,
+    engagement_id: str = "assessment-a",
+    network_changes: dict[str, Any] | None = None,
+) -> None:
+    network = {
+        "route_profile_id": profile["route_profile_id"] if profile else "route-missing",
+        "registered_source_ipv4": profile["registered_source_ipv4"] if profile else ["8.8.8.8"],
+        "registered_source_ipv6": profile["registered_source_ipv6"] if profile else [],
+        "ipv6_mode": profile["ipv6_mode"] if profile else "disabled",
+        "dns_mode": profile["resolver_mode"] if profile else "tunnel_resolver",
+        "pause_on_identity_change": True,
+    }
+    network.update(network_changes or {})
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO programs(id, name, status) VALUES ('program-a', 'fixture', 'active')"
+        )
+        connection.execute(
+            """
+            INSERT INTO engagements(
+                id, program_id, status, effective_from, expires_at, timezone
+            ) VALUES (?, 'program-a', 'active', ?, ?, 'UTC')
+            """,
+            (engagement_id, NOW.isoformat(), (NOW + timedelta(days=1)).isoformat()),
+        )
+        connection.execute(
+            """
+            INSERT INTO manifest_versions(
+                id, engagement_id, schema_version, document_json, content_hash,
+                validation_status
+            ) VALUES ('manifest-a', ?, '2.0.0', '{}', ?, 'valid')
+            """,
+            (engagement_id, "b" * 64),
+        )
+        connection.execute(
+            """
+            INSERT INTO policy_bundles(
+                id, engagement_id, manifest_version_id, schema_version,
+                compiler_version, policy_json, content_hash, activated_at
+            ) VALUES ('policy-a', ?, 'manifest-a', '1.0.0', 'fixture', ?, ?, ?)
+            """,
+            (
+                engagement_id,
+                json.dumps({"network_constraints": network}),
+                "a" * 64,
+                NOW.isoformat(),
+            ),
+        )
+        connection.execute(
+            "UPDATE engagements SET active_policy_id = 'policy-a' WHERE id = ?",
+            (engagement_id,),
+        )
+
+
 def test_confirmation_persists_one_non_executing_profile_and_audits_without_source_ip(
     tmp_path: Path,
 ) -> None:
@@ -202,3 +259,34 @@ def test_pending_proposal_capacity_is_bounded(tmp_path: Path) -> None:
         with pytest.raises(DomainError) as capacity:
             service.save_network_profile_proposal(discovery.discover())
     assert capacity.value.code == "NETWORK_PROFILE_PROPOSAL_CAPACITY"
+
+
+def test_active_policy_resolves_only_an_exact_confirmed_profile(tmp_path: Path) -> None:
+    database = tmp_path / "pentai.db"
+    service, proposal = setup_service(database)
+    profile = activate(service, proposal)
+    insert_active_policy(database, profile)
+
+    assert service.network_profile_for_assessment("assessment-a") == profile
+
+
+def test_policy_profile_mismatch_and_missing_binding_default_deny(tmp_path: Path) -> None:
+    mismatch_database = tmp_path / "mismatch.db"
+    mismatch_service, proposal = setup_service(mismatch_database)
+    profile = activate(mismatch_service, proposal)
+    insert_active_policy(
+        mismatch_database,
+        profile,
+        network_changes={"route_profile_id": "route-000000000000000000000000"},
+    )
+    with pytest.raises(DomainError) as mismatch:
+        mismatch_service.network_profile_for_assessment("assessment-a")
+    assert mismatch.value.code == "NETWORK_PROFILE_POLICY_MISMATCH"
+
+    missing_database = tmp_path / "missing.db"
+    migrate(missing_database)
+    missing_service = AuthorizationService(missing_database)
+    insert_active_policy(missing_database, None)
+    with pytest.raises(DomainError) as missing:
+        missing_service.network_profile_for_assessment("assessment-a")
+    assert missing.value.code == "NETWORK_PROFILE_BINDING_MISSING"

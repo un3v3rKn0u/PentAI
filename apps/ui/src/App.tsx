@@ -96,7 +96,22 @@ export function parseSourceAddresses(value: string) {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-function buildManifest(program: Json, engagement: Json, source: Json) {
+export function networkManifestSettings(networkProfile?: Json) {
+  return {
+    route_mode: "local_gateway",
+    route_profile_id: networkProfile?.route_profile_id ?? "network-profile-required",
+    registered_source_ipv4: networkProfile?.registered_source_ipv4 ?? [],
+    registered_source_ipv6: networkProfile?.registered_source_ipv6 ?? [],
+    ipv6_mode: networkProfile?.ipv6_mode ?? "disabled",
+    dns_mode: networkProfile?.resolver_mode ?? "tunnel_resolver",
+    ...(networkProfile?.resolver_mode === "approved_resolver"
+      ? { approved_resolvers: networkProfile.resolver_addresses }
+      : {}),
+    pause_on_identity_change: true
+  };
+}
+
+function buildManifest(program: Json, engagement: Json, source: Json, networkProfile?: Json) {
   return {
     schema_version: "2.0.0",
     engagement: {
@@ -153,15 +168,7 @@ function buildManifest(program: Json, engagement: Json, source: Json) {
       maximum_response_bytes: 100000,
       stop_conditions: ["authorization changes"]
     },
-    network: {
-      route_mode: "local_gateway",
-      route_profile_id: "local-simulator-only",
-      registered_source_ipv4: [],
-      registered_source_ipv6: [],
-      ipv6_mode: "disabled",
-      dns_mode: "tunnel_resolver",
-      pause_on_identity_change: true
-    },
+    network: networkManifestSettings(networkProfile),
     data_handling: {
       real_user_data: "avoid_and_stop",
       retention_days: 7,
@@ -185,7 +192,9 @@ function buildManifest(program: Json, engagement: Json, source: Json) {
       technical_controls_reviewer: "local-user",
       status: "pending"
     },
-    unresolved_questions: []
+    unresolved_questions: networkProfile
+      ? []
+      : ["Confirm an active network profile before policy activation."]
   };
 }
 
@@ -375,7 +384,7 @@ export function App() {
     setNetworkSetupState("loading");
     setNetworkSetupError("");
     try {
-      await request("/network-profiles/activate", {
+      const activated = await request("/network-profiles/activate", {
         proposal_id: networkProposal.proposal_id,
         confirm_route: routeConfirmed,
         resolver_mode: resolverMode,
@@ -385,6 +394,16 @@ export function App() {
       });
       await refreshNetworkProfiles();
       setNetworkProposal(null);
+      if (program && engagement && source) {
+        setManifestText(JSON.stringify(
+          buildManifest(program, engagement, source, activated),
+          null,
+          2
+        ));
+        setManifest(null);
+        setPolicy(null);
+        setState("draft");
+      }
       await refreshAudit();
     } catch (reason) {
       setNetworkSetupError(reason instanceof Error ? reason.message : "REQUEST_FAILED");
@@ -493,7 +512,12 @@ export function App() {
       setEngagement(createdEngagement);
       setSource(imported);
       await refreshSources(program.id);
-      setManifestText(JSON.stringify(buildManifest(program, createdEngagement, imported), null, 2));
+      const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
+      setManifestText(JSON.stringify(
+        buildManifest(program, createdEngagement, imported, activeNetworkProfile),
+        null,
+        2
+      ));
       setState("draft");
     } catch (reason) {
       const code = reason instanceof Error ? reason.message : "REQUEST_FAILED";

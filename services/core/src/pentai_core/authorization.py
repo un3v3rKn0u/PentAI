@@ -2868,6 +2868,50 @@ class AuthorizationService:
             ).fetchall()
         return [_network_profile_from_row(row) for row in rows]
 
+    def network_profile_for_assessment(self, engagement_id: str) -> dict[str, Any]:
+        with transaction(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT np.*, p.policy_json
+                FROM engagements e
+                JOIN policy_bundles p ON p.id = e.active_policy_id
+                JOIN network_profiles np ON np.status = 'active'
+                WHERE e.id = ? AND e.status = 'active'
+                  AND p.activated_at IS NOT NULL AND p.revoked_at IS NULL
+                """,
+                (engagement_id,),
+            ).fetchone()
+        if row is None:
+            raise DomainError(
+                "NETWORK_PROFILE_BINDING_MISSING",
+                "active policy has no confirmed network profile",
+            )
+        profile = _network_profile_from_row(row)
+        if contract_issues(profile, "network-profile-v1.schema.json"):
+            raise DomainError("NETWORK_PROFILE_INVALID", "network profile is invalid")
+        try:
+            network = json.loads(row["policy_json"])["network_constraints"]
+            matches = (
+                network["route_profile_id"] == profile["route_profile_id"]
+                and network["dns_mode"] == profile["resolver_mode"]
+                and network["ipv6_mode"] == profile["ipv6_mode"]
+                and set(network["registered_source_ipv4"])
+                == set(profile["registered_source_ipv4"])
+                and set(network["registered_source_ipv6"])
+                == set(profile["registered_source_ipv6"])
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise DomainError(
+                "NETWORK_PROFILE_POLICY_MISMATCH",
+                "active policy and network profile do not match",
+            ) from exc
+        if not matches:
+            raise DomainError(
+                "NETWORK_PROFILE_POLICY_MISMATCH",
+                "active policy and network profile do not match",
+            )
+        return profile
+
     def revoke_network_profile(
         self, profile_id: str, *, reason: str, actor_id: str
     ) -> dict[str, Any]:

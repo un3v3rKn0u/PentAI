@@ -47,8 +47,9 @@ tables is intentionally not automated because it would destroy security audit li
 
 ## Deferred work
 
-Observer designation and availability proof, profile-to-policy binding, live
-source-IP observation, route re-attestation, controlled resolver provisioning, and
-cross-platform live evidence remain deferred. A confirmed profile is configuration,
-not a network attestation or execution authority. Target-facing execution remains
-prohibited.
+Profile-to-policy binding now requires exact route identity, registered source arrays,
+IPv6 mode, and resolver mode before an attestor can be composed. Observer designation
+and availability proof, live source-IP observation, controlled resolver provisioning
+from the profile, and cross-platform live evidence remain deferred. A confirmed
+profile is configuration, not a network attestation or execution authority.
+Target-facing execution remains prohibited.

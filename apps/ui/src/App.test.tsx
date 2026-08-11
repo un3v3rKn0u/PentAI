@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildIntentTarget, coreRequest, encodeBytesBase64, networkSetupRequirement, parseSourceAddresses, sourceFileMediaType } from "./App";
+import { buildIntentTarget, coreRequest, encodeBytesBase64, networkManifestSettings, networkSetupRequirement, parseSourceAddresses, sourceFileMediaType } from "./App";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -28,6 +28,28 @@ describe("authorization workflow safety boundary", () => {
       "8.8.8.8", "2001:4860:4860::8888"
     ]);
     expect(parseSourceAddresses(" , ")).toEqual([]);
+  });
+
+  it("copies only the confirmed profile into a manifest network section", () => {
+    const profile = {
+      route_profile_id: "route-aaaaaaaaaaaaaaaaaaaaaaaa",
+      registered_source_ipv4: ["8.8.8.8"],
+      registered_source_ipv6: [],
+      ipv6_mode: "disabled",
+      resolver_mode: "approved_resolver",
+      resolver_addresses: ["192.0.2.53"]
+    };
+    expect(networkManifestSettings(profile)).toEqual({
+      route_mode: "local_gateway",
+      route_profile_id: profile.route_profile_id,
+      registered_source_ipv4: ["8.8.8.8"],
+      registered_source_ipv6: [],
+      ipv6_mode: "disabled",
+      dns_mode: "approved_resolver",
+      approved_resolvers: ["192.0.2.53"],
+      pause_on_identity_change: true
+    });
+    expect(networkManifestSettings().route_profile_id).toBe("network-profile-required");
   });
 
   it("does not expose execution or grant issuance", () => {
