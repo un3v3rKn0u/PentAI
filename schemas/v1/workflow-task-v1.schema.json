@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/workflow-task-v1.schema.json",
+  "title": "PentAI WorkflowTask v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "task_id", "workflow_id", "parent_task_id", "task_kind", "state", "idempotency_key", "input_refs", "created_at", "finalized_at", "dispatch_enabled", "external_effect_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "workflow_id": {"type": "string", "format": "uuid"},
+    "parent_task_id": {"oneOf": [{"type": "string", "format": "uuid"}, {"type": "null"}]},
+    "task_kind": {"enum": ["manual_checkpoint", "supervised_action", "evidence_capture", "report_draft"]},
+    "state": {"enum": ["queued", "cancelled"]},
+    "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{15,127}$"},
+    "input_refs": {"type": "array", "items": {"type": "string", "format": "uuid"}, "maxItems": 64, "uniqueItems": true},
+    "created_at": {"type": "string", "format": "date-time"},
+    "finalized_at": {"oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "dispatch_enabled": {"const": false},
+    "external_effect_enabled": {"const": false}
+  }
+}

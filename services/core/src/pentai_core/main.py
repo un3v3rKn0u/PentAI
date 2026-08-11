@@ -32,6 +32,7 @@ from pentai_core.network_safety_supervisor import (
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_core.url_acquisition import AcquisitionError, UrlAcquirer
+from pentai_core.workflow import AssessmentWorkflowService, WorkflowError
 
 
 class HealthResponse(BaseModel):
@@ -142,10 +143,37 @@ class NetworkProfileRevocationRequest(StrictRequest):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class WorkflowCreateRequest(StrictRequest):
+    engagement_id: str
+    idempotency_key: str = Field(min_length=16, max_length=128)
+
+
+class WorkflowTransitionRequest(StrictRequest):
+    target_status: str
+    expected_version: int = Field(ge=1)
+
+
+class WorkflowTaskRequest(StrictRequest):
+    task_kind: str
+    idempotency_key: str = Field(min_length=16, max_length=128)
+    input_refs: list[str] = Field(default_factory=list, max_length=64)
+    parent_task_id: str | None = None
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
     except DomainError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
+def workflow_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except WorkflowError as exc:
         raise HTTPException(
             status_code=409,
             detail={"code": exc.code, "message": str(exc)},
@@ -190,10 +218,12 @@ def create_app(
     authorization = AuthorizationService(
         runtime.database_path, source_store=source_store, policy_signer=signer
     )
+    workflows = AssessmentWorkflowService(runtime.database_path)
     controlled_resolver_provider = compose_controlled_resolver_provider(
         settings=runtime, profile_control=authorization
     )
     authorization.recover_startup()
+    workflows.recover_startup()
     supervisor = runtime_supervisor or compose_gateway_runtime_supervisor(
         settings=runtime, safety_control=authorization
     )
@@ -214,6 +244,7 @@ def create_app(
     app.state.network_safety_supervisor = network_supervisor
     app.state.controlled_resolver_provider = controlled_resolver_provider
     app.state.network_profile_setup_service = profile_setup
+    app.state.assessment_workflows = workflows
     app.router.add_event_handler("shutdown", network_supervisor.stop)
     app.router.add_event_handler("shutdown", supervisor.stop)
     app.add_middleware(
@@ -534,5 +565,60 @@ def create_app(
             "events": authorization.audit_events(),
             "verification": authorization.verify_audit_chain(),
         }
+
+    @app.post("/api/v1/workflows")
+    def create_workflow(
+        requested: WorkflowCreateRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return workflow_call(
+            lambda: workflows.create(
+                requested.engagement_id,
+                idempotency_key=requested.idempotency_key,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.get("/api/v1/workflows/{workflow_id}")
+    def get_workflow(workflow_id: str) -> dict[str, Any]:
+        return workflow_call(lambda: workflows.get(workflow_id))
+
+    @app.post("/api/v1/workflows/{workflow_id}/transition")
+    def transition_workflow(
+        workflow_id: str, requested: WorkflowTransitionRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return workflow_call(
+            lambda: workflows.transition(
+                workflow_id,
+                target_status=requested.target_status,
+                expected_version=requested.expected_version,
+                actor_type=actor.actor_type,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.post("/api/v1/workflows/{workflow_id}/tasks")
+    def enqueue_workflow_task(
+        workflow_id: str, requested: WorkflowTaskRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return workflow_call(
+            lambda: workflows.enqueue(
+                workflow_id,
+                task_kind=requested.task_kind,
+                idempotency_key=requested.idempotency_key,
+                input_refs=requested.input_refs,
+                parent_task_id=requested.parent_task_id,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.post("/api/v1/workflow-tasks/{task_id}/cancel")
+    def cancel_workflow_task(task_id: str, request: Request) -> dict[str, Any]:
+        actor = principal(request)
+        return workflow_call(
+            lambda: workflows.cancel_task(task_id, actor_id=actor.principal_id)
+        )
 
     return app

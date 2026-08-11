@@ -1267,3 +1267,39 @@ source, route, observer, and DNS adapters and local-development signing/storage 
 It proves component composition and live containment, not production observer
 independence, key custody, or an external route. This self-authored review is
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-11 — Durable supervised assessment workflow boundary
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development without task dispatch or external effects<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Assessment workflow and task contracts, additive migration,
+version-fenced lifecycle, human start/resume, idempotent task persistence, parent
+linkage, cancellation, startup pause recovery, API authentication, audit/outbox
+linkage, compatibility, and rollback.
+
+**Evidence examined:** Contract validation, migration upgrade and trigger tests,
+concurrent transition fencing, idempotent replay and conflict tests, stale safety and
+policy denial, parent cancellation ordering, unresolved-task completion denial,
+atomic queue cancellation, startup pause/no-auto-resume behavior, authenticated-route
+coverage, and audit-chain verification.
+
+**Findings:** Workflow state and task records cannot grant authority or dispatch work.
+The schemas and database fix execution capabilities to false. Human supervision and a
+fresh active authority check are required before entering or re-entering running state.
+Startup recovery always pauses previously running work. Mutations are durable and
+audit-linked in the same transaction.
+
+**Limitations and deferred work:** Tasks have no claimable state. Leases, heartbeats,
+worker fencing, retries, checkpoints, dead letters, and execution integration are not
+implemented. There is no supervised assessment UI in this slice. Hosted checks do not
+prove live worker recovery or dispatch because both remain prohibited.
+
+**Residual risk accepted:** The current queue is useful only as durable supervised
+intent; an operator must cancel tasks before completing a workflow. Future claiming
+semantics will require a separate security review and crash-window proof. This
+self-authored review is non-independent and cannot satisfy an external
+independent-review requirement.

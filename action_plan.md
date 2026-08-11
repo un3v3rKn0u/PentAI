@@ -344,7 +344,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 
 ### 6.6 Actions: durable workflow and audit
 
-- [ ] Implement assessment state machine and persistent task queue.
+- [x] Implement assessment state machine and persistent task queue.
+  The first durable boundary persists version-fenced, human-supervised workflow
+  transitions and idempotent task intent. Startup recovery pauses running workflows;
+  tasks cannot dispatch, grant authority, or cause external effects. Lease claiming,
+  retries, checkpoints, and dead letters remain in the next item.
 - [ ] Add leases, heartbeats, checkpoints, retries, fencing, idempotency, outbox, and dead letters.
 - [ ] Create an append-only hash-chained audit ledger.
 - [ ] Link every execution to its intent, decision, policy rules, grant, tool version, and outputs.
