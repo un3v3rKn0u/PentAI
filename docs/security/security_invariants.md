@@ -329,12 +329,21 @@ the connection slot exactly once, and never refunds committed capacity.
 **Primary enforcement:** Single-use grants, idempotency keys, and gateway ledger<br>
 **Verification:** Duplicate delivery and crash-window tests.
 
+The durable workflow boundary stores idempotent task intent but cannot dispatch it or
+cause an external effect. Workflow and task contracts fix those capabilities to
+`false`; execution remains exclusively governed by the authorization and gateway
+chains.
+
 ### INV-REL-002 — Recovery revalidates safety
 
 **Statement:** Startup recovery revokes stale grants and revalidates policy, time, storage, route, DNS controls, and public IP before network work can resume.
 
 **Primary enforcement:** Recovery Coordinator<br>
 **Verification:** Process-kill and machine-restart simulations.
+
+Running assessment workflows are synchronously changed to `paused` on core startup.
+They cannot resume without a fresh human transition and revalidation of active policy,
+engagement expiry, revocation, and global safety state.
 
 ### INV-REL-003 — Clock uncertainty denies
 

@@ -34,6 +34,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   required before a worker launch may be planned.
 - `worker-launch-spec-v1.schema.json` — immutable, digest-pinned, non-executing worker
   launch plan with fixed isolation controls.
+- `assessment-workflow-v1.schema.json` — durable, version-fenced lifecycle for a
+  human-supervised assessment; it never grants execution authority.
+- `workflow-task-v1.schema.json` — idempotent, persistent task intent with dispatch
+  and external effects explicitly disabled.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review
@@ -57,6 +61,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | GatewayRuntimeInstance v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | WorkerContainmentAttestation v1 | Systems Engineer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | WorkerLaunchSpec v1 | Execution Safety Lead | Contract Maintainer | Systems Engineer, independent Security Reviewer |
+| AssessmentWorkflow v1 | Core Maintainer | Contract Maintainer | Product Safety Lead, Security Reviewer |
+| WorkflowTask v1 | Core Maintainer | Contract Maintainer | Execution Safety Lead, Security Reviewer |
 | Canonical Types v1 | Policy Maintainer | Contract Maintainer | Gateway Maintainer, independent Security Reviewer |
 
 The owning role is accountable for semantics and consumers. The Contract Maintainer is

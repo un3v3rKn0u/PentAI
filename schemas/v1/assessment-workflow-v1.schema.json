@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/assessment-workflow-v1.schema.json",
+  "title": "PentAI AssessmentWorkflow v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "workflow_id", "engagement_id", "policy_bundle_id", "idempotency_key", "status", "version", "created_at", "updated_at", "started_at", "finalized_at", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "workflow_id": {"type": "string", "format": "uuid"},
+    "engagement_id": {"type": "string", "format": "uuid"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{15,127}$"},
+    "status": {"enum": ["planned", "ready", "running", "paused", "completed", "cancelled"]},
+    "version": {"type": "integer", "minimum": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "started_at": {"oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "finalized_at": {"oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "execution_enabled": {"const": false}
+  }
+}
