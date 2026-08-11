@@ -1500,3 +1500,40 @@ deletion, not forensic secure erase. Older binaries do not enforce migration-002
 tombstones, so rollback requires a verified pre-migration backup. This review is
 self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
+
+## 2026-08-11 — Encrypted backup and isolated restore integrity
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Domain-separated backup encryption, online SQLite snapshots,
+authenticated evidence inclusion, exact archive membership, migration/audit/database
+verification, live deletion-tombstone precedence, shared-digest behavior, isolated
+restore installation, bounded expansion, path ownership, API confirmation, rollback,
+and recovery claims.
+
+**Evidence examined:** Tests cover encrypted creation and verified restore, SQLite and
+evidence identity, ciphertext tampering, wrong keys, existing destinations, missing
+blobs, failed-drill cleanup, stale pre-deletion backups, post-deletion backups, and
+shared content retained until its final active reference is deleted. Contract, lint,
+type, and complete Python validation are required before publication.
+
+**Findings:** API callers cannot choose filesystem paths. The service authenticates
+referenced evidence before committing an atomic encrypted archive. Restore accepts an
+exact manifest only, authenticates the envelope and blobs, verifies database integrity,
+migrations and audit head, and installs solely into a new drill directory. Live data
+is never replaced and target-facing work is never resumed.
+
+**Limitations and deferred work:** This slice does not include source blobs, automatic
+rotation, backup-copy inventory/purge, production replacement, or off-device custody.
+If both the live database and its later tombstones are lost, an older archive cannot
+prove deletions that happened after it was created. Full disaster-recovery and
+disk-full drills remain required for the Phase 1 exit gate.
+
+**Residual risk accepted:** The drill proves integrity for database and evidence
+snapshots on the current device; it is not yet a complete disaster-recovery mechanism.
+This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.

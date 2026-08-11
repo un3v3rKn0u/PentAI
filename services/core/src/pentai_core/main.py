@@ -7,6 +7,7 @@ from binascii import Error as Base64Error
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from pentai_core import __version__
 from pentai_core.authorization import AuthorizationService, DomainError
+from pentai_core.backup import BackupError, BackupService
 from pentai_core.config import Settings, allowed_origins
 from pentai_core.controlled_dns_composition import compose_controlled_resolver_provider
 from pentai_core.evidence import EvidenceError, EvidenceService
@@ -219,6 +221,14 @@ class EvidenceDeletionRequest(StrictRequest):
     confirm_permanent_deletion: bool
 
 
+class BackupCreateRequest(StrictRequest):
+    confirm_backup: bool
+
+
+class BackupRestoreDrillRequest(StrictRequest):
+    confirm_restore_drill: bool
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -243,6 +253,16 @@ def evidence_call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
     except EvidenceError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
+def backup_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except BackupError as exc:
         raise HTTPException(
             status_code=409,
             detail={"code": exc.code, "message": str(exc)},
@@ -316,6 +336,7 @@ def create_app(
         evidence_store,
         storage_failure_handler=stop_for_evidence_failure,
     )
+    backups = BackupService(runtime.database_path, evidence_store, runtime.source_master_key)
     audit_verification = authorization.verify_audit_chain()
     if not audit_verification["valid"]:
         raise RuntimeError("audit ledger verification failed; startup is denied")
@@ -348,6 +369,7 @@ def create_app(
     app.state.network_profile_setup_service = profile_setup
     app.state.assessment_workflows = workflows
     app.state.evidence = evidence
+    app.state.backups = backups
     app.router.add_event_handler("shutdown", network_supervisor.stop)
     app.router.add_event_handler("shutdown", supervisor.stop)
     app.add_middleware(
@@ -733,6 +755,49 @@ def create_app(
                 confirm_permanent_deletion=requested.confirm_permanent_deletion,
                 actor_id=actor.principal_id,
             )
+        )
+
+    @app.post("/api/v1/backups")
+    def create_backup(requested: BackupCreateRequest, request: Request) -> dict[str, object]:
+        actor = principal(request)
+        if requested.confirm_backup is not True:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "BACKUP_CONFIRMATION_REQUIRED",
+                    "message": "encrypted backup requires explicit human confirmation",
+                },
+            )
+        backup_id = str(uuid4())
+        destination = runtime.backup_store_path / f"{backup_id}.pentai-backup"
+        return backup_call(
+            lambda: backups.create(destination, actor_id=actor.principal_id, backup_id=backup_id)
+        )
+
+    @app.post("/api/v1/backups/{backup_id}/restore-drill")
+    def restore_backup_drill(
+        backup_id: str, requested: BackupRestoreDrillRequest, request: Request
+    ) -> dict[str, object]:
+        actor = principal(request)
+        if requested.confirm_restore_drill is not True:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "RESTORE_CONFIRMATION_REQUIRED",
+                    "message": "restore drill requires explicit human confirmation",
+                },
+            )
+        try:
+            normalized_id = str(UUID(backup_id))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "BACKUP_ID_INVALID", "message": "backup id is invalid"},
+            ) from exc
+        backup = runtime.backup_store_path / f"{normalized_id}.pentai-backup"
+        destination = runtime.backup_store_path / "restore-drills" / normalized_id
+        return backup_call(
+            lambda: backups.restore_drill(backup, destination, actor_id=actor.principal_id)
         )
 
     @app.post("/api/v1/workflows")

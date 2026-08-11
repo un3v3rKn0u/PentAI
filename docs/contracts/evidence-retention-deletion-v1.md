@@ -38,6 +38,8 @@ ignore deletion records, but running an older binary after a deletion request is
 because it does not enforce tombstones; operational rollback therefore requires a
 verified pre-migration backup and must not reopen a database containing migration 0023.
 
-Backup-copy inventory/purge, restore-time tombstone enforcement, per-object envelope
-keys, legal holds, and independently verified forensic deletion remain deferred release
-work. No automatic scheduler initiates deletion; every request remains human-supervised.
+New encrypted backups omit fully tombstoned digests and restore drills reject older
+archives that conflict with the live tombstone set. Backup inventory/purge,
+full-device-loss tombstone custody, per-object envelope keys, legal holds, and
+independently verified forensic deletion remain deferred release work. No automatic
+scheduler initiates deletion; every request remains human-supervised.
