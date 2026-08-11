@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/audit-event-v1.schema.json",
+  "title": "PentAI AuditEvent v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "sequence", "event_id", "occurred_at", "actor_type", "actor_id", "action", "subject_type", "subject_id", "data", "previous_hash", "event_hash"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "event_id": {"type": "string", "format": "uuid"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "actor_type": {"enum": ["human", "agent", "service"]},
+    "actor_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "action": {"type": "string", "pattern": "^[a-z][a-z0-9_.]{2,127}$"},
+    "subject_type": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$"},
+    "subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "data": {"type": "object"},
+    "previous_hash": {"oneOf": [{"type": "string", "pattern": "^[a-f0-9]{64}$"}, {"type": "null"}]},
+    "event_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

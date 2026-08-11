@@ -36,6 +36,7 @@ class MigrationTests(unittest.TestCase):
                     "0017",
                     "0018",
                     "0019",
+                    "0020",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -72,6 +73,7 @@ class MigrationTests(unittest.TestCase):
                     "workflow_task_lifecycles",
                     "workflow_task_checkpoints",
                     "workflow_task_receipts",
+                    "execution_traces",
                     "network_profile_proposals",
                     "network_profiles",
                 }
@@ -613,6 +615,50 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("workflow_task_lifecycles_no_delete", triggers)
             self.assertIn("workflow_task_checkpoints_immutable", triggers)
             self.assertIn("workflow_task_receipts_immutable", triggers)
+
+    def test_audit_trace_upgrade_is_additive_and_protects_history(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("*.sql")):
+                if path.name >= "0020_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+
+            migration = repository_migrations / "0020_audit_execution_traces.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0020"])
+                self.assertEqual(migrate(database), [])
+
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+                    )
+                }
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
+            self.assertIn("execution_traces", tables)
+            self.assertIn("audit_events_immutable", triggers)
+            self.assertIn("audit_events_no_delete", triggers)
+            self.assertIn("audit_events_chain_guard", triggers)
+            self.assertIn("execution_traces_immutable", triggers)
+            self.assertIn("execution_traces_no_delete", triggers)
 
 
 if __name__ == "__main__":

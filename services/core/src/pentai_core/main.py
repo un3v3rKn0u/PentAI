@@ -245,6 +245,9 @@ def create_app(
     authorization = AuthorizationService(
         runtime.database_path, source_store=source_store, policy_signer=signer
     )
+    audit_verification = authorization.verify_audit_chain()
+    if not audit_verification["valid"]:
+        raise RuntimeError("audit ledger verification failed; startup is denied")
     workflows = AssessmentWorkflowService(runtime.database_path)
     controlled_resolver_provider = compose_controlled_resolver_provider(
         settings=runtime, profile_control=authorization
@@ -588,10 +591,16 @@ def create_app(
 
     @app.get("/api/v1/audit")
     def audit_events() -> dict[str, Any]:
-        return {
-            "events": authorization.audit_events(),
-            "verification": authorization.verify_audit_chain(),
-        }
+        return call(
+            lambda: {
+                "events": authorization.audit_events(),
+                "verification": authorization.verify_audit_chain(),
+            }
+        )
+
+    @app.get("/api/v1/execution-traces/{result_id}")
+    def execution_trace(result_id: str) -> dict[str, Any]:
+        return call(lambda: authorization.execution_trace(result_id))
 
     @app.post("/api/v1/workflows")
     def create_workflow(

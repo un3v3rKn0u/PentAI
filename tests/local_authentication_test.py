@@ -162,6 +162,7 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("GET", "/api/v1/network-profiles"),
         ("GET", "/api/v1/safety-state"),
         ("GET", "/api/v1/audit"),
+        ("GET", "/api/v1/execution-traces/unknown"),
         ("POST", "/api/v1/shutdown"),
         ("POST", "/api/v1/programs"),
         ("POST", "/api/v1/engagements"),

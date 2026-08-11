@@ -306,12 +306,22 @@ the connection slot exactly once, and never refunds committed capacity.
 **Primary enforcement:** Domain services with transactional outbox<br>
 **Verification:** Domain-event coverage tests.
 
+The currently enabled owned-fixture effect atomically creates a content-hashed
+execution trace linking its intent, decision, evaluated policy rules, grant, committed
+start, execution claim, digest-pinned runtime/tool, bounded result, and final audit
+event. No caller supplies these links.
+
 ### INV-DATA-004 — Tamper evidence
 
 **Statement:** Audit events form a verifiable hash chain, and evidence/report exports include content digests.
 
 **Primary enforcement:** Audit and export services<br>
 **Verification:** Mutation, removal, reorder, and export verification tests.
+
+Database triggers deny audit mutation, deletion, and insertion away from the current
+head. Core startup validates event contracts, contiguous sequence, previous hashes,
+and canonical event hashes before recovery or supervisors start. Invalid legacy state
+denies startup.
 
 ### INV-DATA-005 — Safe failure on storage risk
 

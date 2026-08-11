@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/execution-trace-v1.schema.json",
+  "title": "PentAI ExecutionTrace v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "trace_id", "execution_kind", "result_id", "start_id", "execution_claim_id", "intent_id", "decision_id", "policy_bundle_id", "policy_hash", "evaluated_rule_ids", "grant_id", "runtime_id", "tool", "output_refs", "audit_event_id", "created_at", "external_target_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "trace_id": {"type": "string", "format": "uuid"},
+    "execution_kind": {"const": "owned_fixture_http"},
+    "result_id": {"type": "string", "format": "uuid"},
+    "start_id": {"type": "string", "format": "uuid"},
+    "execution_claim_id": {"type": "string", "format": "uuid"},
+    "intent_id": {"type": "string", "format": "uuid"},
+    "decision_id": {"type": "string", "format": "uuid"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "evaluated_rule_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}, "uniqueItems": true},
+    "grant_id": {"type": "string", "format": "uuid"},
+    "runtime_id": {"type": "string", "format": "uuid"},
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"const": "pentai-owned-fixture-http"},
+        "version": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "output_refs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "id", "outcome", "observed_bytes", "retained_bytes"],
+        "properties": {
+          "kind": {"const": "gateway_request_result"},
+          "id": {"type": "string", "format": "uuid"},
+          "outcome": {"enum": ["completed", "deadline_exceeded", "response_limit_exceeded", "transport_error"]},
+          "observed_bytes": {"type": "integer", "minimum": 0},
+          "retained_bytes": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "audit_event_id": {"type": "string", "format": "uuid"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "external_target_enabled": {"const": false}
+  }
+}
