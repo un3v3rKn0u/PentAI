@@ -7,6 +7,7 @@ on:
       - "tools/network-probe/**"
       - "scripts/run_network_probe_conformance.py"
       - "services/core/src/pentai_core/managed_gateway_network.py"
+      - "services/core/src/pentai_core/gateway_http_fixture.py"
       - "services/core/src/pentai_core/runtime_snapshot_collector.py"
       - "services/core/src/pentai_core/gateway_runtime_lifecycle.py"
       - "services/core/src/pentai_core/gateway_runtime_composition.py"

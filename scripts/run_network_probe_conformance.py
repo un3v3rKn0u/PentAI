@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from pentai_core.config import Settings
+from pentai_core.gateway_http_fixture import OciGatewayHttpFixtureTransport
 from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
 from pentai_core.gateway_runtime_lifecycle import (
     GatewayRuntimeLifecycle,
@@ -134,6 +135,7 @@ def main() -> int:
             network_name=network_name,
             pentai_instance_id="conformance-fixture",
             executor=executor,
+            fixture_subnet="192.0.2.0/24",
         )
         network = provisioner.ensure()
         network_created = network.created
@@ -180,6 +182,100 @@ def main() -> int:
             )
 
 
+def _run_http_fixture(
+    *,
+    runtime: str,
+    executable: Path,
+    executor: LocalBoundedCommandExecutor,
+    network_id: str,
+    image_digest: str,
+    containment: dict[str, object],
+) -> None:
+    launched = executor.execute(
+        (
+            str(executable),
+            "run",
+            "--detach",
+            "--network",
+            network_id,
+            "--ip=192.0.2.20",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=16",
+            "--memory=32m",
+            "--cpus=0.25",
+            "--label=com.pentai.managed=true",
+            "--label=com.pentai.runtime-role=http-target-fixture",
+            "--entrypoint=/pentai-network-probe",
+            image_digest,
+            "--mode=http-fixture-server",
+        ),
+        timeout_seconds=10,
+        max_output_bytes=4096,
+    )
+    try:
+        container_id = launched.stdout.decode(errors="strict").strip()
+    except UnicodeDecodeError as exc:
+        raise SnapshotCollectionError(
+            "HTTP_FIXTURE_SERVER_FAILED", "fixture server identity is invalid"
+        ) from exc
+    if (
+        launched.returncode != 0
+        or not 12 <= len(container_id) <= 64
+        or any(character not in "0123456789abcdef" for character in container_id)
+    ):
+        raise SnapshotCollectionError(
+            "HTTP_FIXTURE_SERVER_FAILED", "fixture server launch failed"
+        )
+    try:
+        transport = OciGatewayHttpFixtureTransport(
+            executable=executable, image_digest=image_digest, executor=executor
+        )
+        completed = transport.execute(
+            network_id=network_id,
+            containment=containment,
+            maximum_response_bytes=32,
+            timeout_milliseconds=5_000,
+        )
+        if (
+            completed.outcome != "completed"
+            or completed.observed_response_bytes != 17
+            or completed.retained_response_bytes != 17
+        ):
+            raise SnapshotCollectionError(
+                "HTTP_FIXTURE_REQUEST_FAILED", "bounded fixture request failed"
+            )
+        limited = transport.execute(
+            network_id=network_id,
+            containment=containment,
+            maximum_response_bytes=8,
+            timeout_milliseconds=5_000,
+        )
+        if (
+            limited.outcome != "response_limit_exceeded"
+            or limited.observed_response_bytes != 9
+            or limited.retained_response_bytes != 8
+        ):
+            raise SnapshotCollectionError(
+                "HTTP_FIXTURE_LIMIT_FAILED", "fixture response limit was not enforced"
+            )
+    finally:
+        cleanup = [str(executable), "rm", "--force"]
+        if runtime == "podman":
+            cleanup.append("--time=0")
+        cleanup.append(container_id)
+        stopped = executor.execute(
+            tuple(cleanup),
+            timeout_seconds=10,
+            max_output_bytes=4096,
+        )
+        if stopped.returncode != 0:
+            raise SnapshotCollectionError(
+                "HTTP_FIXTURE_CLEANUP_FAILED", "fixture server cleanup failed"
+            )
+
+
 def _run_gateway_lifecycle(
     *,
     runtime: str,
@@ -213,6 +309,14 @@ def _run_gateway_lifecycle(
         network_conformance=probe,
     )
     attestor = RuntimeContainmentAttestor(collector)
+    _run_http_fixture(
+        runtime=runtime,
+        executable=executable,
+        executor=executor,
+        network_id=network_id,
+        image_digest=image_digest,
+        containment=attestor.measure(),
+    )
     controller = OciGatewayFixtureController(
         runtime=runtime,
         executable=executable,

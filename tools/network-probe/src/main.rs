@@ -1,10 +1,11 @@
 use std::env;
 use std::fs;
-use std::net::{IpAddr, SocketAddr, TcpStream};
+use std::io::{Read, Write};
+use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::process;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 
@@ -19,6 +20,28 @@ fn main() {
     let raw_arguments: Vec<String> = env::args().skip(1).collect();
     if let Some(runtime_id) = sentinel_runtime_id(&raw_arguments) {
         run_sentinel(runtime_id);
+    }
+    if raw_arguments == ["--mode=http-fixture-server"] {
+        run_http_fixture_server();
+    }
+    if raw_arguments.first().map(String::as_str) == Some("--mode=http-fixture-client") {
+        match parse_http_fixture_client(&raw_arguments).and_then(run_http_fixture_client) {
+            Ok(result) => {
+                println!(
+                    concat!(
+                        "{{\"outcome\":\"{}\",",
+                        "\"observed_response_bytes\":{},",
+                        "\"retained_response_bytes\":{}}}"
+                    ),
+                    result.outcome, result.observed, result.retained
+                );
+                return;
+            }
+            Err(message) => {
+                eprintln!("pentai-network-probe: {message}");
+                process::exit(2);
+            }
+        }
     }
     let arguments = match parse_arguments(raw_arguments.into_iter()) {
         Ok(arguments) => arguments,
@@ -56,6 +79,280 @@ fn main() {
         host_namespaces_blocked,
         resource_limits_enforced,
     );
+}
+
+struct HttpFixtureArguments {
+    maximum_response_bytes: usize,
+    timeout: Duration,
+}
+
+struct HttpFixtureResult {
+    outcome: &'static str,
+    observed: usize,
+    retained: usize,
+}
+
+fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArguments, &'static str> {
+    let mut target = false;
+    let mut mode = false;
+    let mut host = false;
+    let mut path = false;
+    let mut maximum_response_bytes = None;
+    let mut timeout_milliseconds = None;
+    for argument in arguments {
+        match argument.as_str() {
+            "--mode=http-fixture-client" if !mode => mode = true,
+            "--target=192.0.2.20:8080" if !target => target = true,
+            "--host=example.test" if !host => host = true,
+            "--path=/fixture" if !path => path = true,
+            value if value.starts_with("--maximum-response-bytes=") => {
+                if maximum_response_bytes.is_some() {
+                    return Err("duplicate response limit");
+                }
+                maximum_response_bytes = value
+                    .strip_prefix("--maximum-response-bytes=")
+                    .and_then(|raw| raw.parse::<usize>().ok())
+                    .filter(|value| (1..=1_048_576).contains(value));
+            }
+            value if value.starts_with("--timeout-milliseconds=") => {
+                if timeout_milliseconds.is_some() {
+                    return Err("duplicate timeout");
+                }
+                timeout_milliseconds = value
+                    .strip_prefix("--timeout-milliseconds=")
+                    .and_then(|raw| raw.parse::<u64>().ok())
+                    .filter(|value| (1..=5_000).contains(value));
+            }
+            _ => return Err("unsupported or duplicate HTTP fixture argument"),
+        }
+    }
+    match (
+        target,
+        mode,
+        host,
+        path,
+        maximum_response_bytes,
+        timeout_milliseconds,
+    ) {
+        (true, true, true, true, Some(limit), Some(timeout)) => Ok(HttpFixtureArguments {
+            maximum_response_bytes: limit,
+            timeout: Duration::from_millis(timeout),
+        }),
+        _ => Err("required HTTP fixture argument is missing or invalid"),
+    }
+}
+
+fn run_http_fixture_client(
+    arguments: HttpFixtureArguments,
+) -> Result<HttpFixtureResult, &'static str> {
+    let started = Instant::now();
+    let deadline = started + arguments.timeout;
+    let address = "192.0.2.20:8080"
+        .parse::<SocketAddr>()
+        .map_err(|_| "fixed fixture address is invalid")?;
+    let mut stream = loop {
+        let Some(available) = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|value| !value.is_zero())
+        else {
+            return Ok(failure_result(started, deadline, 0));
+        };
+        let attempt = available.min(Duration::from_millis(100));
+        match TcpStream::connect_timeout(&address, attempt) {
+            Ok(stream) => break stream,
+            Err(_) if Instant::now() < deadline => {
+                let pause = deadline
+                    .checked_duration_since(Instant::now())
+                    .unwrap_or_default()
+                    .min(Duration::from_millis(10));
+                thread::sleep(pause);
+            }
+            Err(_) => return Ok(failure_result(started, deadline, 0)),
+        }
+    };
+    if Instant::now() >= deadline {
+        return Ok(failure_result(started, deadline, 0));
+    }
+    apply_timeout(&stream, deadline)?;
+    let request = b"GET /fixture HTTP/1.1\r\nHost: example.test\r\nConnection: close\r\n\r\n";
+    if stream.write_all(request).is_err() {
+        return Ok(failure_result(started, deadline, 0));
+    }
+    let mut header = Vec::new();
+    let mut one_byte = [0u8; 1];
+    while !header.ends_with(b"\r\n\r\n") {
+        if Instant::now() >= deadline {
+            return Ok(failure_result(started, deadline, 0));
+        }
+        apply_timeout(&stream, deadline)?;
+        match stream.read(&mut one_byte) {
+            Ok(0) => {
+                return Ok(HttpFixtureResult {
+                    outcome: "transport_error",
+                    observed: 0,
+                    retained: 0,
+                })
+            }
+            Ok(_) => header.push(one_byte[0]),
+            Err(_) => return Ok(failure_result(started, deadline, 0)),
+        }
+        if header.len() > 8_192 {
+            return Err("HTTP fixture headers exceeded the hard limit");
+        }
+    }
+    let content_length = parse_fixture_headers(&header)?;
+    let mut body_seen = 0usize;
+    let mut body_retained = 0usize;
+    let mut buffer = [0u8; 1024];
+    loop {
+        if Instant::now() >= deadline {
+            return Ok(failure_result(started, deadline, body_seen));
+        }
+        apply_timeout(&stream, deadline)?;
+        let remaining_proof = arguments.maximum_response_bytes + 1 - body_seen;
+        let read_bound = buffer.len().min(remaining_proof);
+        let read = match stream.read(&mut buffer[..read_bound]) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(_) => return Ok(failure_result(started, deadline, body_seen)),
+        };
+        body_seen += read;
+        body_retained = body_seen.min(arguments.maximum_response_bytes);
+        if body_seen > arguments.maximum_response_bytes {
+            return Ok(HttpFixtureResult {
+                outcome: if Instant::now() >= deadline {
+                    "deadline_exceeded"
+                } else {
+                    "response_limit_exceeded"
+                },
+                observed: arguments.maximum_response_bytes + 1,
+                retained: arguments.maximum_response_bytes,
+            });
+        }
+    }
+    if Instant::now() >= deadline {
+        return Ok(HttpFixtureResult {
+            outcome: "deadline_exceeded",
+            observed: body_seen,
+            retained: body_retained,
+        });
+    }
+    if content_length != body_seen {
+        return Ok(HttpFixtureResult {
+            outcome: "transport_error",
+            observed: body_seen,
+            retained: body_retained,
+        });
+    }
+    Ok(HttpFixtureResult {
+        outcome: "completed",
+        observed: body_seen,
+        retained: body_retained,
+    })
+}
+
+fn remaining(deadline: Instant) -> Result<Duration, &'static str> {
+    deadline
+        .checked_duration_since(Instant::now())
+        .filter(|value| !value.is_zero())
+        .ok_or("HTTP fixture deadline expired")
+}
+
+fn apply_timeout(stream: &TcpStream, deadline: Instant) -> Result<(), &'static str> {
+    let timeout = remaining(deadline)?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .and_then(|_| stream.set_write_timeout(Some(timeout)))
+        .map_err(|_| "HTTP fixture timeout could not be applied")
+}
+
+fn failure_result(started: Instant, deadline: Instant, observed: usize) -> HttpFixtureResult {
+    HttpFixtureResult {
+        outcome: if Instant::now() >= deadline && deadline > started {
+            "deadline_exceeded"
+        } else {
+            "transport_error"
+        },
+        observed,
+        retained: observed,
+    }
+}
+
+fn parse_fixture_headers(header: &[u8]) -> Result<usize, &'static str> {
+    let text = std::str::from_utf8(header).map_err(|_| "HTTP fixture headers are invalid")?;
+    let mut lines = text.split("\r\n");
+    if lines.next() != Some("HTTP/1.1 200 OK") {
+        return Err("HTTP fixture status is invalid");
+    }
+    let mut content_length = None;
+    let mut connection_close = false;
+    for line in lines {
+        if line.is_empty() {
+            continue;
+        }
+        let Some((name, value)) = line.split_once(':') else {
+            return Err("HTTP fixture header is malformed");
+        };
+        if name.is_empty()
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            || value
+                .bytes()
+                .any(|byte| byte.is_ascii_control() && byte != b'\t')
+        {
+            return Err("HTTP fixture header is malformed");
+        }
+        if name.eq_ignore_ascii_case("transfer-encoding") {
+            return Err("HTTP fixture transfer encoding is unsupported");
+        }
+        if name.eq_ignore_ascii_case("content-length") {
+            if content_length.is_some() {
+                return Err("HTTP fixture content length is ambiguous");
+            }
+            content_length = value.trim().parse::<usize>().ok();
+        } else if name.eq_ignore_ascii_case("connection") {
+            if connection_close || !value.trim().eq_ignore_ascii_case("close") {
+                return Err("HTTP fixture connection framing is invalid");
+            }
+            connection_close = true;
+        } else {
+            return Err("HTTP fixture header is unsupported");
+        }
+    }
+    if !connection_close {
+        return Err("HTTP fixture connection framing is missing");
+    }
+    content_length.ok_or("HTTP fixture content length is missing")
+}
+
+fn run_http_fixture_server() -> ! {
+    let listener = TcpListener::bind("0.0.0.0:8080").unwrap_or_else(|_| process::exit(2));
+    for connection in listener.incoming() {
+        let Ok(mut stream) = connection else {
+            continue;
+        };
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+        let mut request = Vec::new();
+        let mut buffer = [0u8; 128];
+        while request.len() <= 256 && !request.ends_with(b"\r\n\r\n") {
+            let Ok(read) = stream.read(&mut buffer) else {
+                break;
+            };
+            if read == 0 {
+                break;
+            }
+            request.extend_from_slice(&buffer[..read]);
+        }
+        let expected = b"GET /fixture HTTP/1.1\r\nHost: example.test\r\nConnection: close\r\n\r\n";
+        if request != expected {
+            continue;
+        }
+        let response =
+            b"HTTP/1.1 200 OK\r\nContent-Length: 17\r\nConnection: close\r\n\r\npentai-fixture-ok";
+        let _ = stream.write_all(response);
+    }
+    process::exit(0)
 }
 
 fn sentinel_runtime_id(arguments: &[String]) -> Option<&str> {
@@ -258,5 +555,70 @@ mod tests {
             ]),
             None
         );
+    }
+
+    #[test]
+    fn fixture_client_accepts_only_the_owned_test_net_tuple() {
+        let approved = vec![
+            "--mode=http-fixture-client".to_owned(),
+            "--target=192.0.2.20:8080".to_owned(),
+            "--host=example.test".to_owned(),
+            "--path=/fixture".to_owned(),
+            "--maximum-response-bytes=1024".to_owned(),
+            "--timeout-milliseconds=5000".to_owned(),
+        ];
+        let parsed = parse_http_fixture_client(&approved).expect("approved fixture request");
+        assert_eq!(parsed.maximum_response_bytes, 1024);
+        for denied in [
+            "--target=127.0.0.1:8080",
+            "--target=192.0.2.21:8080",
+            "--host=other.test",
+            "--path=/other",
+            "--maximum-response-bytes=0",
+            "--timeout-milliseconds=5001",
+        ] {
+            let prefix = denied.split('=').next().expect("argument prefix");
+            let changed = approved
+                .iter()
+                .map(|value| {
+                    if value.starts_with(prefix) {
+                        denied.to_owned()
+                    } else {
+                        value.clone()
+                    }
+                })
+                .collect::<Vec<_>>();
+            assert!(parse_http_fixture_client(&changed).is_err());
+        }
+        let duplicated_mode = approved
+            .iter()
+            .cloned()
+            .chain(["--mode=http-fixture-client".to_owned()])
+            .collect::<Vec<_>>();
+        assert!(parse_http_fixture_client(&duplicated_mode).is_err());
+        let unknown = approved
+            .iter()
+            .cloned()
+            .chain(["--other=value".to_owned()])
+            .collect::<Vec<_>>();
+        assert!(parse_http_fixture_client(&unknown).is_err());
+    }
+
+    #[test]
+    fn fixture_headers_require_unambiguous_length_and_status() {
+        assert_eq!(
+            parse_fixture_headers(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 17\r\nConnection: close\r\n\r\n"
+            ),
+            Ok(17)
+        );
+        for denied in [
+            b"HTTP/1.1 302 Found\r\nContent-Length: 0\r\n\r\n".as_slice(),
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n".as_slice(),
+            b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Length: 1\r\n\r\n".as_slice(),
+            b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\nX-Other: value\r\n\r\n".as_slice(),
+        ] {
+            assert!(parse_fixture_headers(denied).is_err());
+        }
     }
 }

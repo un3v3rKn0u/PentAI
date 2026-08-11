@@ -1134,3 +1134,47 @@ execution remains prohibited.
 future isolated gateway to report its bounded measurement. A compromised reporter is
 not yet independently contained. This self-authored review is non-independent and
 cannot satisfy an external independent-review requirement.
+
+## 2026-08-11 — Isolated HTTP TEST-NET fixture transport
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without external target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Fixed target/method/host/path validation, OCI argument
+construction, image digest and network identity, TEST-NET subnet restriction,
+rootless/internal containment, monotonic connect/write/read deadlines, HTTP status and
+header framing, response proof-byte bounds, typed output validation, fixture cleanup,
+workflow permissions, compatibility, rollback, and diagnostic disclosure.
+
+**Evidence examined:** Rust tests cover exact accepted arguments, changed/real target
+denial, missing/duplicate/unknown arguments, timeout/size bounds, status denial,
+transfer-encoding denial, and ambiguous content length. Python tests inspect the exact
+fixed OCI command and reject unsafe identities, bounds, types, outcomes, counts, JSON,
+and process failures. Managed-network tests prove only the documentation TEST-NET
+subnet is accepted. The hosted workflow is configured to exercise a successful
+17-byte request and an 8-byte limit-plus-one stop while rerunning all containment and
+lifecycle probes. The complete diff and INV-NET-001/003/004/005, INV-ISO-001/003,
+INV-AUTH-003, and recovery implications were reviewed.
+
+**Findings:** The core has no target socket implementation. The fixed OCI adapter
+cannot select a real address, alternate host/path/method, or unconstrained deadline or
+response size. The Rust client reads headers under a separate hard ceiling, rejects
+ambiguous framing, and never reads more than one body byte beyond the authorized
+limit. Only typed counts leave the container; response content does not.
+
+**Limitations and deferred work:** Live rootless containment is not claimed until the
+hosted workflow passes. The transport is HTTP-only and fixed to an owned synthetic
+fixture. It does not load or verify grants/starts inside the process, use controlled
+DNS, perform TLS, follow redirects, preserve evidence, expose a product API, route a
+worker, or reach an external target. General target-facing execution remains
+prohibited.
+
+**Residual risk accepted:** The fixture server and client share one internal bridge,
+and the host-side OCI adapter supplies relative timeout and response bounds. A future
+gateway must load immutable authority itself, use its absolute deadline, re-attest a
+dual-homed route, and terminate live sessions on safety changes. This self-authored
+review is non-independent and cannot satisfy an external independent-review
+requirement.
