@@ -93,3 +93,18 @@ class EncryptedEvidenceStore:
         if hashlib.sha256(content).hexdigest() != digest:
             raise EvidenceStoreError("decrypted evidence digest does not match metadata")
         return content
+
+    def delete(self, digest: str) -> bool:
+        path = self._path(digest)
+        try:
+            if not path.exists():
+                return False
+            path.unlink()
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except OSError as exc:
+            raise EvidenceStoreError("encrypted evidence could not be deleted") from exc
+        return True

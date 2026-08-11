@@ -321,6 +321,10 @@ event and an audit-ledger event without including evidence bytes.
 Redaction creation and preview also append immutable per-derivative events and
 privileged audit entries without including source or derivative content.
 
+Deletion requests commit an audit event before filesystem work, and completion commits
+a second event after the disposition is known. Tombstones preserve metadata and deny
+content access through interrupted and recovered states.
+
 The currently enabled owned-fixture effect atomically creates a content-hashed
 execution trace linking its intent, decision, evaluated policy rules, grant, committed
 start, execution claim, digest-pinned runtime/tool, bounded result, and final audit
@@ -347,6 +351,10 @@ denies startup.
 
 The composed evidence service stops global execution when its key is unavailable or
 an authenticated blob store/write/read fails. Resumption remains a human action.
+
+Deletion I/O failure also stops global execution. Startup resumes durable pending or
+processing deletions without restoring content visibility; content-addressed blobs are
+unlinked only after every reference is tombstoned.
 
 ## 10. Reliability Invariants
 

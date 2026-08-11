@@ -1459,3 +1459,44 @@ the Evidence UI must add its own sandbox and negative browser tests before gener
 preview support is claimed. The local custody chain is not externally timestamped.
 This review is self-authored and non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-11 — Policy-derived retention and crash-safe content deletion
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic evidence only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** EvidenceDeletion contract, additive migration and transition
+triggers, immutable-policy retention derivation, exact artifact/digest binding, human
+confirmation and reason, durable-before-filesystem ordering, immediate tombstone
+enforcement, shared content-addressed references, directory synchronization, startup
+recovery, audit linkage, compatibility, rollback, and erasure claims.
+
+**Evidence examined:** Negative tests reject missing confirmation, artifact-type and
+digest mismatch, and deletion before the policy deadline without persisting a request.
+Success tests cover last-reference unlink, shared-blob retention then final unlink,
+original and derivative tombstones, immutable request/history fields, metadata/audit
+preservation, and idempotent missing-blob recovery. Fault injection interrupts after
+unlink and proves the durable processing record completes on startup without restoring
+content. The full contract, migration, lint, type, and Python suites were reviewed.
+
+**Findings:** The caller cannot select retention duration; it comes from the exact
+manifest version linked by the artifact's policy bundle. A durable human-confirmed
+request makes content unavailable before filesystem work starts. The service never
+unlinks a digest still referenced by a non-tombstoned artifact. Interrupted deletion
+is monotonic and recovery only advances it toward completion.
+
+**Limitations and deferred work:** Unlink plus directory synchronization is not a
+portable forensic erase guarantee on copy-on-write filesystems or SSDs. Existing
+backup copies are not inventoried or purged. The current shared master-key format does
+not support per-object cryptographic erasure. Legal holds, automated expiry scheduling,
+restore-time tombstone reconciliation, and Evidence UI are not implemented.
+
+**Residual risk accepted:** The contract explicitly reports
+`forensic_erase_guaranteed: false`; this slice must be described as supervised content
+deletion, not forensic secure erase. Older binaries do not enforce migration-0023
+tombstones, so rollback requires a verified pre-migration backup. This review is
+self-authored and non-independent and cannot satisfy an external independent-review
+requirement.
