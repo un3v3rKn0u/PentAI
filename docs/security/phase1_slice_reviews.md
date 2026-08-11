@@ -815,3 +815,35 @@ absent. This does not fully satisfy `INV-NET-003`.
 confidentiality and integrity, platform routing has not been independently verified,
 and this review is self-authored and non-independent. It does not approve production
 or target-facing networking.
+
+## 2026-08-10 — Non-authoritative network profile discovery
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** OS-local route and resolver discovery, canonicalization,
+deterministic identifiers, proposal expiry, authenticated API exposure, fixed failure
+diagnostics, explicit unresolved requirements, and UI degraded/recovery states.
+
+**Evidence examined:** Contract, unit, authentication, and UI tests cover stable
+identities, unique proposals, canonical IP values, duplicate resolver normalization,
+bounded lifetime, empty/malformed/oversized observations, naive clocks, probe failures,
+fixed diagnostics, and explicit human-review messages.
+
+**Findings:** The proposal cannot persist, approve, attest, grant, or activate
+authority. It contains no registered source IP and fixes execution to false. Discovery
+contacts neither observers nor targets and returns no raw probe details.
+
+**Limitations and deferred work:** Platform discovery behavior still requires hosted
+and live-environment evidence. Profile persistence, confirmation, resolver-mode
+selection, registered source-IP validation, observer configuration, activation,
+revocation, and audit linkage remain absent. Target-facing execution remains
+prohibited.
+
+**Residual risk accepted:** Host commands and resolver files can reflect stale or
+compromised local state, so every value remains an untrusted proposal. This review is
+self-authored and non-independent and does not satisfy an external independent-review
+requirement.

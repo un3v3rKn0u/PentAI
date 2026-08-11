@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/network-profile-proposal-v1.schema.json",
+  "title": "PentAI Network Profile Proposal v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "proposal_id", "status", "route_profile_id", "route_interface", "route_gateway", "resolver_id", "resolver_addresses", "registered_source_ipv4", "registered_source_ipv6", "ipv6_mode", "requirements", "observed_at", "expires_at", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "proposal_id": {"type": "string", "format": "uuid"},
+    "status": {"const": "needs_confirmation"},
+    "route_profile_id": {"type": "string", "pattern": "^route-[a-f0-9]{24}$"},
+    "route_interface": {"type": "string", "minLength": 1, "maxLength": 128},
+    "route_gateway": {"oneOf": [{"type": "string", "format": "ipv4"}, {"type": "string", "format": "ipv6"}, {"type": "null"}]},
+    "resolver_id": {"type": "string", "pattern": "^resolver-[a-f0-9]{24}$"},
+    "resolver_addresses": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"oneOf": [{"type": "string", "format": "ipv4"}, {"type": "string", "format": "ipv6"}]}},
+    "registered_source_ipv4": {"type": "array", "maxItems": 0},
+    "registered_source_ipv6": {"type": "array", "maxItems": 0},
+    "ipv6_mode": {"const": "disabled"},
+    "requirements": {"type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true, "prefixItems": [{"const": "CONFIRM_ROUTE"}, {"const": "CONFIRM_RESOLVER_MODE"}, {"const": "ENTER_REGISTERED_SOURCE_IP"}], "items": false},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "execution_enabled": {"const": false}
+  }
+}

@@ -20,6 +20,11 @@ from pentai_core.controlled_dns_composition import compose_controlled_resolver
 from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
 from pentai_core.gateway_runtime_supervisor import RuntimeSupervisorControl
 from pentai_core.migrate import migrate
+from pentai_core.network_attestation_adapters import SystemRouteProbe
+from pentai_core.network_profile_setup import (
+    NetworkProfileSetupError,
+    NetworkProfileSetupService,
+)
 from pentai_core.network_safety_composition import compose_network_safety_supervisor
 from pentai_core.network_safety_supervisor import (
     NetworkSafetySupervisorControl,
@@ -158,6 +163,7 @@ def create_app(
     *,
     runtime_supervisor: RuntimeSupervisorControl | None = None,
     network_safety_supervisor: NetworkSafetySupervisorControl | None = None,
+    network_profile_setup_service: NetworkProfileSetupService | None = None,
 ) -> FastAPI:
     runtime = settings or Settings.from_environment()
     runtime.validate()
@@ -181,6 +187,7 @@ def create_app(
         settings=runtime, safety_control=authorization
     )
     network_supervisor.start()
+    profile_setup = network_profile_setup_service or NetworkProfileSetupService(SystemRouteProbe())
     app = FastAPI(
         title="PentAI Local Core",
         version=__version__,
@@ -191,6 +198,7 @@ def create_app(
     app.state.runtime_supervisor = supervisor
     app.state.network_safety_supervisor = network_supervisor
     app.state.controlled_resolver = controlled_resolver
+    app.state.network_profile_setup_service = profile_setup
     app.router.add_event_handler("shutdown", network_supervisor.stop)
     app.router.add_event_handler("shutdown", supervisor.stop)
     app.add_middleware(
@@ -267,6 +275,16 @@ def create_app(
     @app.get("/api/v1/network-safety-supervision")
     def network_safety_supervision() -> dict[str, object]:
         return network_supervisor.status()
+
+    @app.get("/api/v1/network-profile-proposal")
+    def network_profile_proposal() -> dict[str, Any]:
+        try:
+            return profile_setup.discover()
+        except NetworkProfileSetupError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
 
     @app.post("/api/v1/shutdown")
     def shutdown() -> dict[str, str]:
