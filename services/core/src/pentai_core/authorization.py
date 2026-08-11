@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
 from pathlib import Path, PurePath
 from typing import Any, Protocol
+from urllib.parse import urljoin
 from uuid import uuid4
 
 from pentai_policy import (
@@ -1978,7 +1979,96 @@ class AuthorizationService:
         resolver_source: ControlledResolverSource,
         sni_host: str,
         host_header: str,
+    ) -> dict[str, Any]:
+        return self._resolve_and_authorize_network_destination(
+            grant_id=grant_id,
+            attestation_id=attestation_id,
+            candidate_url=candidate_url,
+            resolver_source=resolver_source,
+            sni_host=sni_host,
+            host_header=host_header,
+            redirect_count=0,
+            parent_authorization_id=None,
+        )
+
+    def resolve_and_authorize_network_redirect(
+        self,
+        *,
+        grant_id: str,
+        attestation_id: str,
+        parent_authorization_id: str,
+        location: str,
+        resolver_source: ControlledResolverSource,
+        sni_host: str,
+        host_header: str,
+    ) -> dict[str, Any]:
+        if (
+            not location
+            or len(location) > 2048
+            or "\\" in location
+            or any(ord(character) <= 32 or ord(character) == 127 for character in location)
+        ):
+            raise DomainError("REDIRECT_DENIED", "redirect location is invalid")
+        with transaction(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT da.*, child.authorization_id AS child_id
+                FROM destination_authorizations da
+                LEFT JOIN destination_authorizations child
+                  ON child.parent_authorization_id = da.authorization_id
+                WHERE da.authorization_id = ? AND da.grant_id = ?
+                """,
+                (parent_authorization_id, grant_id),
+            ).fetchone()
+        if row is None:
+            raise DomainError("REDIRECT_DENIED", "redirect parent is missing")
+        try:
+            parent = json.loads(row["decision_json"])
+            if (
+                contract_issues(parent, "destination-decision-v1.schema.json")
+                or content_hash(parent) != row["decision_hash"]
+                or parent.get("outcome") != "allow"
+                or row["attestation_id"] != attestation_id
+                or row["child_id"] is not None
+            ):
+                raise DomainError("REDIRECT_DENIED", "redirect parent is inactive")
+            redirect_count = int(row["redirect_count"]) + 1
+            if redirect_count > 10:
+                raise DomainError("REDIRECT_DENIED", "redirect limit is exceeded")
+            parent_url = str(parent["candidate"]["canonical_url"])
+            candidate_url = canonicalize_url(urljoin(parent_url, location))["canonical_url"]
+        except DomainError:
+            raise
+        except (
+            CanonicalizationError,
+            KeyError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise DomainError("REDIRECT_DENIED", "redirect location is invalid") from exc
+        return self._resolve_and_authorize_network_destination(
+            grant_id=grant_id,
+            attestation_id=attestation_id,
+            candidate_url=str(candidate_url),
+            resolver_source=resolver_source,
+            sni_host=sni_host,
+            host_header=host_header,
+            redirect_count=redirect_count,
+            parent_authorization_id=parent_authorization_id,
+        )
+
+    def _resolve_and_authorize_network_destination(
+        self,
+        *,
+        grant_id: str,
+        attestation_id: str,
+        candidate_url: str,
+        resolver_source: ControlledResolverSource,
+        sni_host: str,
+        host_header: str,
         redirect_count: int,
+        parent_authorization_id: str | None,
     ) -> dict[str, Any]:
         assessment_id, resolver_mode, resolver_id = self._network_resolution_context(
             grant_id=grant_id, attestation_id=attestation_id
@@ -2015,6 +2105,7 @@ class AuthorizationService:
             sni_host=sni_host,
             host_header=host_header,
             redirect_count=redirect_count,
+            parent_authorization_id=parent_authorization_id,
         )
 
     def _network_resolution_context(
@@ -2098,6 +2189,7 @@ class AuthorizationService:
         sni_host: str,
         host_header: str,
         redirect_count: int,
+        parent_authorization_id: str | None,
     ) -> dict[str, Any]:
         with transaction(self.database_path) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -2163,14 +2255,24 @@ class AuthorizationService:
             previous_row = connection.execute(
                 """
                 SELECT decision_json FROM destination_authorizations
-                WHERE grant_id = ? ORDER BY created_at DESC, authorization_id DESC LIMIT 1
+                WHERE authorization_id = COALESCE(
+                    ?,
+                    (SELECT authorization_id FROM destination_authorizations
+                     WHERE grant_id = ? ORDER BY created_at DESC, authorization_id DESC LIMIT 1)
+                )
                 """,
-                (grant_id,),
+                (parent_authorization_id, grant_id),
             ).fetchone()
             previous_pinned = None
             if previous_row is not None:
                 previous_decision = json.loads(previous_row["decision_json"])
-                if previous_decision.get("outcome") == "allow":
+                previous_candidate = previous_decision.get("candidate", {})
+                current_candidate = canonicalize_url(candidate_url)
+                if (
+                    previous_decision.get("outcome") == "allow"
+                    and previous_candidate.get("host") == current_candidate.get("host")
+                    and previous_candidate.get("port") == current_candidate.get("port")
+                ):
                     previous_pinned = previous_decision.get("pinned_addresses", [])
             decision = authorize_destination(
                 grant=grant,
@@ -2187,21 +2289,32 @@ class AuthorizationService:
             )
             if contract_issues(decision, "destination-decision-v1.schema.json"):
                 raise DomainError("NETWORK_AUTHORIZATION_DENIED", "destination decision is invalid")
-            connection.execute(
-                """
-                INSERT INTO destination_authorizations(
-                    authorization_id, grant_id, attestation_id, candidate_url,
-                    decision_json, decision_hash, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (decision["authorization_id"], grant_id, attestation_id, candidate_url,
-                 canonical_json(decision), content_hash(decision), decision["created_at"]),
-            )
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO destination_authorizations(
+                        authorization_id, grant_id, attestation_id, candidate_url,
+                        decision_json, decision_hash, created_at,
+                        parent_authorization_id, redirect_count
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        decision["authorization_id"], grant_id, attestation_id,
+                        candidate_url, canonical_json(decision), content_hash(decision),
+                        decision["created_at"], parent_authorization_id, redirect_count,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                if parent_authorization_id is not None:
+                    raise DomainError("REDIRECT_DENIED", "redirect parent is already used") from exc
+                raise
             self._audit(
                 connection, action="network.destination_decided", subject_type="action_grant",
                 subject_id=grant_id, actor_type="service", actor_id="network-control",
                 data={"outcome": decision["outcome"], "reason_codes": decision["reason_codes"],
-                "authorization_id": decision["authorization_id"]},
+                "authorization_id": decision["authorization_id"],
+                "parent_authorization_id": parent_authorization_id,
+                "redirect_count": redirect_count},
             )
         return decision
 

@@ -61,6 +61,15 @@ port changes, unapproved redirects, out-of-scope CNAMEs, SNI/Host mismatches, em
 duplicate answers, non-global addresses, changed pinned answers, and unapproved IPv6
 deny before use. All accepted answers are pinned in the decision.
 
+Redirect authorization accepts only one immutable allowed parent decision for the same
+grant and attestation. The core resolves a bounded, control-free `Location` value
+against the parent's canonical URL, derives the next hop count from persisted lineage,
+and permits one child only. A caller cannot reset the count, branch the chain, replay a
+parent, or switch attestations. Same-host and port answers remain pinned for rebinding
+comparison; a changed in-scope host receives its own DNS authorization rather than a
+false rebinding denial. Every redirect candidate still passes protocol, port, scope,
+SNI/Host, DNS, CNAME, IPv6, policy, grant, and attestation checks.
+
 RFC 5737 and RFC 3849 documentation addresses are accepted only when the attestation
 uses the explicit `fixture:` resolver namespace. This supports owned, deterministic
 tests and is not available to production resolver identities.
@@ -83,15 +92,17 @@ and response reads.
 
 ## Compatibility and rollback
 
-Migration `0009_network_authorization_control.sql` is additive. Existing grants and
+Migration `0009_network_authorization_control.sql` is additive. Migration
+`0013_destination_redirect_lineage.sql` adds nullable parent linkage, a root-compatible
+zero hop count, and indexes enforcing one child per parent. Existing grants and
 policies remain readable, but cannot gain network authority without a fresh matching
 attestation and destination decision. Rolling code back leaves the new tables unused;
 the migration is not destructively reversed. Historical decisions and attestations
 must remain available for audit.
 
-This slice changes only an internal core method boundary from a resolver instance to a
-trusted assessment-scoped resolver source. There is no public API compatibility impact
-and no new schema or migration.
+The gateway DNS preflight changed only an internal core method boundary from a resolver
+instance to a trusted assessment-scoped resolver source. Redirect lineage is likewise
+an internal additive persistence change; no JSON contract or public API changes.
 
 ## Deferred enforcement
 

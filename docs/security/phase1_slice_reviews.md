@@ -986,3 +986,39 @@ Target-facing execution remains prohibited.
 dependencies; process isolation and gateway binary enforcement remain future controls.
 This self-authored review is non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-11 — Durable redirect-chain authorization
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Redirect parent linkage, relative-location resolution, derived hop
+counts, one-child enforcement, grant and attestation continuity, same-host rebinding,
+changed-host reauthorization, migration compatibility, diagnostics, and rollback.
+
+**Evidence examined:** Integration tests cover allowed relative redirects, exact
+persisted lineage, parent replay with zero DNS calls, independently allowed changed
+hosts, same-host DNS rebinding, maximum-hop denial, malformed control-bearing
+locations, protocol/port/scope/SNI checks inherited from destination authorization,
+and additive migration/idempotency. The complete diff and INV-SCOPE-001/002/003,
+INV-GRANT-001/002/004, INV-NET-002/003, and recovery implications were reviewed.
+
+**Findings:** Callers can no longer supply a root redirect count. Each next target is
+derived from one allowed parent for the same grant and attestation, and the database
+prevents a second child. DNS pin comparison is limited to the same host and port, so a
+different explicitly in-scope host is reauthorized rather than falsely treated as
+rebinding. Missing, denied, foreign, malformed, replayed, or over-limit state denies.
+
+**Limitations and deferred work:** Redirect responses are not fetched; `Location` is
+synthetic input to a non-networking control plane. There is no HTTP loop, response
+parser, isolated gateway-process enforcement, live resolver, or target contact.
+Cross-platform live redirect and containment matrices remain required, and
+target-facing execution remains prohibited.
+
+**Residual risk accepted:** The redirect lineage is enforced in SQLite and the local
+core process rather than a separately isolated gateway binary. This self-authored
+review is non-independent and cannot satisfy an external independent-review
+requirement.

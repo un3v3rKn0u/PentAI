@@ -310,7 +310,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     before it requests that assessment-scoped resolver, then revalidates all authority
     atomically when persisting the decision. Existing
     destination authorization rechecks scope, SNI/Host, port, protocol, redirects,
-    CNAMEs, IPv6, and rebinding without enabling execution. Hosted live resolver and
+    CNAMEs, IPv6, and rebinding without enabling execution. Redirect hops now derive
+    relative locations and counts from one immutable allowed parent, prohibit branching
+    or replay, retain the exact attestation, and independently authorize a changed host
+    without misclassifying it as same-host DNS rebinding. Hosted live resolver and
     firewall bypass matrices remain required before this item is complete.
 
 ### 6.6 Actions: durable workflow and audit
