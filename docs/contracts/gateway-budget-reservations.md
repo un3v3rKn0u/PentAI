@@ -26,7 +26,9 @@ pause, stop, and startup recovery return its rate tokens without exceeding capac
 - Pause, stop, policy replacement/revocation, and startup recovery abort prepared
   sessions and release their outstanding reservations in the same safety transaction.
 - The request-start boundary revalidates stored authority, consumes the single-use
-  grant, and commits request and rate capacity in one immediate transaction.
+  grant, commits request and rate capacity, and appends a grant-consumption audit event
+  linked to the intent, decision, policy, session, and new start in one immediate
+  transaction. Any failure rolls back both authority state and audit history.
 - A committed start has a deadline bounded by the grant timeout, grant expiry,
   engagement expiry, and network-attestation expiry. It still carries
   `execution_enabled: false`.

@@ -1249,7 +1249,12 @@ runtime termination, and the existing direct-egress bypass matrix and crash reco
 **Findings:** The hosted HTTP effect no longer relies on a synthetic host-created
 claim. It is reachable only after all deterministic authority and containment layers
 produce matching durable state. Separate chains avoid grant, start, claim, runtime,
-and budget reuse. Failure of any expected link or cleanup step fails the workflow.
+and budget reuse. The first hosted run exposed that the request-start transaction
+consumed its grant without a dedicated consumption audit event. The corrected boundary
+now appends that event atomically with the grant update and start, including exact
+intent, decision, policy, session, start, and grant-hash linkage; rollback tests prove
+denied starts append nothing. Failure of any expected link or cleanup step fails the
+workflow.
 
 **Limitations and deferred work:** Hosted results are not claimed until the Linux
 rootless workflow passes. The only destination remains the repository-owned HTTP
