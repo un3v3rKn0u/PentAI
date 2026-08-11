@@ -205,30 +205,13 @@ class Settings:
         if (
             not self.network_attestation_enabled
             or self.controlled_dns_server_ip is None
-            or self.network_resolver_mode not in {"tunnel_resolver", "approved_resolver"}
-            or self.network_resolver_id is None
-            or not _IDENTIFIER_PATTERN.fullmatch(self.network_resolver_id)
-            or not self.network_resolver_addresses
             or not 0.1 <= self.controlled_dns_timeout_seconds <= 10
         ):
             raise ValueError("Enabled controlled DNS configuration is incomplete")
         try:
-            server = ip_address(self.controlled_dns_server_ip).compressed
-            resolvers = {
-                ip_address(value).compressed for value in self.network_resolver_addresses
-            }
+            ip_address(self.controlled_dns_server_ip)
         except ValueError as exc:
             raise ValueError("Controlled DNS configuration is invalid") from exc
-        if server not in resolvers:
-            raise ValueError("Controlled DNS server must be in the attested resolver set")
-        if (
-            self.network_resolver_mode == "tunnel_resolver"
-            and self.controlled_dns_tls_hostname is not None
-        ) or (
-            self.network_resolver_mode == "approved_resolver"
-            and self.controlled_dns_tls_hostname is None
-        ):
-            raise ValueError("Controlled DNS transport does not match resolver mode")
         if self.controlled_dns_tls_hostname is not None:
             try:
                 canonicalize_domain(self.controlled_dns_tls_hostname)

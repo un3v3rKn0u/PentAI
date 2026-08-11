@@ -8,8 +8,9 @@ destination authorization without adding an HTTP socket, worker access, or an
 execution API.
 
 The feature is disabled by default. Enabling it requires network attestation to be
-enabled, the selected DNS server IP to appear in the exact attested resolver set, and
-the resolver mode and identity to come from the same trusted local configuration.
+enabled and the selected DNS server IP to appear in the exact active policy-bound
+network profile. Resolver mode, identity, and allowed addresses are loaded from that
+durable profile for every assessment rather than duplicated local settings.
 
 ## Transport rules
 
@@ -36,23 +37,25 @@ and changed pinned answers.
 
 ## Configuration
 
-All configuration is trusted local deployment input:
+Only transport details remain trusted local deployment input:
 
 - `PENTAI_CONTROLLED_DNS_ENABLED=1`
 - `PENTAI_CONTROLLED_DNS_SERVER_IP=<literal IPv4 or IPv6 address>`
 - `PENTAI_CONTROLLED_DNS_TIMEOUT_SECONDS=<0.1 through 10>` (optional; default `2`)
 - `PENTAI_CONTROLLED_DNS_TLS_HOSTNAME=<certificate DNS name>` only when
-  `PENTAI_NETWORK_RESOLVER_MODE=approved_resolver`
+  the active profile selects `approved_resolver`
 
-Partial configuration, a server outside `PENTAI_NETWORK_RESOLVER_ADDRESSES`, a TLS
-name on a tunnel resolver, or a missing TLS name on an approved resolver prevents
-startup. Configuration does not create authority and is inaccessible to UI, AI,
-workers, and public API callers.
+Missing, revoked, malformed, or policy-mismatched profile state; a server outside the
+profile's resolver addresses; a TLS name on a tunnel resolver; or a missing TLS name
+on an approved resolver denies per-assessment resolver construction. Legacy
+`PENTAI_NETWORK_RESOLVER_*` values are accepted for configuration compatibility but
+cannot influence controlled DNS. Transport configuration does not create authority
+and is inaccessible to UI, AI, workers, and public API callers.
 
 ## Compatibility and rollback
 
 No schema or migration changes are required. Disabled deployments retain the previous
-non-executing behavior and store `None` as the application resolver. Existing
+non-executing behavior and store `None` as the application resolver provider. Existing
 attestations and destination decisions remain readable.
 
 Before rollback, disable controlled DNS and verify that no assessment is active and no

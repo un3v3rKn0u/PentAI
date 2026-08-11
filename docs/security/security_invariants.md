@@ -169,6 +169,13 @@ exactly; profile activation always records `execution_enabled: false`.
 **Primary enforcement:** Gateway and OS/container network rules<br>
 **Verification:** Port 53/853, known DoH, custom resolver, and DNS rebinding tests.
 
+**Phase 1 composition note:** Controlled-resolver construction obtains resolver mode,
+identity, and allowed addresses from the current active policy-bound network profile
+for each assessment. A separately pinned transport address must be a member of that
+profile, and TCP/53 versus verified DoT must match its mode. Missing, revoked,
+mismatched, malformed, or changed profile state denies resolver construction; legacy
+environment resolver identity cannot grant authority.
+
 ### INV-NET-004 — IPv6 fail-safe
 
 **Statement:** IPv6 is disabled for worker traffic unless an approved and continuously attested IPv6 egress path is configured.

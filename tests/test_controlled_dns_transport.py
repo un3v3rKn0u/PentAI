@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from pentai_core.config import Settings
 from pentai_core.controlled_dns import ControlledDnsError
-from pentai_core.controlled_dns_composition import compose_controlled_resolver
+from pentai_core.controlled_dns_composition import compose_controlled_resolver_provider
 from pentai_core.controlled_dns_transport import (
     PinnedDnsBackend,
     SocketDnsWireTransport,
@@ -99,18 +99,32 @@ def network_settings(**changed: object) -> Settings:
             "observer-a|ipv4|https://observer-a.invalid/ip",
             "observer-b|ipv4|https://observer-b.invalid/ip",
         ),
-        "network_route_profile_id": "fixture-route",
-        "network_route_interface": "tun0",
-        "network_route_gateway": "10.0.0.1",
-        "network_resolver_mode": "tunnel_resolver",
-        "network_resolver_id": "fixture-resolver",
-        "network_resolver_addresses": ("10.0.0.53",),
         "controlled_dns_enabled": True,
         "controlled_dns_server_ip": "10.0.0.53",
         "controlled_dns_timeout_seconds": 0.2,
     }
     values.update(changed)
     return Settings(**values)
+
+
+@dataclass
+class FixtureProfileControl:
+    profile: dict[str, object]
+    requests: list[str] = field(default_factory=list)
+
+    def network_profile_for_assessment(self, engagement_id: str) -> dict[str, object]:
+        self.requests.append(engagement_id)
+        return self.profile
+
+
+def network_profile(**changed: object) -> dict[str, object]:
+    profile: dict[str, object] = {
+        "resolver_mode": "tunnel_resolver",
+        "resolver_id": "resolver-0123456789abcdef01234567",
+        "resolver_addresses": ["10.0.0.53"],
+    }
+    profile.update(changed)
+    return profile
 
 
 class ControlledDnsTransportTests(unittest.TestCase):
@@ -382,15 +396,8 @@ class ControlledDnsTransportTests(unittest.TestCase):
                 controlled_dns_server_ip="10.0.0.53",
             ).validate()
         cases = (
-            {"controlled_dns_server_ip": "10.0.0.54"},
             {"network_attestation_enabled": False},
-            {"controlled_dns_tls_hostname": "unexpected.example"},
-            {"network_resolver_mode": "ambient"},
-            {"network_resolver_id": "invalid resolver"},
-            {
-                "network_resolver_mode": "approved_resolver",
-                "controlled_dns_tls_hostname": "bad host",
-            },
+            {"controlled_dns_tls_hostname": "bad host"},
             {"controlled_dns_timeout_seconds": 11},
         )
         for changed in cases:
@@ -406,12 +413,6 @@ class ControlledDnsTransportTests(unittest.TestCase):
                 "observer-a|ipv4|https://a.invalid/ip;"
                 "observer-b|ipv4|https://b.invalid/ip"
             ),
-            "PENTAI_NETWORK_ROUTE_PROFILE_ID": "fixture-route",
-            "PENTAI_NETWORK_ROUTE_INTERFACE": "tun0",
-            "PENTAI_NETWORK_ROUTE_GATEWAY": "10.0.0.1",
-            "PENTAI_NETWORK_RESOLVER_MODE": "tunnel_resolver",
-            "PENTAI_NETWORK_RESOLVER_ID": "fixture-resolver",
-            "PENTAI_NETWORK_RESOLVER_ADDRESSES": "10.0.0.53",
             "PENTAI_CONTROLLED_DNS_ENABLED": "1",
             "PENTAI_CONTROLLED_DNS_SERVER_IP": "10.0.0.53",
             "PENTAI_CONTROLLED_DNS_TIMEOUT_SECONDS": "1",
@@ -419,18 +420,79 @@ class ControlledDnsTransportTests(unittest.TestCase):
         with patch.dict(os.environ, environment, clear=True):
             settings = Settings.from_environment()
         transport = FixtureTransport(lambda query: _response(query, addresses=("1.1.1.1",)))
-        resolver = compose_controlled_resolver(settings=settings, transport=transport)
-        self.assertIsNotNone(resolver)
-        assert resolver is not None
+        control = FixtureProfileControl(network_profile())
+        provider = compose_controlled_resolver_provider(
+            settings=settings, profile_control=control, transport=transport
+        )
+        self.assertIsNotNone(provider)
+        assert provider is not None
+        resolver = provider.for_assessment("assessment-a")
         answer = resolver.resolve(
             "example.com",
             443,
             attestation={
                 "resolver_mode": "tunnel_resolver",
-                "resolver_id": "fixture-resolver",
+                "resolver_id": "resolver-0123456789abcdef01234567",
             },
         )
         self.assertEqual(answer.addresses, ("1.1.1.1",))
+        self.assertEqual(control.requests, ["assessment-a"])
+
+    def test_provider_denies_profile_transport_mismatch(self) -> None:
+        cases = (
+            (network_profile(resolver_addresses=["10.0.0.54"]), network_settings()),
+            (
+                network_profile(resolver_mode="approved_resolver"),
+                network_settings(),
+            ),
+            (
+                network_profile(),
+                network_settings(controlled_dns_tls_hostname="dns.example"),
+            ),
+            (network_profile(resolver_addresses=[]), network_settings()),
+        )
+        for profile, settings in cases:
+            provider = compose_controlled_resolver_provider(
+                settings=settings, profile_control=FixtureProfileControl(profile)
+            )
+            assert provider is not None
+            with self.subTest(profile=profile), self.assertRaises(ValueError):
+                provider.for_assessment("assessment-a")
+
+    def test_provider_uses_latest_profile_for_every_assessment(self) -> None:
+        control = FixtureProfileControl(network_profile())
+        provider = compose_controlled_resolver_provider(
+            settings=network_settings(), profile_control=control
+        )
+        assert provider is not None
+        provider.for_assessment("assessment-a")
+        control.profile = network_profile(resolver_addresses=["10.0.0.54"])
+        with self.assertRaisesRegex(ValueError, "absent from the active network profile"):
+            provider.for_assessment("assessment-a")
+        self.assertEqual(control.requests, ["assessment-a", "assessment-a"])
+
+    def test_provider_composes_approved_resolver_with_pinned_tls_name(self) -> None:
+        transport = FixtureTransport(lambda query: _response(query, addresses=("1.1.1.1",)))
+        provider = compose_controlled_resolver_provider(
+            settings=network_settings(controlled_dns_tls_hostname="dns.example"),
+            profile_control=FixtureProfileControl(
+                network_profile(resolver_mode="approved_resolver")
+            ),
+            transport=transport,
+        )
+        assert provider is not None
+        answer = provider.for_assessment("assessment-a").resolve(
+            "example.com",
+            443,
+            attestation={
+                "resolver_mode": "approved_resolver",
+                "resolver_id": "resolver-0123456789abcdef01234567",
+            },
+        )
+        self.assertEqual(answer.addresses, ("1.1.1.1",))
+        self.assertTrue(transport.calls)
+        self.assertEqual(transport.calls[0]["server_port"], 853)
+        self.assertEqual(transport.calls[0]["tls_hostname"], "dns.example")
 
 
 if __name__ == "__main__":
