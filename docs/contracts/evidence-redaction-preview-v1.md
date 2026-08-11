@@ -38,7 +38,7 @@ consumers remain valid. Older binaries may ignore derivative tables and encrypte
 blobs. Rollback requires a verified pre-migration backup rather than deletion of
 immutable history.
 
-Retention configuration and manual secure deletion remain deferred because deletion
-requires separate authorization, backup, crash-recovery, shared-blob reference, and
-failure tests. PDF/image parsing, original previews, annotations, exports, model
-routing, findings, reports, and UI rendering are also outside this slice.
+Migration 0023 adds policy-derived retention and human-confirmed crash-recoverable
+content deletion; see `evidence-retention-deletion-v1.md`. Backup-copy purge,
+per-object-key cryptographic erasure, PDF/image parsing, original previews, annotations,
+exports, model routing, findings, reports, and UI rendering remain outside this slice.

@@ -211,6 +211,14 @@ class EvidenceRedactionRequest(StrictRequest):
     idempotency_key: str = Field(min_length=16, max_length=128)
 
 
+class EvidenceDeletionRequest(StrictRequest):
+    artifact_type: str
+    artifact_id: str
+    expected_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reason: str = Field(min_length=1, max_length=500)
+    confirm_permanent_deletion: bool
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -317,6 +325,7 @@ def create_app(
     )
     authorization.recover_startup()
     workflows.recover_startup()
+    evidence.recover_deletions()
     supervisor = runtime_supervisor or compose_gateway_runtime_supervisor(
         settings=runtime, safety_control=authorization
     )
@@ -710,6 +719,20 @@ def create_app(
         actor = principal(request)
         return evidence_call(
             lambda: evidence.preview_redaction(derivative_id, actor_id=actor.principal_id)
+        )
+
+    @app.post("/api/v1/evidence/deletions")
+    def delete_evidence(requested: EvidenceDeletionRequest, request: Request) -> dict[str, Any]:
+        actor = principal(request)
+        return evidence_call(
+            lambda: evidence.delete_artifact(
+                requested.artifact_type,
+                requested.artifact_id,
+                expected_sha256=requested.expected_sha256,
+                reason=requested.reason,
+                confirm_permanent_deletion=requested.confirm_permanent_deletion,
+                actor_id=actor.principal_id,
+            )
         )
 
     @app.post("/api/v1/workflows")

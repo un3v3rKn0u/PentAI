@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import sqlite3
 from contextlib import closing
+from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,6 +11,7 @@ import pytest
 from pentai_core.evidence import EvidenceError, EvidenceService
 from pentai_core.evidence_store import EncryptedEvidenceStore, EvidenceStoreError
 from pentai_core.migrate import migrate
+from pentai_policy.document import parse_time
 
 
 def evidence_fixture(tmp_path: Path) -> tuple[Path, str, EvidenceService, EncryptedEvidenceStore]:
@@ -35,8 +37,13 @@ def evidence_fixture(tmp_path: Path) -> tuple[Path, str, EvidenceService, Encryp
         connection.execute(
             """INSERT INTO manifest_versions(
                 id, engagement_id, schema_version, document_json, content_hash
-            ) VALUES (?, ?, '2.0.0', '{}', ?)""",
-            (manifest_id, engagement_id, "a" * 64),
+            ) VALUES (?, ?, '2.0.0', ?, ?)""",
+            (
+                manifest_id,
+                engagement_id,
+                '{"data_handling":{"retention_days":1}}',
+                "a" * 64,
+            ),
         )
         connection.execute(
             """INSERT INTO policy_bundles(
@@ -352,3 +359,197 @@ def test_redaction_and_preview_reject_unsafe_or_ambiguous_inputs(tmp_path: Path)
     with pytest.raises(EvidenceError) as original_preview:
         service.preview_redaction(str(original["evidence_id"]), actor_id="local-reviewer")
     assert original_preview.value.code == "EVIDENCE_DERIVATIVE_NOT_FOUND"
+
+
+def test_retention_deletion_unlinks_last_blob_and_preserves_audit_metadata(
+    tmp_path: Path,
+) -> None:
+    database, workflow_id, service, store = evidence_fixture(tmp_path)
+    original = capture(service, workflow_id)
+    digest = str(original["sha256"])
+    deletion = service.delete_artifact(
+        "original",
+        str(original["evidence_id"]),
+        expected_sha256=digest,
+        reason="Synthetic fixture retention expired",
+        confirm_permanent_deletion=True,
+        actor_id="local-reviewer",
+        now=parse_time(str(original["created_at"])) + timedelta(days=2),
+    )
+    assert deletion["status"] == "completed"
+    assert deletion["blob_disposition"] == "unlinked"
+    assert deletion["forensic_erase_guaranteed"] is False
+    assert not (store.root / digest[:2] / f"{digest}.blob").exists()
+    with pytest.raises(EvidenceError) as unavailable:
+        service.load_original(str(original["evidence_id"]), actor_id="local-reviewer")
+    assert unavailable.value.code == "EVIDENCE_CONTENT_DELETED"
+    assert (
+        service.metadata(str(original["evidence_id"]), actor_id="local-reviewer")["evidence"]
+        == original
+    )
+
+    with closing(sqlite3.connect(database)) as connection:
+        actions = [
+            row[0]
+            for row in connection.execute("SELECT action FROM audit_events ORDER BY sequence")
+        ]
+    assert actions == [
+        "evidence.original_stored",
+        "evidence.deletion_requested",
+        "evidence.deletion_started",
+        "evidence.deletion_completed",
+        "evidence.metadata_accessed",
+    ]
+    with closing(sqlite3.connect(database)) as connection, connection:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            connection.execute(
+                "UPDATE evidence_deletions SET reason = 'changed' WHERE deletion_id = ?",
+                (deletion["deletion_id"],),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="cannot be deleted"):
+            connection.execute(
+                "DELETE FROM evidence_deletions WHERE deletion_id = ?",
+                (deletion["deletion_id"],),
+            )
+
+
+def test_retention_and_confirmation_fail_closed_before_request_persistence(
+    tmp_path: Path,
+) -> None:
+    database, workflow_id, service, store = evidence_fixture(tmp_path)
+    original = capture(service, workflow_id)
+    digest = str(original["sha256"])
+    cases = (
+        (
+            {"confirm_permanent_deletion": False},
+            "EVIDENCE_DELETION_CONFIRMATION_REQUIRED",
+        ),
+        ({"expected_sha256": "0" * 64}, "EVIDENCE_DELETION_DIGEST_MISMATCH"),
+        ({"artifact_type": "unknown"}, "EVIDENCE_ARTIFACT_TYPE_INVALID"),
+    )
+    defaults = {
+        "artifact_type": "original",
+        "artifact_id": str(original["evidence_id"]),
+        "expected_sha256": digest,
+        "reason": "Synthetic fixture cleanup",
+        "confirm_permanent_deletion": True,
+        "actor_id": "local-reviewer",
+        "now": parse_time(str(original["created_at"])) + timedelta(days=2),
+    }
+    for override, code in cases:
+        with pytest.raises(EvidenceError) as raised:
+            service.delete_artifact(**(defaults | override))  # type: ignore[arg-type]
+        assert raised.value.code == code
+
+    with pytest.raises(EvidenceError) as active:
+        service.delete_artifact(
+            **(defaults | {"now": parse_time(str(original["created_at"])) + timedelta(hours=12)})  # type: ignore[arg-type]
+        )
+    assert active.value.code == "EVIDENCE_RETENTION_ACTIVE"
+    assert store.load(digest) == b"Synthetic local evidence only."
+    with closing(sqlite3.connect(database)) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM evidence_deletions").fetchone()[0] == 0
+
+
+def test_shared_blob_is_retained_until_every_reference_is_deleted(tmp_path: Path) -> None:
+    _, workflow_id, service, store = evidence_fixture(tmp_path)
+    first = capture(service, workflow_id)
+    second = capture(service, workflow_id, idempotency_key="evidence-fixture-0002")
+    digest = str(first["sha256"])
+    instant = parse_time(str(first["created_at"])) + timedelta(days=2)
+
+    first_deletion = service.delete_artifact(
+        "original",
+        str(first["evidence_id"]),
+        expected_sha256=digest,
+        reason="Delete first synthetic reference",
+        confirm_permanent_deletion=True,
+        actor_id="local-reviewer",
+        now=instant,
+    )
+    assert first_deletion["blob_disposition"] == "retained_shared"
+    assert (
+        service.load_original(str(second["evidence_id"]), actor_id="local-reviewer")
+        == b"Synthetic local evidence only."
+    )
+
+    second_deletion = service.delete_artifact(
+        "original",
+        str(second["evidence_id"]),
+        expected_sha256=digest,
+        reason="Delete final synthetic reference",
+        confirm_permanent_deletion=True,
+        actor_id="local-reviewer",
+        now=instant,
+    )
+    assert second_deletion["blob_disposition"] == "unlinked"
+    with pytest.raises(EvidenceStoreError, match="unavailable"):
+        store.load(digest)
+
+
+def test_interrupted_deletion_recovers_without_restoring_content(tmp_path: Path) -> None:
+    database, workflow_id, service, store = evidence_fixture(tmp_path)
+    original = capture(service, workflow_id)
+    digest = str(original["sha256"])
+
+    def interrupt() -> None:
+        raise RuntimeError("synthetic crash after unlink")
+
+    interrupted = EvidenceService(database, store, deletion_after_blob_handler=interrupt)
+    with pytest.raises(RuntimeError, match="synthetic crash"):
+        interrupted.delete_artifact(
+            "original",
+            str(original["evidence_id"]),
+            expected_sha256=digest,
+            reason="Synthetic crash recovery",
+            confirm_permanent_deletion=True,
+            actor_id="local-reviewer",
+            now=parse_time(str(original["created_at"])) + timedelta(days=2),
+        )
+    with closing(sqlite3.connect(database)) as connection:
+        assert (
+            connection.execute("SELECT status FROM evidence_deletions").fetchone()[0]
+            == "processing"
+        )
+    assert not (store.root / digest[:2] / f"{digest}.blob").exists()
+
+    recovered = EvidenceService(database, store)
+    assert recovered.recover_deletions() == {"recovered": 1}
+    with closing(sqlite3.connect(database)) as connection:
+        row = connection.execute(
+            "SELECT status, blob_disposition FROM evidence_deletions"
+        ).fetchone()
+    assert row == ("completed", "already_absent")
+    with pytest.raises(EvidenceError) as unavailable:
+        recovered.load_original(str(original["evidence_id"]), actor_id="local-reviewer")
+    assert unavailable.value.code == "EVIDENCE_CONTENT_DELETED"
+
+
+def test_redaction_deletion_denies_preview_without_deleting_original(tmp_path: Path) -> None:
+    _, workflow_id, service, _ = evidence_fixture(tmp_path)
+    original = capture(service, workflow_id, content=b"keep secret")
+    derivative = service.create_redaction(
+        str(original["evidence_id"]),
+        redactions=[{"start": 5, "end": 11, "reason": "secret"}],
+        classification="internal",
+        confirm_classification=True,
+        idempotency_key="redaction-deletion-0001",
+        actor_id="local-reviewer",
+    )
+    deletion = service.delete_artifact(
+        "redaction",
+        str(derivative["derivative_id"]),
+        expected_sha256=str(derivative["sha256"]),
+        reason="Synthetic redaction retention expired",
+        confirm_permanent_deletion=True,
+        actor_id="local-reviewer",
+        now=parse_time(str(derivative["created_at"])) + timedelta(days=2),
+    )
+    assert deletion["blob_disposition"] == "unlinked"
+    with pytest.raises(EvidenceError) as preview:
+        service.preview_redaction(str(derivative["derivative_id"]), actor_id="local-reviewer")
+    assert preview.value.code == "EVIDENCE_CONTENT_DELETED"
+    assert (
+        service.load_original(str(original["evidence_id"]), actor_id="local-reviewer")
+        == b"keep secret"
+    )

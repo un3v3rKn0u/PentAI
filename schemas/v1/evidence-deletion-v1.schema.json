@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/evidence-deletion-v1.schema.json",
+  "title": "PentAI EvidenceDeletion v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "deletion_id", "artifact_type", "artifact_id", "policy_bundle_id", "sha256", "retention_days", "retention_deadline", "reason", "requested_by", "requested_at", "status", "version", "started_at", "completed_at", "blob_disposition", "forensic_erase_guaranteed"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "deletion_id": {"type": "string", "format": "uuid"},
+    "artifact_type": {"enum": ["original", "redaction"]},
+    "artifact_id": {"type": "string", "format": "uuid"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "retention_days": {"type": "integer", "minimum": 1},
+    "retention_deadline": {"type": "string", "format": "date-time"},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 500},
+    "requested_by": {"type": "string", "minLength": 1, "maxLength": 128},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["pending", "processing", "completed"]},
+    "version": {"type": "integer", "minimum": 1, "maximum": 3},
+    "started_at": {"type": ["string", "null"], "format": "date-time"},
+    "completed_at": {"type": ["string", "null"], "format": "date-time"},
+    "blob_disposition": {"type": ["string", "null"], "enum": ["unlinked", "already_absent", "retained_shared", null]},
+    "forensic_erase_guaranteed": {"const": false}
+  }
+}

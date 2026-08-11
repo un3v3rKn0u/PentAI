@@ -5,13 +5,13 @@ import json
 import re
 import sqlite3
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
 from pentai_policy import canonical_json, content_hash
-from pentai_policy.document import contract_issues
+from pentai_policy.document import contract_issues, parse_time
 
 from pentai_core.audit import append_audit_event
 from pentai_core.database import transaction
@@ -48,10 +48,12 @@ class EvidenceService:
         store: EncryptedEvidenceStore | None,
         *,
         storage_failure_handler: Callable[[], None] | None = None,
+        deletion_after_blob_handler: Callable[[], None] | None = None,
     ) -> None:
         self.database_path = database_path
         self.store = store
         self.storage_failure_handler = storage_failure_handler
+        self.deletion_after_blob_handler = deletion_after_blob_handler
 
     def _storage_failed(self) -> None:
         if self.storage_failure_handler is not None:
@@ -249,6 +251,7 @@ class EvidenceService:
             ).fetchone()
             if parent is None:
                 raise EvidenceError("EVIDENCE_NOT_FOUND", "evidence does not exist")
+            self._assert_available(connection, "original", evidence_id)
             parent_document = self._document(parent)
             existing = connection.execute(
                 """SELECT * FROM evidence_derivatives
@@ -415,6 +418,8 @@ class EvidenceService:
             row = connection.execute(
                 "SELECT * FROM evidence_derivatives WHERE derivative_id = ?", (derivative_id,)
             ).fetchone()
+            if row is not None:
+                self._assert_available(connection, "redaction", derivative_id)
         if row is None:
             raise EvidenceError("EVIDENCE_DERIVATIVE_NOT_FOUND", "redacted evidence does not exist")
         document = self._derivative_document(row)
@@ -463,6 +468,254 @@ class EvidenceService:
             )
         return preview
 
+    def delete_artifact(
+        self,
+        artifact_type: str,
+        artifact_id: str,
+        *,
+        expected_sha256: str,
+        reason: str,
+        confirm_permanent_deletion: bool,
+        actor_id: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        if artifact_type not in {"original", "redaction"}:
+            raise EvidenceError("EVIDENCE_ARTIFACT_TYPE_INVALID", "artifact type is invalid")
+        if confirm_permanent_deletion is not True:
+            raise EvidenceError(
+                "EVIDENCE_DELETION_CONFIRMATION_REQUIRED",
+                "permanent evidence deletion requires explicit human confirmation",
+            )
+        normalized_reason = reason.strip()
+        if (
+            not normalized_reason
+            or len(normalized_reason) > 500
+            or not actor_id
+            or len(actor_id) > 128
+        ):
+            raise EvidenceError("EVIDENCE_DELETION_REASON_INVALID", "deletion reason is invalid")
+        instant = now or datetime.now(UTC)
+        if instant.tzinfo is None:
+            raise EvidenceError("EVIDENCE_CLOCK_INVALID", "deletion time must include an offset")
+        instant = instant.astimezone(UTC)
+        requested_at = instant.isoformat().replace("+00:00", "Z")
+
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            artifact = self._artifact(connection, artifact_type, artifact_id)
+            if artifact["sha256"] != expected_sha256:
+                raise EvidenceError(
+                    "EVIDENCE_DELETION_DIGEST_MISMATCH",
+                    "deletion digest does not match the immutable artifact",
+                )
+            existing = connection.execute(
+                """SELECT * FROM evidence_deletions
+                   WHERE artifact_type = ? AND artifact_id = ?""",
+                (artifact_type, artifact_id),
+            ).fetchone()
+            if existing is not None:
+                if existing["sha256"] != expected_sha256 or existing["reason"] != normalized_reason:
+                    raise EvidenceError(
+                        "EVIDENCE_DELETION_CONFLICT", "artifact already has a deletion request"
+                    )
+                deletion_id = str(existing["deletion_id"])
+            else:
+                retention_days = self._retention_days(connection, str(artifact["policy_bundle_id"]))
+                try:
+                    deadline = parse_time(str(artifact["created_at"])) + timedelta(
+                        days=retention_days
+                    )
+                except (OverflowError, ValueError) as exc:
+                    raise EvidenceError(
+                        "EVIDENCE_RETENTION_POLICY_INVALID",
+                        "evidence retention policy cannot produce a valid deadline",
+                    ) from exc
+                if instant < deadline:
+                    raise EvidenceError(
+                        "EVIDENCE_RETENTION_ACTIVE",
+                        "evidence cannot be deleted before its retention deadline",
+                    )
+                deletion_id = str(uuid4())
+                retention_deadline = deadline.isoformat().replace("+00:00", "Z")
+                request_document = {
+                    "deletion_id": deletion_id,
+                    "artifact_type": artifact_type,
+                    "artifact_id": artifact_id,
+                    "policy_bundle_id": artifact["policy_bundle_id"],
+                    "sha256": expected_sha256,
+                    "retention_days": retention_days,
+                    "retention_deadline": retention_deadline,
+                    "reason": normalized_reason,
+                    "requested_by": actor_id,
+                    "requested_at": requested_at,
+                }
+                connection.execute(
+                    """INSERT INTO evidence_deletions(
+                        deletion_id, artifact_type, artifact_id, policy_bundle_id,
+                        sha256, retention_days, retention_deadline, reason,
+                        requested_by, requested_at, request_hash, status, version,
+                        forensic_erase_guaranteed
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 1, 0)""",
+                    (
+                        deletion_id,
+                        artifact_type,
+                        artifact_id,
+                        artifact["policy_bundle_id"],
+                        expected_sha256,
+                        retention_days,
+                        retention_deadline,
+                        normalized_reason,
+                        actor_id,
+                        requested_at,
+                        content_hash(request_document),
+                    ),
+                )
+                append_audit_event(
+                    connection,
+                    action="evidence.deletion_requested",
+                    subject_type="evidence_deletion",
+                    subject_id=deletion_id,
+                    actor_type="human",
+                    actor_id=actor_id,
+                    data={
+                        "artifact_type": artifact_type,
+                        "artifact_id": artifact_id,
+                        "policy_bundle_id": artifact["policy_bundle_id"],
+                        "sha256": expected_sha256,
+                        "retention_days": retention_days,
+                        "retention_deadline": retention_deadline,
+                        "reason": normalized_reason,
+                        "forensic_erase_guaranteed": False,
+                    },
+                    occurred_at=requested_at,
+                )
+        return self._execute_deletion(
+            deletion_id, actor_type="human", actor_id=actor_id, now=instant
+        )
+
+    def recover_deletions(self) -> dict[str, int]:
+        with transaction(self.database_path) as connection:
+            identifiers = [
+                str(row["deletion_id"])
+                for row in connection.execute(
+                    """SELECT deletion_id FROM evidence_deletions
+                       WHERE status IN ('pending', 'processing')
+                       ORDER BY requested_at, deletion_id"""
+                )
+            ]
+        completed = 0
+        for deletion_id in identifiers:
+            self._execute_deletion(
+                deletion_id,
+                actor_type="service",
+                actor_id="evidence-recovery",
+                now=datetime.now(UTC),
+            )
+            completed += 1
+        return {"recovered": completed}
+
+    def _execute_deletion(
+        self,
+        deletion_id: str,
+        *,
+        actor_type: str,
+        actor_id: str,
+        now: datetime,
+    ) -> dict[str, Any]:
+        if self.store is None:
+            self._storage_failed()
+            raise EvidenceError("EVIDENCE_KEY_UNAVAILABLE", "evidence storage is unavailable")
+        occurred_at = now.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM evidence_deletions WHERE deletion_id = ?", (deletion_id,)
+            ).fetchone()
+            if row is None:
+                raise EvidenceError(
+                    "EVIDENCE_DELETION_NOT_FOUND", "evidence deletion does not exist"
+                )
+            if row["status"] == "completed":
+                return self._deletion_document(row)
+            if row["status"] == "pending":
+                connection.execute(
+                    """UPDATE evidence_deletions
+                       SET status = 'processing', version = 2, started_at = ?
+                       WHERE deletion_id = ? AND status = 'pending' AND version = 1""",
+                    (occurred_at, deletion_id),
+                )
+                append_audit_event(
+                    connection,
+                    action="evidence.deletion_started",
+                    subject_type="evidence_deletion",
+                    subject_id=deletion_id,
+                    actor_type=actor_type,
+                    actor_id=actor_id,
+                    data={
+                        "artifact_type": row["artifact_type"],
+                        "artifact_id": row["artifact_id"],
+                        "sha256": row["sha256"],
+                    },
+                    occurred_at=occurred_at,
+                )
+            active_references = self._active_digest_references(connection, str(row["sha256"]))
+
+        if active_references:
+            disposition = "retained_shared"
+        else:
+            try:
+                removed = self.store.delete(str(row["sha256"]))
+            except EvidenceStoreError as exc:
+                self._storage_failed()
+                raise EvidenceError(
+                    "EVIDENCE_DELETION_FAILED", "encrypted evidence deletion failed closed"
+                ) from exc
+            disposition = "unlinked" if removed else "already_absent"
+        if self.deletion_after_blob_handler is not None:
+            self.deletion_after_blob_handler()
+
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute(
+                "SELECT * FROM evidence_deletions WHERE deletion_id = ?", (deletion_id,)
+            ).fetchone()
+            if current is None:
+                raise EvidenceError(
+                    "EVIDENCE_DELETION_NOT_FOUND", "evidence deletion does not exist"
+                )
+            if current["status"] == "completed":
+                return self._deletion_document(current)
+            updated = connection.execute(
+                """UPDATE evidence_deletions
+                   SET status = 'completed', version = 3, completed_at = ?,
+                       blob_disposition = ?
+                   WHERE deletion_id = ? AND status = 'processing' AND version = 2""",
+                (occurred_at, disposition, deletion_id),
+            )
+            if updated.rowcount != 1:
+                raise EvidenceError("EVIDENCE_DELETION_FENCED", "evidence deletion state changed")
+            append_audit_event(
+                connection,
+                action="evidence.deletion_completed",
+                subject_type="evidence_deletion",
+                subject_id=deletion_id,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                data={
+                    "artifact_type": current["artifact_type"],
+                    "artifact_id": current["artifact_id"],
+                    "sha256": current["sha256"],
+                    "blob_disposition": disposition,
+                    "forensic_erase_guaranteed": False,
+                },
+                occurred_at=occurred_at,
+            )
+            completed = connection.execute(
+                "SELECT * FROM evidence_deletions WHERE deletion_id = ?", (deletion_id,)
+            ).fetchone()
+        assert completed is not None
+        return self._deletion_document(completed)
+
     def metadata(self, evidence_id: str, *, actor_id: str) -> dict[str, Any]:
         accessed_at = _timestamp()
         with transaction(self.database_path) as connection:
@@ -495,6 +748,8 @@ class EvidenceService:
             row = connection.execute(
                 "SELECT * FROM evidence_objects WHERE evidence_id = ?", (evidence_id,)
             ).fetchone()
+            if row is not None:
+                self._assert_available(connection, "original", evidence_id)
         if row is None:
             raise EvidenceError("EVIDENCE_NOT_FOUND", "evidence does not exist")
         try:
@@ -550,6 +805,104 @@ class EvidenceService:
             raise EvidenceError("EVIDENCE_INTEGRITY_FAILED", "evidence derivative integrity failed")
         self._valid(document, "evidence-redaction-v1.schema.json")
         return cast(dict[str, Any], document)
+
+    def _artifact(
+        self, connection: sqlite3.Connection, artifact_type: str, artifact_id: str
+    ) -> sqlite3.Row:
+        if artifact_type == "original":
+            row = connection.execute(
+                "SELECT * FROM evidence_objects WHERE evidence_id = ?", (artifact_id,)
+            ).fetchone()
+            if row is not None:
+                self._document(row)
+        else:
+            row = connection.execute(
+                "SELECT * FROM evidence_derivatives WHERE derivative_id = ?", (artifact_id,)
+            ).fetchone()
+            if row is not None:
+                self._derivative_document(row)
+        if row is None:
+            raise EvidenceError("EVIDENCE_NOT_FOUND", "evidence artifact does not exist")
+        return cast(sqlite3.Row, row)
+
+    @staticmethod
+    def _retention_days(connection: sqlite3.Connection, policy_bundle_id: str) -> int:
+        row = connection.execute(
+            """SELECT m.document_json
+               FROM policy_bundles p
+               JOIN manifest_versions m ON m.id = p.manifest_version_id
+               WHERE p.id = ?""",
+            (policy_bundle_id,),
+        ).fetchone()
+        try:
+            manifest = json.loads(row["document_json"] if row is not None else "")
+            days = manifest["data_handling"]["retention_days"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise EvidenceError(
+                "EVIDENCE_RETENTION_POLICY_INVALID",
+                "evidence retention policy is unavailable",
+            ) from exc
+        if type(days) is not int or days < 1:
+            raise EvidenceError(
+                "EVIDENCE_RETENTION_POLICY_INVALID", "evidence retention policy is invalid"
+            )
+        return days
+
+    @staticmethod
+    def _assert_available(
+        connection: sqlite3.Connection, artifact_type: str, artifact_id: str
+    ) -> None:
+        deleted = connection.execute(
+            """SELECT 1 FROM evidence_deletions
+               WHERE artifact_type = ? AND artifact_id = ?""",
+            (artifact_type, artifact_id),
+        ).fetchone()
+        if deleted is not None:
+            raise EvidenceError(
+                "EVIDENCE_CONTENT_DELETED", "evidence content is permanently unavailable"
+            )
+
+    @staticmethod
+    def _active_digest_references(connection: sqlite3.Connection, digest: str) -> int:
+        return int(
+            connection.execute(
+                """SELECT COUNT(*) FROM (
+                    SELECT 'original' AS artifact_type, evidence_id AS artifact_id, sha256
+                    FROM evidence_objects
+                    UNION ALL
+                    SELECT 'redaction', derivative_id, sha256 FROM evidence_derivatives
+                ) artifacts
+                WHERE artifacts.sha256 = ? AND NOT EXISTS (
+                    SELECT 1 FROM evidence_deletions d
+                    WHERE d.artifact_type = artifacts.artifact_type
+                      AND d.artifact_id = artifacts.artifact_id
+                )""",
+                (digest,),
+            ).fetchone()[0]
+        )
+
+    def _deletion_document(self, row: sqlite3.Row) -> dict[str, Any]:
+        document = {
+            "schema_version": "1.0.0",
+            "deletion_id": row["deletion_id"],
+            "artifact_type": row["artifact_type"],
+            "artifact_id": row["artifact_id"],
+            "policy_bundle_id": row["policy_bundle_id"],
+            "sha256": row["sha256"],
+            "retention_days": row["retention_days"],
+            "retention_deadline": row["retention_deadline"],
+            "reason": row["reason"],
+            "requested_by": row["requested_by"],
+            "requested_at": row["requested_at"],
+            "status": row["status"],
+            "version": row["version"],
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
+            "blob_disposition": row["blob_disposition"],
+            "forensic_erase_guaranteed": False,
+        }
+        self._valid(document, "evidence-deletion-v1.schema.json")
+        return document
 
     @staticmethod
     def _redactions(redactions: list[dict[str, Any]]) -> list[dict[str, Any]]:

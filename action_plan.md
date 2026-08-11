@@ -375,8 +375,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [ ] Implement classification, preview sandboxing, redaction derivatives, and retention.
   Immutable server-generated text redactions now preserve exact source provenance and
   classification, and only derivatives have a bounded inactive plain-text preview.
-  General sandboxed file/image previews and retention/secure deletion remain required
-  before this combined item is complete.
+  Policy-derived retention and human-confirmed crash-recoverable content deletion now
+  preserve shared blobs and immutable tombstones. General sandboxed file/image previews,
+  backup-copy purge, and per-object-key cryptographic erasure remain required before
+  this combined item is complete.
 - [ ] Implement finding lifecycle, CVSS/CWE, affected assets, confidence, and validation status.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
 - [ ] Generate Markdown, HTML, JSON, and PDF report drafts.

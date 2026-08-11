@@ -39,6 +39,7 @@ class MigrationTests(unittest.TestCase):
                     "0020",
                     "0021",
                     "0022",
+                    "0023",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -80,6 +81,7 @@ class MigrationTests(unittest.TestCase):
                     "evidence_custody_events",
                     "evidence_derivatives",
                     "evidence_derivative_events",
+                    "evidence_deletions",
                     "network_profile_proposals",
                     "network_profiles",
                 }
