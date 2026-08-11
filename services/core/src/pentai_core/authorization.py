@@ -8,7 +8,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
 from pathlib import Path, PurePath
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from urllib.parse import urljoin
 from uuid import uuid4
 
@@ -2986,10 +2986,13 @@ class AuthorizationService:
             row = connection.execute(
                 """
                 SELECT grs.*, gs.status AS session_status, br.engagement_id,
-                       br.response_bytes_limit
+                       br.response_bytes_limit, ag.intent_id, ag.decision_id,
+                       ag.policy_bundle_id, ag.policy_hash, pe.decision_json
                 FROM gateway_request_starts grs
                 JOIN gateway_sessions gs ON gs.session_id = grs.session_id
                 JOIN budget_reservations br ON br.reservation_id = grs.reservation_id
+                JOIN action_grants ag ON ag.grant_id = grs.grant_id
+                JOIN policy_evaluations pe ON pe.decision_id = ag.decision_id
                 WHERE grs.start_id = ?
                 """,
                 (start_id,),
@@ -3112,7 +3115,8 @@ class AuthorizationService:
                 )
                 if updated_claim.rowcount != 1:
                     raise DomainError("GATEWAY_CLAIM_INVALID", "execution claim is inactive")
-            self._audit(
+            trace_id = str(uuid4()) if claim is not None else None
+            audit = self._audit(
                 connection,
                 action="gateway.request_finalized",
                 subject_type="gateway_session",
@@ -3129,11 +3133,128 @@ class AuthorizationService:
                     "retained_response_bytes": retained,
                     "deadline_at": row["deadline_at"],
                     "execution_claim_id": execution_claim_id,
+                    "execution_trace_id": trace_id,
                     "execution_enabled": False,
                 },
                 occurred_at=completed_at,
             )
+            if claim is not None:
+                runtime = connection.execute(
+                    """SELECT image_digest FROM gateway_runtime_instances
+                    WHERE runtime_id = ?""",
+                    (claim["runtime_id"],),
+                ).fetchone()
+                if runtime is None:
+                    raise DomainError("EXECUTION_TRACE_INVALID", "runtime trace is missing")
+                try:
+                    decision = json.loads(row["decision_json"])
+                    evaluated_rule_ids = decision["evaluated_rule_ids"]
+                except (KeyError, TypeError, json.JSONDecodeError) as exc:
+                    raise DomainError(
+                        "EXECUTION_TRACE_INVALID", "policy decision trace is malformed"
+                    ) from exc
+                if contract_issues(decision, "policy-decision-v1.schema.json"):
+                    raise DomainError(
+                        "EXECUTION_TRACE_INVALID", "policy decision trace is invalid"
+                    )
+                trace = {
+                    "schema_version": "1.0.0",
+                    "trace_id": trace_id,
+                    "execution_kind": "owned_fixture_http",
+                    "result_id": result_id,
+                    "start_id": start_id,
+                    "execution_claim_id": execution_claim_id,
+                    "intent_id": row["intent_id"],
+                    "decision_id": row["decision_id"],
+                    "policy_bundle_id": row["policy_bundle_id"],
+                    "policy_hash": row["policy_hash"],
+                    "evaluated_rule_ids": evaluated_rule_ids,
+                    "grant_id": row["grant_id"],
+                    "runtime_id": claim["runtime_id"],
+                    "tool": {
+                        "name": "pentai-owned-fixture-http",
+                        "version": runtime["image_digest"],
+                    },
+                    "output_refs": [
+                        {
+                            "kind": "gateway_request_result",
+                            "id": result_id,
+                            "outcome": measurement.outcome,
+                            "observed_bytes": observed,
+                            "retained_bytes": retained,
+                        }
+                    ],
+                    "audit_event_id": audit["event_id"],
+                    "created_at": completed_at,
+                    "external_target_enabled": False,
+                }
+                if contract_issues(trace, "execution-trace-v1.schema.json"):
+                    raise DomainError("EXECUTION_TRACE_INVALID", "execution trace is invalid")
+                connection.execute(
+                    """INSERT INTO execution_traces(
+                        trace_id, result_id, start_id, execution_claim_id, intent_id,
+                        decision_id, policy_bundle_id, grant_id, runtime_id,
+                        audit_event_id, tool_name, tool_version, document_json,
+                        content_hash, created_at, external_target_enabled
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)""",
+                    (
+                        trace_id,
+                        result_id,
+                        start_id,
+                        execution_claim_id,
+                        row["intent_id"],
+                        row["decision_id"],
+                        row["policy_bundle_id"],
+                        row["grant_id"],
+                        claim["runtime_id"],
+                        audit["event_id"],
+                        trace["tool"]["name"],
+                        trace["tool"]["version"],
+                        canonical_json(trace),
+                        content_hash(trace),
+                        completed_at,
+                    ),
+                )
         return result
+
+    def execution_trace(self, result_id: str) -> dict[str, Any]:
+        with transaction(self.database_path) as connection:
+            row = connection.execute(
+                "SELECT * FROM execution_traces WHERE result_id = ?",
+                (result_id,),
+            ).fetchone()
+        if row is None:
+            raise DomainError("EXECUTION_TRACE_NOT_FOUND", "execution trace does not exist")
+        try:
+            document = json.loads(row["document_json"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise DomainError("EXECUTION_TRACE_INVALID", "execution trace is malformed") from exc
+        column_matches = isinstance(document, dict) and all(
+            (
+                document.get("trace_id") == row["trace_id"],
+                document.get("result_id") == row["result_id"],
+                document.get("start_id") == row["start_id"],
+                document.get("execution_claim_id") == row["execution_claim_id"],
+                document.get("intent_id") == row["intent_id"],
+                document.get("decision_id") == row["decision_id"],
+                document.get("policy_bundle_id") == row["policy_bundle_id"],
+                document.get("grant_id") == row["grant_id"],
+                document.get("runtime_id") == row["runtime_id"],
+                document.get("audit_event_id") == row["audit_event_id"],
+                document.get("tool")
+                == {"name": row["tool_name"], "version": row["tool_version"]},
+                document.get("created_at") == row["created_at"],
+                document.get("external_target_enabled") is False,
+                row["external_target_enabled"] == 0,
+            )
+        )
+        if (
+            not column_matches
+            or contract_issues(document, "execution-trace-v1.schema.json")
+            or content_hash(document) != row["content_hash"]
+        ):
+            raise DomainError("EXECUTION_TRACE_INVALID", "execution trace is invalid")
+        return cast(dict[str, Any], document)
 
     def claim_gateway_fixture_execution(
         self,
@@ -3579,22 +3700,7 @@ class AuthorizationService:
     def audit_events(self) -> list[dict[str, Any]]:
         with transaction(self.database_path) as connection:
             rows = connection.execute("SELECT * FROM audit_events ORDER BY sequence").fetchall()
-        return [
-            {
-                "sequence": row["sequence"],
-                "event_id": row["event_id"],
-                "occurred_at": row["occurred_at"],
-                "actor_type": row["actor_type"],
-                "actor_id": row["actor_id"],
-                "action": row["action"],
-                "subject_type": row["subject_type"],
-                "subject_id": row["subject_id"],
-                "data": json.loads(row["data_json"]),
-                "previous_hash": row["previous_hash"],
-                "event_hash": row["event_hash"],
-            }
-            for row in rows
-        ]
+        return [_audit_event_from_row(row) for row in rows]
 
     def save_network_profile_proposal(self, proposal: dict[str, Any]) -> dict[str, Any]:
         if contract_issues(proposal, "network-profile-proposal-v1.schema.json"):
@@ -3929,9 +4035,20 @@ class AuthorizationService:
         return _network_profile_from_row(updated)
 
     def verify_audit_chain(self) -> dict[str, Any]:
-        events = self.audit_events()
+        with transaction(self.database_path) as connection:
+            rows = connection.execute("SELECT * FROM audit_events ORDER BY sequence").fetchall()
         previous: str | None = None
-        for event in events:
+        previous_sequence = 0
+        for row in rows:
+            try:
+                event = _audit_event_from_row(row)
+            except DomainError:
+                return {
+                    "valid": False,
+                    "event_count": len(rows),
+                    "failed_sequence": row["sequence"],
+                    "reason": "AUDIT_EVENT_INVALID",
+                }
             expected = content_hash(
                 {
                     "event_id": event["event_id"],
@@ -3945,11 +4062,41 @@ class AuthorizationService:
                     "previous_hash": event["previous_hash"],
                 }
             )
-            if event["previous_hash"] != previous or event["event_hash"] != expected:
+            if (
+                event["sequence"] != previous_sequence + 1
+                or event["previous_hash"] != previous
+                or event["event_hash"] != expected
+            ):
                 return {
                     "valid": False,
-                    "event_count": len(events),
+                    "event_count": len(rows),
                     "failed_sequence": event["sequence"],
+                    "reason": "AUDIT_CHAIN_INVALID",
                 }
             previous = event["event_hash"]
-        return {"valid": True, "event_count": len(events), "head_hash": previous}
+            previous_sequence = event["sequence"]
+        return {"valid": True, "event_count": len(rows), "head_hash": previous}
+
+
+def _audit_event_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    try:
+        data = json.loads(row["data_json"])
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise DomainError("AUDIT_EVENT_INVALID", "audit event data is malformed") from exc
+    event = {
+        "schema_version": "1.0.0",
+        "sequence": row["sequence"],
+        "event_id": row["event_id"],
+        "occurred_at": row["occurred_at"],
+        "actor_type": row["actor_type"],
+        "actor_id": row["actor_id"],
+        "action": row["action"],
+        "subject_type": row["subject_type"],
+        "subject_id": row["subject_id"],
+        "data": data,
+        "previous_hash": row["previous_hash"],
+        "event_hash": row["event_hash"],
+    }
+    if contract_issues(event, "audit-event-v1.schema.json"):
+        raise DomainError("AUDIT_EVENT_INVALID", "audit event contract is invalid")
+    return event

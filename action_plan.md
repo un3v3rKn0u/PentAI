@@ -354,8 +354,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   monotonic immutable checkpoints, bounded retry and dead-letter handling,
   idempotent terminal receipts, transactional outbox events, and startup lease
   invalidation. Dispatch and external effects remain contractually disabled.
-- [ ] Create an append-only hash-chained audit ledger.
-- [ ] Link every execution to its intent, decision, policy rules, grant, tool version, and outputs.
+- [x] Create an append-only hash-chained audit ledger.
+  Database triggers now prohibit mutation/deletion and enforce chain-head continuity;
+  startup validates contracts, contiguous sequence, and every canonical event hash.
+- [x] Link every execution to its intent, decision, policy rules, grant, tool version, and outputs.
+  The only enabled effect—the isolated owned fixture—now atomically persists an
+  immutable trace through its bounded gateway result and final audit event. Any future
+  execution capability must provide equivalent reviewed linkage before enablement.
 - [x] Build recovery startup that revokes stale grants before reclaiming tasks.
 
 ### 6.7 Actions: evidence, findings, reports, and UI

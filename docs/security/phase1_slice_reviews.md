@@ -1341,3 +1341,43 @@ than independently attested worker identities because worker dispatch remains ab
 Future worker binding must introduce runtime identity and revalidate every external
 effect through the existing authorization/gateway chain. This self-authored review is
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-11 — Append-only audit and complete fixture execution trace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+owned-fixture development without external target execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** AuditEvent and ExecutionTrace contracts, additive migration,
+database immutability and chain-head enforcement, startup verification, malformed
+legacy data, atomic trace creation, foreign-key-derived authority links, tool/runtime
+version, bounded output reference, API authentication, compatibility, and rollback.
+
+**Evidence examined:** Existing domain coverage verifies the complete ledger after
+privileged intake, policy, grant, network, gateway, runtime, workflow, and recovery
+events. New negative tests deny row mutation, deletion, forged-head insertion,
+malformed legacy-event startup, trace mutation/deletion, and result replay. The owned
+fixture integration test validates the trace contract and exact intent, decision,
+evaluated-rule, policy, grant, request, claim, runtime image, result, and audit links.
+Migration tests cover additive/idempotent application and all protection triggers.
+
+**Findings:** Existing writers already compute canonical hashes and append within
+domain transactions. Migration 0020 closes direct update/delete and forked-head gaps.
+Startup now validates the entire ledger before recovery writes or supervisors start.
+The finalizer derives trace identity exclusively from immutable database joins and
+rolls back result, claim completion, audit event, and trace together if any link or
+contract is missing or malformed.
+
+**Limitations and deferred work:** The trace contract covers the only currently
+enabled effect, the owned TEST-NET fixture. General HTTP(S), external destinations,
+and evidence bodies remain prohibited. Output linkage identifies the immutable bounded
+gateway result; encrypted evidence content and chain of custody are later slices. The
+ledger is hash-chained but not externally anchored or independently signed.
+
+**Residual risk accepted:** A process with arbitrary database-file replacement access
+could replace the entire database and its chain; local OS access control and future
+backup/export anchoring remain defense layers. Hash chaining proves internal
+continuity, not independent timestamping. This self-authored review is non-independent
+and cannot satisfy an external independent-review requirement.

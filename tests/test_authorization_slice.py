@@ -1007,6 +1007,15 @@ class AuthorizationSliceTests(unittest.TestCase):
         )
 
         self.assertEqual(result["outcome"], "completed")
+        trace = self.service.execution_trace(result["result_id"])
+        self.assertEqual(contract_issues(trace, "execution-trace-v1.schema.json"), ())
+        self.assertEqual(trace["result_id"], result["result_id"])
+        self.assertEqual(trace["start_id"], started["start_id"])
+        self.assertEqual(trace["execution_claim_id"], claim["claim_id"])
+        self.assertEqual(trace["runtime_id"], claim["runtime_id"])
+        self.assertEqual(trace["tool"]["version"], claim["image_digest"])
+        self.assertEqual(trace["output_refs"][0]["id"], result["result_id"])
+        self.assertFalse(trace["external_target_enabled"])
         with closing(sqlite3.connect(self.database)) as connection:
             state = connection.execute(
                 "SELECT status FROM gateway_fixture_execution_claims WHERE claim_id = ?",
@@ -1021,8 +1030,38 @@ class AuthorizationSliceTests(unittest.TestCase):
                     """
                 ).fetchone()[0]
             )
+            linked = connection.execute(
+                """SELECT ag.intent_id, ag.decision_id, ag.policy_bundle_id,
+                          ag.grant_id, pe.decision_json, et.audit_event_id
+                FROM execution_traces et
+                JOIN action_grants ag ON ag.grant_id = et.grant_id
+                JOIN policy_evaluations pe ON pe.decision_id = et.decision_id
+                WHERE et.trace_id = ?""",
+                (trace["trace_id"],),
+            ).fetchone()
         self.assertEqual(state, "completed")
         self.assertEqual(audit["execution_claim_id"], claim["claim_id"])
+        self.assertEqual(audit["execution_trace_id"], trace["trace_id"])
+        self.assertEqual(tuple(linked[0:4]), (
+            trace["intent_id"],
+            trace["decision_id"],
+            trace["policy_bundle_id"],
+            trace["grant_id"],
+        ))
+        self.assertEqual(
+            json.loads(linked[4])["evaluated_rule_ids"], trace["evaluated_rule_ids"]
+        )
+        self.assertEqual(linked[5], trace["audit_event_id"])
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
+                connection.execute(
+                    "UPDATE execution_traces SET tool_name = 'forged' WHERE trace_id = ?",
+                    (trace["trace_id"],),
+                )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "cannot be deleted"):
+                connection.execute(
+                    "DELETE FROM execution_traces WHERE trace_id = ?", (trace["trace_id"],)
+                )
 
     def test_gateway_fixture_claim_denies_mismatch_and_recovery_abandons_claim(self) -> None:
         started, containment = self.fixture_request_authority()
@@ -1051,6 +1090,55 @@ class AuthorizationSliceTests(unittest.TestCase):
                 (claim["claim_id"],),
             ).fetchone()
         self.assertEqual(tuple(states), ("abandoned", "cancelled"))
+
+    def test_invalid_execution_trace_rolls_back_result_claim_and_audit(self) -> None:
+        started, containment = self.fixture_request_authority()
+        claim = self.service.claim_gateway_fixture_execution(
+            started["start_id"], containment=containment
+        )
+        completed_at = parse_time(started["committed_at"]) + timedelta(milliseconds=1)
+
+        def issues(document: object, schema: str) -> tuple[str, ...]:
+            del document
+            if schema == "execution-trace-v1.schema.json":
+                return ("synthetic trace failure",)
+            return ()
+
+        with (
+            patch("pentai_core.authorization.contract_issues", side_effect=issues),
+            self.assertRaises(DomainError) as invalid,
+        ):
+            self.service.finalize_gateway_request(
+                started["start_id"],
+                GatewayResponseMeasurement("completed", 17, 17, completed_at),
+                execution_claim_id=claim["claim_id"],
+            )
+        self.assertEqual(invalid.exception.code, "EXECUTION_TRACE_INVALID")
+        with closing(sqlite3.connect(self.database)) as connection:
+            state = connection.execute(
+                """SELECT gfc.status, gs.status
+                FROM gateway_fixture_execution_claims gfc
+                JOIN gateway_request_starts grs USING (start_id)
+                JOIN gateway_sessions gs USING (session_id)
+                WHERE gfc.claim_id = ?""",
+                (claim["claim_id"],),
+            ).fetchone()
+            result_count = connection.execute(
+                "SELECT COUNT(*) FROM gateway_request_results WHERE start_id = ?",
+                (started["start_id"],),
+            ).fetchone()[0]
+            trace_count = connection.execute(
+                "SELECT COUNT(*) FROM execution_traces WHERE start_id = ?",
+                (started["start_id"],),
+            ).fetchone()[0]
+            audit_count = connection.execute(
+                """SELECT COUNT(*) FROM audit_events
+                WHERE action = 'gateway.request_finalized'
+                  AND json_extract(data_json, '$.start_id') = ?""",
+                (started["start_id"],),
+            ).fetchone()[0]
+        self.assertEqual(tuple(state), ("claimed", "prepared"))
+        self.assertEqual((result_count, trace_count, audit_count), (0, 0, 0))
 
     def test_gateway_request_start_denies_expired_attestation_without_consumption(
         self,
@@ -2123,13 +2211,23 @@ class AuthorizationSliceTests(unittest.TestCase):
             event = connection.execute(
                 "SELECT event_id FROM audit_events ORDER BY sequence LIMIT 1"
             ).fetchone()
-            connection.execute(
-                "UPDATE audit_events SET data_json = ? WHERE event_id = ?",
-                (json.dumps({"tampered": True}), event[0]),
-            )
-        verification = self.service.verify_audit_chain()
-        self.assertFalse(verification["valid"])
-        self.assertEqual(verification["failed_sequence"], 1)
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
+                connection.execute(
+                    "UPDATE audit_events SET data_json = ? WHERE event_id = ?",
+                    (json.dumps({"tampered": True}), event[0]),
+                )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "cannot be deleted"):
+                connection.execute("DELETE FROM audit_events WHERE event_id = ?", (event[0],))
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "head does not match"):
+                connection.execute(
+                    """INSERT INTO audit_events(
+                        event_id, occurred_at, actor_type, actor_id, action,
+                        subject_type, subject_id, data_json, previous_hash, event_hash
+                    ) VALUES (?, ?, 'service', 'forged', 'audit.forged',
+                              'audit_event', ?, '{}', NULL, ?)""",
+                    (str(uuid4()), timestamp(timedelta()), event[0], "f" * 64),
+                )
+        self.assertTrue(self.service.verify_audit_chain()["valid"])
 
     def test_activated_policy_and_approved_manifest_are_database_immutable(self) -> None:
         version, bundle = self.activate()
