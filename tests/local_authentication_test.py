@@ -348,6 +348,30 @@ def test_runtime_supervisor_degradation_blocks_readiness_without_exposing_detail
     assert supervisor.starts == 1
 
 
+def test_storage_failure_latch_degrades_health_and_readiness(tmp_path: Path) -> None:
+    settings = runtime_settings(tmp_path / "storage-degraded.db")
+    app = create_app(
+        settings,
+        runtime_supervisor=FixtureRuntimeSupervisor(),
+        network_safety_supervisor=FixtureNetworkSupervisor(),
+    )
+    app.state.storage_safety.trip("STORAGE_FAILURE")
+    credential = settings.launch_credential or ""
+
+    readiness = app_request(
+        app, "GET", "/api/v1/readiness", authorization=f"Bearer {credential}"
+    )
+    assert readiness.status_code == 503
+    assert readiness.json() == {
+        "status": "degraded",
+        "reason_code": "STORAGE_FAILURE",
+        "execution_enabled": False,
+    }
+    health = app_request(app, "GET", "/api/v1/health", authorization=f"Bearer {credential}")
+    assert health.status_code == 200
+    assert health.json()["status"] == "degraded"
+
+
 def test_authenticated_shutdown_stops_runtime_supervision(tmp_path: Path) -> None:
     settings = runtime_settings(tmp_path / "shutdown-supervisor.db")
     supervisor = FixtureRuntimeSupervisor()

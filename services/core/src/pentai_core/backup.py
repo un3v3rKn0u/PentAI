@@ -53,11 +53,13 @@ class BackupService:
         *,
         source_store: EncryptedSourceStore | None = None,
         purge_after_unlink_handler: Callable[[], None] | None = None,
+        storage_failure_handler: Callable[[], None] | None = None,
     ) -> None:
         self.database_path = database_path
         self.evidence_store = evidence_store
         self.source_store = source_store
         self.purge_after_unlink_handler = purge_after_unlink_handler
+        self.storage_failure_handler = storage_failure_handler
         self._master_key = master_key
         if master_key is None:
             self._cipher = None
@@ -100,7 +102,12 @@ class BackupService:
         nonce = os.urandom(_NONCE_SIZE)
         assert self._cipher is not None
         envelope = _MAGIC + nonce + self._cipher.encrypt(nonce, archive, _MAGIC)
-        self._atomic_write(destination, envelope)
+        try:
+            self._atomic_write(destination, envelope)
+        except BackupError:
+            if self.storage_failure_handler is not None:
+                self.storage_failure_handler()
+            raise
         self._audit(
             "backup.created",
             identifier,
@@ -816,7 +823,10 @@ class BackupService:
         finally:
             if descriptor is not None:
                 os.close(descriptor)
-            temporary.unlink(missing_ok=True)
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     @staticmethod
     def _fsync_directory(path: Path) -> None:

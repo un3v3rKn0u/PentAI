@@ -1,9 +1,41 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from threading import Lock
+
+_HANDLERS: dict[Path, Callable[[], None]] = {}
+_HANDLERS_LOCK = Lock()
+
+
+def register_storage_failure_handler(path: Path, handler: Callable[[], None]) -> None:
+    with _HANDLERS_LOCK:
+        _HANDLERS[path.resolve()] = handler
+
+
+def _storage_failure(path: Path, error: sqlite3.Error) -> None:
+    code = getattr(error, "sqlite_errorcode", None)
+    primary_code = code & 0xFF if isinstance(code, int) else None
+    storage_codes = {
+        sqlite3.SQLITE_CANTOPEN,
+        sqlite3.SQLITE_CORRUPT,
+        sqlite3.SQLITE_FULL,
+        sqlite3.SQLITE_IOERR,
+        sqlite3.SQLITE_NOTADB,
+        sqlite3.SQLITE_READONLY,
+    }
+    message = str(error).lower()
+    if primary_code not in storage_codes and not any(
+        marker in message
+        for marker in ("disk is full", "disk i/o error", "malformed", "readonly database")
+    ):
+        return
+    with _HANDLERS_LOCK:
+        handler = _HANDLERS.get(path.resolve())
+    if handler is not None:
+        handler()
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -18,9 +50,14 @@ def connect(path: Path) -> sqlite3.Connection:
 
 @contextmanager
 def transaction(path: Path) -> Iterator[sqlite3.Connection]:
-    connection = connect(path)
+    connection: sqlite3.Connection | None = None
     try:
+        connection = connect(path)
         with connection:
             yield connection
+    except sqlite3.Error as exc:
+        _storage_failure(path, exc)
+        raise
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()

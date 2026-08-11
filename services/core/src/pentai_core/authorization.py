@@ -31,6 +31,7 @@ from pentai_core.network_attestation import AttestationError, NetworkAttestor
 from pentai_core.network_control import authorize_destination, validate_attestation
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
+from pentai_core.storage_safety import StorageSafetyError, StorageSafetyLatch
 from pentai_core.worker_containment import validate_containment_attestation
 
 _SOURCE_AUTHORITIES = {
@@ -132,10 +133,22 @@ class AuthorizationService:
         *,
         source_store: EncryptedSourceStore | None = None,
         policy_signer: PolicySigner | None = None,
+        storage_safety: StorageSafetyLatch | None = None,
     ) -> None:
         self.database_path = database_path
         self.source_store = source_store
         self.policy_signer = policy_signer
+        self.storage_safety = storage_safety
+
+    def _require_storage_safe(self) -> None:
+        if self.storage_safety is None:
+            return
+        try:
+            self.storage_safety.require_safe()
+        except StorageSafetyError as exc:
+            raise DomainError(
+                "STORAGE_SAFETY_STOPPED", "durable storage requires human recovery"
+            ) from exc
 
     @staticmethod
     def _reserve_rate_bucket(
@@ -1460,6 +1473,7 @@ class AuthorizationService:
     def evaluate_intent(
         self, engagement_id: str, intent: dict[str, Any], *, now: datetime | None = None
     ) -> dict[str, Any]:
+        self._require_storage_safe()
         with transaction(self.database_path) as connection:
             engagement = connection.execute(
                 "SELECT * FROM engagements WHERE id = ?", (engagement_id,)
@@ -1749,6 +1763,7 @@ class AuthorizationService:
         audience: str,
         now: datetime | None = None,
     ) -> dict[str, Any]:
+        self._require_storage_safe()
         instant = now or _now()
         consumed_at = _timestamp(instant)
         if self.policy_signer is None:
@@ -2164,6 +2179,7 @@ class AuthorizationService:
     def commit_gateway_request_start(
         self, session_id: str, *, now: datetime | None = None
     ) -> dict[str, Any]:
+        self._require_storage_safe()
         instant = now or _now()
         committed_at = _timestamp(instant)
         if self.policy_signer is None:
@@ -2700,6 +2716,7 @@ class AuthorizationService:
         grant_id: str,
         destination_authorization_id: str,
     ) -> dict[str, Any]:
+        self._require_storage_safe()
         prepared_instant = _now()
         prepared_at = _timestamp(prepared_instant)
         with transaction(self.database_path) as connection:
@@ -3237,6 +3254,7 @@ class AuthorizationService:
         containment: dict[str, Any],
         now: datetime | None = None,
     ) -> dict[str, Any]:
+        self._require_storage_safe()
         instant = now or _now()
         claimed_at = _timestamp(instant)
         try:

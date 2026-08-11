@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
@@ -21,7 +22,9 @@ class EvidenceStoreError(RuntimeError):
 class EncryptedEvidenceStore:
     """Content-addressed evidence originals under a domain-separated key."""
 
-    def __init__(self, root: Path, master_key: bytes) -> None:
+    def __init__(
+        self, root: Path, master_key: bytes, *, failure_handler: Callable[[], None] | None = None
+    ) -> None:
         if len(master_key) != 32:
             raise ValueError("evidence master key must contain 32 bytes")
         key = HKDF(
@@ -32,6 +35,7 @@ class EncryptedEvidenceStore:
         ).derive(master_key)
         self.root = root
         self._cipher = AESGCM(key)
+        self._failure_handler = failure_handler
 
     def _path(self, digest: str) -> Path:
         if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
@@ -65,6 +69,8 @@ class EncryptedEvidenceStore:
             finally:
                 os.close(directory)
         except OSError as exc:
+            if self._failure_handler is not None:
+                self._failure_handler()
             raise EvidenceStoreError("encrypted evidence could not be persisted") from exc
         finally:
             if descriptor is not None:
@@ -106,5 +112,7 @@ class EncryptedEvidenceStore:
             finally:
                 os.close(directory)
         except OSError as exc:
+            if self._failure_handler is not None:
+                self._failure_handler()
             raise EvidenceStoreError("encrypted evidence could not be deleted") from exc
         return True

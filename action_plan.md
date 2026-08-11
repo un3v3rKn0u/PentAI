@@ -407,6 +407,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - Every target-facing execution has complete audit linkage.
 - Public-IP or route change blocks new actions and closes active gateway sessions.
 - Crash/power-loss tests show no committed state loss or duplicate external action.
+- Synthetic disk-full and interrupted-write injection now proves SQLite rollback,
+  preservation of committed source/evidence/backup content, incomplete-temporary
+  cleanup, degraded readiness, and a process-local stop on new execution authority.
+  Physical power-cut and filesystem-specific durability evidence remains required.
 - Backup and restore pass integrity verification. Isolated encrypted database/evidence
   restore drills now verify SQLite, migrations, audit head, blob authentication, and
   live deletion state. V2 archives also authenticate and restore the exact encrypted

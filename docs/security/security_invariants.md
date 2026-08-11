@@ -352,6 +352,14 @@ denies startup.
 The composed evidence service stops global execution when its key is unavailable or
 an authenticated blob store/write/read fails. Resumption remains a human action.
 
+The composed core also maintains a process-local storage-safety latch. Classified
+SQLite disk-full, I/O, corruption, read-only, or open failures and encrypted
+source/evidence/backup write failures trip it irreversibly for that process. Health and
+readiness degrade, and intent evaluation, grant consumption, gateway preparation,
+request commitment, and fixture execution claims deny before authority can advance.
+Restart can clear the volatile latch only after ordinary migration and audit-integrity
+startup gates pass.
+
 Deletion I/O failure also stops global execution. Startup resumes durable pending or
 processing deletions without restoring content visibility; content-addressed blobs are
 unlinked only after every reference is tombstoned.

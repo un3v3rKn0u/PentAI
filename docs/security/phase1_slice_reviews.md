@@ -1606,3 +1606,41 @@ unlink cannot prove SSD or copy-on-write forensic erasure.
 **Residual risk accepted:** Local rotation is supervised and auditable but does not
 control copies outside PentAI's local directory. This review is self-authored and
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-11 — Storage failure stop and deterministic fault injection
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** SQLite storage-risk classification, process-local safety latching,
+source/evidence/backup failure propagation, health/readiness degradation, execution
+authority gates, atomic ciphertext publication, temporary cleanup, compatibility,
+rollback, and the boundary of injected durability evidence.
+
+**Evidence examined:** Tests inject SQLite disk-full failure inside an open transaction
+and `fsync` disk-full failure into source, evidence, and backup writes. They verify
+transaction rollback and integrity, preservation and authentication of earlier
+committed content, absence of partial destinations and temporary files, backup recovery
+point preservation, latch activation, and default denial before intent evaluation.
+The complete Python, contract, lint, and type suites remain required before publication.
+
+**Findings:** A classified storage failure is remembered without relying on the failed
+database and blocks each boundary that could advance target-facing authority. The latch
+cannot be reset through an API. Same-directory temporary publication prevents partial
+ciphertext from replacing a committed object; a post-replacement synchronization
+failure is treated as uncertain and keeps authority stopped.
+
+**Limitations and deferred work:** Faults are deterministic software injections, not
+physical power cuts. Filesystem, kernel, drive-cache, Windows, and Linux durability
+behavior still requires hosted or hardware evidence. The latch is process-local; a
+restart relies on migrations, audit verification, encrypted-object authentication, and
+operator remediation rather than persisting a new stop record to potentially unsafe
+storage.
+
+**Residual risk accepted:** The slice proves logical fail-closed behavior and committed
+state preservation under injected failures, not physical-media durability. This review
+is self-authored and non-independent and cannot satisfy an external independent-review
+requirement.
