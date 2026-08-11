@@ -370,6 +370,14 @@ blob, and compares the complete source digest inventory with the restored databa
 The narrower authenticated v1 format remains restore-only compatible and is reported
 with zero source blobs rather than being represented as a complete provenance backup.
 
+Backup inventory authenticates exact server-generated filenames and envelopes and
+rejects symlink, type, identity, member, and size ambiguity. Rotation is proposal-only:
+it protects a bounded newest set and the newest restore-verified copy and never deletes
+automatically. Purge requires exact human-confirmed identity and digest, rechecks the
+file immediately before unlink, protects the last verified copy, commits its request
+first, synchronizes the directory, and completes interrupted unlink on exact replay.
+No purge result claims forensic erase or removal of copies outside the local inventory.
+
 ## 10. Reliability Invariants
 
 ### INV-REL-001 — At-most-once external effect

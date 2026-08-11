@@ -4,9 +4,11 @@ import hashlib
 import io
 import json
 import os
+import re
 import sqlite3
 import tempfile
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -16,7 +18,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from pentai_policy.document import contract_issues
+from pentai_policy.document import contract_issues, parse_time
 
 from pentai_core.audit import append_audit_event
 from pentai_core.database import transaction
@@ -28,6 +30,10 @@ _NONCE_SIZE = 12
 _MAX_BACKUP_BYTES = 256 * 1024 * 1024
 _DATABASE_MEMBER = "database/pentai.db"
 _MANIFEST_MEMBER = "manifest.json"
+_BACKUP_NAME = re.compile(
+    r"^(?P<id>[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\.pentai-backup$"
+)
+_MAX_INVENTORY = 1000
 
 
 class BackupError(RuntimeError):
@@ -46,10 +52,12 @@ class BackupService:
         master_key: bytes | None,
         *,
         source_store: EncryptedSourceStore | None = None,
+        purge_after_unlink_handler: Callable[[], None] | None = None,
     ) -> None:
         self.database_path = database_path
         self.evidence_store = evidence_store
         self.source_store = source_store
+        self.purge_after_unlink_handler = purge_after_unlink_handler
         self._master_key = master_key
         if master_key is None:
             self._cipher = None
@@ -157,6 +165,312 @@ class BackupService:
             },
         )
         return self._report(manifest, envelope, destination, status="verified")
+
+    def inventory(self, backup_root: Path, *, actor_id: str) -> dict[str, object]:
+        self._available(actor_id)
+        items = self._inventory_items(backup_root)
+        self._audit(
+            "backup.inventory_reviewed",
+            "local-backup-inventory",
+            actor_id,
+            {"backup_count": len(items), "live_data_replaced": False},
+        )
+        report: dict[str, object] = {
+            "schema_version": "1.0.0",
+            "backup_count": len(items),
+            "items": items,
+            "live_data_replaced": False,
+        }
+        self._valid(report, "backup-inventory-v1.schema.json")
+        return report
+
+    def rotation_plan(
+        self, backup_root: Path, *, retain_count: int, actor_id: str
+    ) -> dict[str, object]:
+        self._available(actor_id)
+        if not 2 <= retain_count <= 20:
+            raise BackupError("BACKUP_RETENTION_INVALID", "backup retention count is invalid")
+        items = self._inventory_items(backup_root)
+        newest = sorted(
+            items, key=lambda item: (str(item["created_at"]), str(item["backup_id"])), reverse=True
+        )
+        protected = {str(item["backup_id"]) for item in newest[:retain_count]}
+        verified = [item for item in newest if item["restore_verified"] is True]
+        if verified:
+            protected.add(str(verified[0]["backup_id"]))
+        candidates = [item for item in newest if str(item["backup_id"]) not in protected]
+        plan: dict[str, object] = {
+            "schema_version": "1.0.0",
+            "retain_count": retain_count,
+            "protected_backup_ids": sorted(protected),
+            "purge_candidates": [item["backup_id"] for item in candidates],
+            "requires_human_confirmation": True,
+            "automatic_deletion_performed": False,
+        }
+        self._audit(
+            "backup.rotation_planned",
+            "local-backup-inventory",
+            actor_id,
+            {
+                "retain_count": retain_count,
+                "protected_backup_ids": plan["protected_backup_ids"],
+                "purge_candidates": plan["purge_candidates"],
+                "automatic_deletion_performed": False,
+            },
+        )
+        self._valid(plan, "backup-rotation-plan-v1.schema.json")
+        return plan
+
+    def purge(
+        self,
+        backup_root: Path,
+        backup_id: str,
+        *,
+        expected_sha256: str,
+        reason: str,
+        confirm_permanent_deletion: bool,
+        actor_id: str,
+    ) -> dict[str, object]:
+        self._available(actor_id)
+        if not _uuid(backup_id) or not _digest(expected_sha256):
+            raise BackupError("BACKUP_PURGE_IDENTITY_INVALID", "backup purge identity is invalid")
+        normalized_reason = reason.strip()
+        if not normalized_reason or len(normalized_reason) > 500:
+            raise BackupError("BACKUP_PURGE_REASON_INVALID", "backup purge reason is invalid")
+        if confirm_permanent_deletion is not True:
+            raise BackupError(
+                "BACKUP_PURGE_CONFIRMATION_REQUIRED",
+                "backup purge requires explicit human confirmation",
+            )
+        requested = self._purge_request(backup_id)
+        path = backup_root / f"{backup_id}.pentai-backup"
+        if requested is not None:
+            if (
+                requested.get("expected_sha256") != expected_sha256
+                or requested.get("reason") != normalized_reason
+            ):
+                raise BackupError("BACKUP_PURGE_CONFLICT", "backup purge request conflicts")
+            if path.exists():
+                raise BackupError("BACKUP_PURGE_STATE_INVALID", "purged backup unexpectedly exists")
+            return self._complete_purge(
+                backup_id, expected_sha256, actor_id, disposition="already_absent"
+            )
+
+        items = self._inventory_items(backup_root)
+        matches = [item for item in items if item["backup_id"] == backup_id]
+        if len(matches) != 1:
+            raise BackupError("BACKUP_NOT_FOUND", "backup does not exist")
+        item = matches[0]
+        if item["encrypted_backup_sha256"] != expected_sha256:
+            raise BackupError("BACKUP_PURGE_DIGEST_MISMATCH", "backup digest does not match")
+        verified = [entry for entry in items if entry["restore_verified"] is True]
+        if item["restore_verified"] is True and len(verified) <= 1:
+            raise BackupError(
+                "BACKUP_LAST_VERIFIED_PROTECTED", "last restore-verified backup is protected"
+            )
+        self._audit(
+            "backup.purge_requested",
+            backup_id,
+            actor_id,
+            {
+                "expected_sha256": expected_sha256,
+                "reason": normalized_reason,
+                "forensic_erase_guaranteed": False,
+            },
+        )
+        try:
+            self._unlink_exact(path, expected_sha256)
+            self._fsync_directory(backup_root)
+        except OSError as exc:
+            raise BackupError("BACKUP_PURGE_FAILED", "backup purge failed closed") from exc
+        if self.purge_after_unlink_handler is not None:
+            self.purge_after_unlink_handler()
+        return self._complete_purge(backup_id, expected_sha256, actor_id, disposition="unlinked")
+
+    @staticmethod
+    def _unlink_exact(path: Path, expected_sha256: str) -> None:
+        if path.is_symlink() or not path.is_file():
+            raise BackupError("BACKUP_PURGE_STATE_INVALID", "backup purge target is unsafe")
+        try:
+            before = path.stat(follow_symlinks=False)
+            content = path.read_bytes()
+            after = path.stat(follow_symlinks=False)
+        except OSError as exc:
+            raise BackupError("BACKUP_PURGE_FAILED", "backup purge target is unavailable") from exc
+        if (before.st_dev, before.st_ino, before.st_size) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+        ) or hashlib.sha256(content).hexdigest() != expected_sha256:
+            raise BackupError("BACKUP_PURGE_DIGEST_MISMATCH", "backup changed before purge")
+        path.unlink()
+
+    def _inventory_items(self, backup_root: Path) -> list[dict[str, object]]:
+        if backup_root.is_symlink():
+            raise BackupError("BACKUP_INVENTORY_INVALID", "backup root cannot be a symlink")
+        if not backup_root.exists():
+            return []
+        try:
+            paths = sorted(backup_root.iterdir())
+        except OSError as exc:
+            raise BackupError(
+                "BACKUP_INVENTORY_UNAVAILABLE", "backup inventory is unavailable"
+            ) from exc
+        matching = [path for path in paths if _BACKUP_NAME.fullmatch(path.name)]
+        if len(matching) > _MAX_INVENTORY:
+            raise BackupError("BACKUP_INVENTORY_LIMIT", "backup inventory exceeds the limit")
+        verified = self._verified_backup_ids()
+        tombstones = self._current_tombstones()
+        items: list[dict[str, object]] = []
+        for path in matching:
+            if path.is_symlink() or not path.is_file():
+                raise BackupError("BACKUP_INVENTORY_INVALID", "backup inventory entry is unsafe")
+            envelope, manifest = self._inspect_backup(path)
+            match = _BACKUP_NAME.fullmatch(path.name)
+            assert match is not None
+            backup_id = match.group("id")
+            if manifest["backup_id"] != backup_id:
+                raise BackupError("BACKUP_INVENTORY_INVALID", "backup filename identity changed")
+            evidence = set(cast(list[str], manifest["evidence_sha256"]))
+            items.append(
+                {
+                    "backup_id": backup_id,
+                    "schema_version": manifest["schema_version"],
+                    "created_at": manifest["created_at"],
+                    "encrypted_backup_sha256": hashlib.sha256(envelope).hexdigest(),
+                    "size_bytes": len(envelope),
+                    "evidence_blob_count": len(evidence),
+                    "source_blob_count": len(cast(list[str], manifest.get("source_sha256", []))),
+                    "deletion_tombstone_count": len(
+                        cast(list[str], manifest["deletion_tombstones"])
+                    ),
+                    "restore_verified": backup_id in verified,
+                    "contains_currently_deleted_evidence": bool(evidence & tombstones),
+                    "forensic_erase_guaranteed": False,
+                }
+            )
+        return sorted(items, key=lambda item: (str(item["created_at"]), str(item["backup_id"])))
+
+    def _inspect_backup(self, path: Path) -> tuple[bytes, dict[str, object]]:
+        try:
+            envelope = path.read_bytes()
+        except OSError as exc:
+            raise BackupError("BACKUP_UNAVAILABLE", "encrypted backup is unavailable") from exc
+        if len(envelope) > _MAX_BACKUP_BYTES or not envelope.startswith(_MAGIC):
+            raise BackupError("BACKUP_FORMAT_INVALID", "encrypted backup format is invalid")
+        start = len(_MAGIC)
+        if len(envelope) <= start + _NONCE_SIZE:
+            raise BackupError("BACKUP_FORMAT_INVALID", "encrypted backup format is invalid")
+        assert self._cipher is not None
+        try:
+            archive_bytes = self._cipher.decrypt(
+                envelope[start : start + _NONCE_SIZE], envelope[start + _NONCE_SIZE :], _MAGIC
+            )
+            with zipfile.ZipFile(io.BytesIO(archive_bytes), "r") as archive:
+                names = archive.namelist()
+                if len(names) != len(set(names)) or _MANIFEST_MEMBER not in names:
+                    raise BackupError("BACKUP_MANIFEST_INVALID", "backup members are ambiguous")
+                if sum(info.file_size for info in archive.infolist()) > _MAX_BACKUP_BYTES:
+                    raise BackupError("BACKUP_SIZE_EXCEEDED", "expanded backup exceeds the limit")
+                manifest = cast(dict[str, object], json.loads(archive.read(_MANIFEST_MEMBER)))
+                self._validate_manifest(manifest)
+                evidence = cast(list[str], manifest["evidence_sha256"])
+                sources = cast(list[str], manifest.get("source_sha256", []))
+                expected = (
+                    {_MANIFEST_MEMBER, _DATABASE_MEMBER}
+                    | {f"evidence/{digest}.blob" for digest in evidence}
+                    | {f"sources/{digest}.blob" for digest in sources}
+                )
+                if set(names) != expected:
+                    raise BackupError("BACKUP_MEMBERS_INVALID", "backup members do not match")
+        except InvalidTag as exc:
+            raise BackupError(
+                "BACKUP_AUTHENTICATION_FAILED", "backup authentication failed"
+            ) from exc
+        except (zipfile.BadZipFile, json.JSONDecodeError) as exc:
+            raise BackupError("BACKUP_MANIFEST_INVALID", "backup manifest is invalid") from exc
+        return envelope, manifest
+
+    def _verified_backup_ids(self) -> set[str]:
+        with transaction(self.database_path) as connection:
+            return {
+                str(row[0])
+                for row in connection.execute(
+                    """SELECT DISTINCT subject_id FROM audit_events
+                       WHERE action = 'backup.restore_drill_verified'
+                         AND subject_type = 'backup'"""
+                )
+            }
+
+    def _purge_request(self, backup_id: str) -> dict[str, object] | None:
+        with transaction(self.database_path) as connection:
+            row = connection.execute(
+                """SELECT data_json FROM audit_events
+                   WHERE action = 'backup.purge_requested' AND subject_type = 'backup'
+                     AND subject_id = ? ORDER BY sequence DESC LIMIT 1""",
+                (backup_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            data = json.loads(row[0])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise BackupError(
+                "BACKUP_PURGE_STATE_INVALID", "backup purge state is invalid"
+            ) from exc
+        if not isinstance(data, dict):
+            raise BackupError("BACKUP_PURGE_STATE_INVALID", "backup purge state is invalid")
+        return cast(dict[str, object], data)
+
+    def _complete_purge(
+        self,
+        backup_id: str,
+        expected_sha256: str,
+        actor_id: str,
+        *,
+        disposition: str,
+    ) -> dict[str, object]:
+        with transaction(self.database_path) as connection:
+            existing = connection.execute(
+                """SELECT data_json FROM audit_events
+                   WHERE action = 'backup.purge_completed' AND subject_type = 'backup'
+                     AND subject_id = ? ORDER BY sequence DESC LIMIT 1""",
+                (backup_id,),
+            ).fetchone()
+        if existing is not None:
+            try:
+                stored = json.loads(existing[0])
+                disposition = str(stored["disposition"])
+            except (TypeError, KeyError, json.JSONDecodeError) as exc:
+                raise BackupError(
+                    "BACKUP_PURGE_STATE_INVALID", "backup purge state is invalid"
+                ) from exc
+        else:
+            self._audit(
+                "backup.purge_completed",
+                backup_id,
+                actor_id,
+                {
+                    "expected_sha256": expected_sha256,
+                    "disposition": disposition,
+                    "forensic_erase_guaranteed": False,
+                },
+            )
+        report: dict[str, object] = {
+            "schema_version": "1.0.0",
+            "backup_id": backup_id,
+            "expected_sha256": expected_sha256,
+            "disposition": disposition,
+            "forensic_erase_guaranteed": False,
+            "live_data_replaced": False,
+        }
+        self._valid(report, "backup-purge-v1.schema.json")
+        return report
+
+    @staticmethod
+    def _valid(document: dict[str, object], schema: str) -> None:
+        if contract_issues(document, schema):
+            raise BackupError("BACKUP_CONTRACT_INVALID", "backup contract is invalid")
 
     def _available(self, actor_id: str) -> None:
         if self._cipher is None or self.evidence_store is None or self.source_store is None:
@@ -419,7 +733,7 @@ class BackupService:
         sources = manifest.get("source_sha256", [])
         if (
             not _uuid(manifest.get("backup_id"))
-            or not isinstance(manifest.get("created_at"), str)
+            or not _date_time(manifest.get("created_at"))
             or not isinstance(manifest.get("created_by"), str)
             or not 1 <= len(cast(str, manifest.get("created_by"))) <= 128
             or not _digest(manifest.get("database_sha256"))
@@ -431,6 +745,8 @@ class BackupService:
                 not isinstance(value, str) or not value.isdigit() or len(value) != 4
                 for value in cast(list[object], manifest.get("migration_versions"))
             )
+            or manifest.get("migration_versions")
+            != sorted(set(cast(list[str], manifest.get("migration_versions"))))
             or not isinstance(digests, list)
             or not isinstance(tombstones, list)
             or not isinstance(sources, list)
@@ -556,5 +872,14 @@ def _uuid(value: object) -> bool:
         return False
     try:
         return str(UUID(value)) == value
+    except ValueError:
+        return False
+
+
+def _date_time(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        return parse_time(value).tzinfo is not None
     except ValueError:
         return False
