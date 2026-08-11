@@ -62,10 +62,11 @@ pauses global safety with a fixed diagnostic and degrades readiness.
 
 Observer configuration values are trusted local deployment inputs. Legacy
 `PENTAI_NETWORK_ROUTE_*` and `PENTAI_NETWORK_RESOLVER_*` values do not participate in
-attestor composition; controlled DNS still consumes resolver fields until its own
-durable-profile binding slice. Endpoint independence must be established and reviewed
-by the deployer; different DNS names alone do not prove different operators or
-infrastructure.
+attestor or controlled-resolver composition. Controlled DNS retains only the explicit
+transport server, optional TLS hostname, and timeout as deployment inputs; it loads
+resolver authority from the current durable policy-bound profile for every assessment.
+Endpoint independence must be established and reviewed by the deployer; different DNS
+names alone do not prove different operators or infrastructure.
 
 ## Deferred enforcement
 

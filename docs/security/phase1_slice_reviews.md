@@ -916,3 +916,38 @@ prohibited.
 **Residual risk accepted:** Profile confirmation asserts source-IP ownership, while
 observer independence remains an operator responsibility. This self-authored review
 is non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-11 — Controlled DNS durable-profile binding
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Per-assessment controlled-resolver composition, active
+policy/profile lookup, resolver-mode and identifier binding, allowed-address
+membership, pinned TCP/53 versus verified DoT selection, compatibility of legacy
+environment fields, and application startup wiring.
+
+**Evidence examined:** Unit and integration tests cover profile-derived resolver
+identity, fresh lookup for each assessment, pinned-server exclusion, resolver-mode/TLS
+mismatch, malformed or empty resolver state, configuration bounds, DNS wire parsing,
+and attestation identity comparison. The complete diff, INV-NET-002/003, rollback,
+and deferred containment requirements were reviewed.
+
+**Findings:** Resolver authority now comes only from the same durable profile that must
+match the active policy. Transport settings can pin how to reach that resolver but
+cannot introduce a resolver absent from the profile. Revocation or profile/policy
+mismatch propagates as a denial before DNS resolution. Legacy resolver environment
+values remain accepted for compatibility but are ignored by composition.
+
+**Limitations and deferred work:** No live resolver, public observer, worker, or target
+is contacted by repository tests. OS/container firewall enforcement against alternate
+DNS, hosted resolver matrices, gateway HTTP integration, and cross-platform live
+evidence remain required. Target-facing execution remains prohibited.
+
+**Residual risk accepted:** The pinned transport address and optional TLS hostname
+remain trusted local deployment choices constrained by the profile rather than
+automatically provisioned network resources. This self-authored review is
+non-independent and cannot satisfy an external independent-review requirement.

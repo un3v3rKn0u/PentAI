@@ -49,7 +49,9 @@ tables is intentionally not automated because it would destroy security audit li
 
 Profile-to-policy binding now requires exact route identity, registered source arrays,
 IPv6 mode, and resolver mode before an attestor can be composed. Observer designation
-and availability proof, live source-IP observation, controlled resolver provisioning
-from the profile, and cross-platform live evidence remain deferred. A confirmed
-profile is configuration, not a network attestation or execution authority.
+and availability proof and live source-IP observation remain deferred. Controlled DNS
+loads resolver mode, identifier, and allowed addresses from that binding for each
+assessment; its explicit pinned server must belong to the profile and its transport
+must match the selected resolver mode. Cross-platform live evidence remains deferred.
+A confirmed profile is configuration, not a network attestation or execution authority.
 Target-facing execution remains prohibited.
