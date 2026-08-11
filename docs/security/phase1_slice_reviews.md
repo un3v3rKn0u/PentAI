@@ -1059,3 +1059,40 @@ Target-facing execution remains prohibited.
 rollback denies but forward clock jumps can refill to burst capacity. A future trusted
 clock-health control remains required before execution. This self-authored review is
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-11 — Atomic gateway request-start commitment
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Last-boundary authority revalidation, single-use grant
+consumption, total/rate commitment, bounded deadlines, replay and concurrent commit,
+abort behavior, pause/stop/startup cancellation, audit linkage, migration
+compatibility, diagnostics, and rollback.
+
+**Evidence examined:** Integration tests cover valid atomic commitment, schema
+validation, expiry denial without partial mutation, two-thread contention, replay,
+non-refundable abort denial, and startup recovery that preserves committed request
+and rate capacity while releasing the connection slot. Migration tests cover additive
+installation, idempotency, immutable identity, and non-deletable history. The complete
+diff and INV-GRANT-001/004, INV-NET-005, INV-AUTH-003, and INV-REC-001/002 were
+reviewed.
+
+**Findings:** One `BEGIN IMMEDIATE` transaction rechecks canonical stored grant,
+intent, destination, policy, attestation, safety, expiry, and signature state before
+consuming the grant and committing capacity. Failure rolls back every mutation.
+Committed capacity is never refunded, and recovery cancels only the execution-disabled
+handoff while closing its concurrency slot.
+
+**Limitations and deferred work:** No socket, HTTP parser, response-byte meter, live
+resolver, isolated gateway-process enforcement, worker, observer, or target is used.
+The persisted deadline is not yet enforced by a live I/O loop. Target-facing execution
+remains prohibited until the remaining containment and bypass proofs exist.
+
+**Residual risk accepted:** Enforcement remains in the local core process and uses a
+wall-clock deadline. A compromised process or forward clock jump is not independently
+contained. This self-authored review is non-independent and cannot satisfy an external
+independent-review requirement.

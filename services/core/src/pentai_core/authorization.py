@@ -236,11 +236,80 @@ class AuthorizationService:
     def _abort_gateway_sessions(
         connection: sqlite3.Connection, *, finalized_at: str, engagement_id: str | None = None
     ) -> int:
+        committed = connection.execute(
+            """
+            SELECT br.engagement_id, COUNT(*) AS amount
+            FROM gateway_request_starts grs
+            JOIN gateway_sessions gs ON gs.session_id = grs.session_id
+            JOIN budget_reservations br ON br.reservation_id = gs.reservation_id
+            WHERE grs.status = 'committed' AND gs.status = 'prepared'
+              AND (? IS NULL OR br.engagement_id = ?)
+            GROUP BY br.engagement_id
+            """,
+            (engagement_id, engagement_id),
+        ).fetchall()
+        for row in committed:
+            connection.execute(
+                """
+                UPDATE budget_accounts
+                SET active_connections = active_connections - ?, updated_at = ?
+                WHERE engagement_id = ?
+                """,
+                (row["amount"], finalized_at, row["engagement_id"]),
+            )
+        if engagement_id is None:
+            cancelled = connection.execute(
+                """
+                UPDATE gateway_request_starts
+                SET status = 'cancelled', finalized_at = ?
+                WHERE status = 'committed'
+                """,
+                (finalized_at,),
+            ).rowcount
+            connection.execute(
+                """
+                UPDATE gateway_sessions SET status = 'aborted', finalized_at = ?
+                WHERE status = 'prepared' AND session_id IN (
+                    SELECT session_id FROM gateway_request_starts
+                    WHERE status = 'cancelled'
+                )
+                """,
+                (finalized_at,),
+            )
+        else:
+            cancelled = connection.execute(
+                """
+                UPDATE gateway_request_starts
+                SET status = 'cancelled', finalized_at = ?
+                WHERE status = 'committed' AND reservation_id IN (
+                    SELECT reservation_id FROM budget_reservations
+                    WHERE engagement_id = ?
+                )
+                """,
+                (finalized_at, engagement_id),
+            ).rowcount
+            connection.execute(
+                """
+                UPDATE gateway_sessions SET status = 'aborted', finalized_at = ?
+                WHERE status = 'prepared' AND session_id IN (
+                    SELECT session_id FROM gateway_request_starts
+                    WHERE status = 'cancelled'
+                ) AND reservation_id IN (
+                    SELECT reservation_id FROM budget_reservations
+                    WHERE engagement_id = ?
+                )
+                """,
+                (finalized_at, engagement_id),
+            )
         rate_rows = connection.execute(
             """
             SELECT gs.reservation_id FROM gateway_sessions gs
             JOIN budget_reservations br ON br.reservation_id = gs.reservation_id
-            WHERE gs.status = 'prepared' AND (? IS NULL OR br.engagement_id = ?)
+            WHERE gs.status = 'prepared'
+              AND NOT EXISTS (
+                  SELECT 1 FROM gateway_request_starts grs WHERE grs.session_id = gs.session_id
+              )
+              AND (? IS NULL OR br.engagement_id = ?)
             """,
             (engagement_id, engagement_id),
         ).fetchall()
@@ -257,7 +326,12 @@ class AuthorizationService:
                 SELECT br.engagement_id, COUNT(*) AS amount
                 FROM gateway_sessions gs
                 JOIN budget_reservations br ON br.reservation_id = gs.reservation_id
-                WHERE gs.status = 'prepared' GROUP BY br.engagement_id
+                WHERE gs.status = 'prepared'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM gateway_request_starts grs
+                      WHERE grs.session_id = gs.session_id
+                  )
+                GROUP BY br.engagement_id
                 """
             ).fetchall()
         else:
@@ -267,6 +341,10 @@ class AuthorizationService:
                 FROM gateway_sessions gs
                 JOIN budget_reservations br ON br.reservation_id = gs.reservation_id
                 WHERE gs.status = 'prepared' AND br.engagement_id = ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM gateway_request_starts grs
+                      WHERE grs.session_id = gs.session_id
+                  )
                 GROUP BY br.engagement_id
                 """,
                 (engagement_id,),
@@ -289,7 +367,7 @@ class AuthorizationService:
                 """,
                 (finalized_at,),
             )
-            return connection.execute(
+            return cancelled + connection.execute(
                 """
                 UPDATE gateway_sessions SET status = 'aborted', finalized_at = ?
                 WHERE status = 'prepared'
@@ -303,7 +381,7 @@ class AuthorizationService:
             """,
             (finalized_at, engagement_id),
         )
-        return connection.execute(
+        return cancelled + connection.execute(
             """
             UPDATE gateway_sessions SET status = 'aborted', finalized_at = ?
             WHERE status = 'prepared' AND reservation_id IN (
@@ -2084,6 +2162,174 @@ class AuthorizationService:
             document["source_ipv6"] = row["source_ipv6"]
         return document
 
+    def commit_gateway_request_start(
+        self, session_id: str, *, now: datetime | None = None
+    ) -> dict[str, Any]:
+        instant = now or _now()
+        committed_at = _timestamp(instant)
+        if self.policy_signer is None:
+            raise DomainError("GATEWAY_REQUEST_DENIED", "grant signer is unavailable")
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT gs.*, br.engagement_id, br.policy_bundle_id,
+                       br.response_bytes_limit, br.status AS reservation_status,
+                       grr.status AS rate_status, ag.grant_json, ag.grant_hash,
+                       ag.audience, ag.revocation_epoch, ag.used_at, ag.revoked_at,
+                       ai.intent_json, ai.intent_hash, p.content_hash AS policy_hash,
+                       p.activated_at,
+                       p.revoked_at AS policy_revoked_at, e.active_policy_id,
+                       e.revocation_epoch AS current_epoch,
+                       e.status AS engagement_status,
+                       e.expires_at AS engagement_expires_at,
+                       na.status AS attestation_status,
+                       na.expires_at AS attestation_expires_at, da.decision_json,
+                       da.decision_hash, s.global_status
+                FROM gateway_sessions gs
+                JOIN budget_reservations br ON br.reservation_id = gs.reservation_id
+                JOIN gateway_rate_reservations grr ON grr.reservation_id = br.reservation_id
+                JOIN action_grants ag ON ag.grant_id = gs.grant_id
+                JOIN action_intents ai ON ai.intent_id = ag.intent_id
+                JOIN policy_bundles p ON p.id = br.policy_bundle_id
+                JOIN engagements e ON e.id = br.engagement_id
+                JOIN network_attestations na ON na.attestation_id = gs.attestation_id
+                JOIN destination_authorizations da
+                  ON da.authorization_id = gs.destination_authorization_id
+                CROSS JOIN safety_state s
+                WHERE gs.session_id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                raise DomainError("GATEWAY_REQUEST_DENIED", "prepared session is missing")
+            if connection.execute(
+                "SELECT 1 FROM gateway_request_starts WHERE session_id = ?", (session_id,)
+            ).fetchone() is not None:
+                raise DomainError("GATEWAY_REQUEST_REPLAYED", "request start is already committed")
+            grant = json.loads(row["grant_json"])
+            intent = json.loads(row["intent_json"])
+            decision = json.loads(row["decision_json"])
+            signature = grant.get("signature", {})
+            try:
+                timeout_seconds = int(grant["constraints"]["timeout_seconds"])
+                deadline = min(
+                    instant + timedelta(seconds=timeout_seconds),
+                    parse_time(grant["expires_at"]),
+                    parse_time(row["engagement_expires_at"]),
+                    parse_time(row["attestation_expires_at"]),
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise DomainError("GATEWAY_REQUEST_DENIED", "request deadline is invalid") from exc
+            if (
+                row["status"] != "prepared"
+                or row["reservation_status"] != "reserved"
+                or row["rate_status"] != "reserved"
+                or row["used_at"] is not None
+                or row["revoked_at"] is not None
+                or row["audience"] != "pentai-egress-gateway"
+                or contract_issues(grant, "action-grant-v1.schema.json")
+                or contract_issues(decision, "destination-decision-v1.schema.json")
+                or canonical_json(grant) != row["grant_json"]
+                or content_hash(grant) != row["grant_hash"]
+                or canonical_json(intent) != row["intent_json"]
+                or content_hash(intent) != row["intent_hash"]
+                or content_hash(decision) != row["decision_hash"]
+                or decision.get("outcome") != "allow"
+                or decision.get("execution_enabled") is not False
+                or decision.get("grant_id") != row["grant_id"]
+                or decision.get("attestation_id") != row["attestation_id"]
+                or grant.get("audience") != row["audience"]
+                or grant.get("assessment_id") != row["engagement_id"]
+                or grant.get("policy_hash") != row["policy_hash"]
+                or grant.get("intent_id") != intent.get("intent_id")
+                or grant.get("target_digest") != _intent_target_digest(intent)
+                or grant.get("parameters_digest") != intent.get("parameters_digest")
+                or signature.get("algorithm") != "Ed25519"
+                or not self.policy_signer.verify(
+                    _grant_payload(grant),
+                    str(signature.get("value", "")),
+                    str(signature.get("key_id", "")),
+                )
+                or parse_time(grant["not_before"]) > instant
+                or deadline <= instant
+                or row["attestation_status"] != "valid"
+                or row["active_policy_id"] != row["policy_bundle_id"]
+                or row["activated_at"] is None
+                or row["policy_revoked_at"] is not None
+                or row["revocation_epoch"] != row["current_epoch"]
+                or row["engagement_status"] != "active"
+                or row["global_status"] != "active"
+            ):
+                raise DomainError("GATEWAY_REQUEST_DENIED", "runtime authority is inactive")
+            start_id = str(uuid4())
+            deadline_at = _timestamp(deadline)
+            used = connection.execute(
+                """
+                UPDATE action_grants SET used_at = ?
+                WHERE grant_id = ? AND used_at IS NULL AND revoked_at IS NULL
+                """,
+                (committed_at, row["grant_id"]),
+            )
+            if used.rowcount != 1:
+                raise DomainError("GATEWAY_REQUEST_REPLAYED", "grant is already consumed")
+            account = connection.execute(
+                """
+                UPDATE budget_accounts
+                SET reserved_requests = reserved_requests - 1,
+                    committed_requests = committed_requests + 1, updated_at = ?
+                WHERE engagement_id = ? AND reserved_requests >= 1
+                """,
+                (committed_at, row["engagement_id"]),
+            )
+            if account.rowcount != 1:
+                raise DomainError("GATEWAY_REQUEST_DENIED", "reserved budget is inconsistent")
+            connection.execute(
+                """UPDATE budget_reservations SET status = 'committed', finalized_at = ?
+                   WHERE reservation_id = ? AND status = 'reserved'""",
+                (committed_at, row["reservation_id"]),
+            )
+            connection.execute(
+                """UPDATE gateway_rate_reservations SET status = 'committed', finalized_at = ?
+                   WHERE reservation_id = ? AND status = 'reserved'""",
+                (committed_at, row["reservation_id"]),
+            )
+            connection.execute(
+                """
+                INSERT INTO gateway_request_starts(
+                    start_id, session_id, reservation_id, grant_id, committed_at,
+                    deadline_at, status, execution_enabled
+                ) VALUES (?, ?, ?, ?, ?, ?, 'committed', 0)
+                """,
+                (
+                    start_id,
+                    session_id,
+                    row["reservation_id"],
+                    row["grant_id"],
+                    committed_at,
+                    deadline_at,
+                ),
+            )
+            document = {
+                "schema_version": "1.0.0", "start_id": start_id,
+                "session_id": session_id, "reservation_id": row["reservation_id"],
+                "grant_id": row["grant_id"], "status": "committed",
+                "committed_at": committed_at, "deadline_at": deadline_at,
+                "execution_enabled": False,
+            }
+            if contract_issues(document, "gateway-request-start-v1.schema.json"):
+                raise DomainError("GATEWAY_REQUEST_DENIED", "generated request start is invalid")
+            self._audit(
+                connection, action="gateway.request_start_committed",
+                subject_type="gateway_session", subject_id=session_id,
+                actor_type="service", actor_id="gateway-control",
+                data={"start_id": start_id, "grant_id": row["grant_id"],
+                      "reservation_id": row["reservation_id"],
+                      "deadline_at": deadline_at, "execution_enabled": False},
+                occurred_at=committed_at,
+            )
+        return document
+
     def resolve_and_authorize_network_destination(
         self,
         *,
@@ -2684,6 +2930,12 @@ class AuthorizationService:
                 raise DomainError("GATEWAY_SESSION_NOT_FOUND", "gateway session does not exist")
             if row["status"] != "prepared":
                 raise DomainError("GATEWAY_SESSION_FINALIZED", "gateway session is already final")
+            if connection.execute(
+                "SELECT 1 FROM gateway_request_starts WHERE session_id = ?", (session_id,)
+            ).fetchone() is not None:
+                raise DomainError(
+                    "GATEWAY_REQUEST_COMMITTED", "committed request capacity cannot be refunded"
+                )
             self._release_rate_reservation(
                 connection,
                 reservation_id=row["reservation_id"],

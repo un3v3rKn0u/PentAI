@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/gateway-request-start-v1.schema.json",
+  "title": "PentAI GatewayRequestStart v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "start_id", "session_id", "reservation_id", "grant_id", "status", "committed_at", "deadline_at", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "start_id": {"type": "string", "format": "uuid"},
+    "session_id": {"type": "string", "format": "uuid"},
+    "reservation_id": {"type": "string", "format": "uuid"},
+    "grant_id": {"type": "string", "format": "uuid"},
+    "status": {"const": "committed"},
+    "committed_at": {"type": "string", "format": "date-time"},
+    "deadline_at": {"type": "string", "format": "date-time"},
+    "execution_enabled": {"const": false}
+  }
+}

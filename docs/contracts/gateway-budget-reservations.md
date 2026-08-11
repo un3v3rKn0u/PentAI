@@ -25,13 +25,19 @@ pause, stop, and startup recovery return its rate tokens without exceeding capac
 - Abort releases reserved request/concurrency capacity but never erases history.
 - Pause, stop, policy replacement/revocation, and startup recovery abort prepared
   sessions and release their outstanding reservations in the same safety transaction.
-- Committed request counters cannot be released. The committed transition is deferred
-  until an isolated gateway can prove an external action actually started.
+- The request-start boundary revalidates stored authority, consumes the single-use
+  grant, and commits request and rate capacity in one immediate transaction.
+- A committed start has a deadline bounded by the grant timeout, grant expiry,
+  engagement expiry, and network-attestation expiry. It still carries
+  `execution_enabled: false`.
+- Committed request and rate capacity cannot be released. Pause, stop, and recovery
+  cancel the pending handoff and release only its active-connection slot.
 
 ## Compatibility and rollback
 
-Migrations `0010_gateway_budget_reservations.sql` and
-`0014_gateway_rate_reservations.sql` are additive. Existing grants and
+Migrations `0010_gateway_budget_reservations.sql`,
+`0014_gateway_rate_reservations.sql`, and `0015_gateway_request_starts.sql` are
+additive. Existing grants and
 destination decisions remain readable but gain no reservation automatically. Rollback
 leaves immutable reservation/session history unused. It cannot restore revoked grants
 or invalidated attestations. Older prepared reservations have no rate record and are
@@ -39,7 +45,6 @@ released compatibly; new code requires rate state for every new preparation.
 
 ## Deferred enforcement
 
-Request-start token commitment, deadlines, actual response-byte accounting, gateway
-sockets, atomic grant consumption at connection start, worker containment, and
-active-session termination are deferred. This contract is not target-facing execution
-authority.
+Actual response-byte accounting, gateway sockets, isolated process enforcement, and
+live active-session termination are deferred. The request-start record is an
+irreversible local handoff boundary, not target-facing execution authority.
