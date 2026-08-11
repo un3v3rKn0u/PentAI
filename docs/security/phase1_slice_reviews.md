@@ -1381,3 +1381,41 @@ could replace the entire database and its chain; local OS access control and fut
 backup/export anchoring remain defense layers. Hash chaining proves internal
 continuity, not independent timestamping. This self-authored review is non-independent
 and cannot satisfy an external independent-review requirement.
+
+## 2026-08-11 — Encrypted immutable evidence originals
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic evidence only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** EvidenceOriginal and EvidenceCustodyEvent contracts, additive
+migration, authenticated bounded ingestion, content-addressed authenticated encryption,
+HKDF domain separation, workflow/policy/execution-trace linkage, immutable metadata,
+custody/audit events, storage-failure stop behavior, compatibility, and rollback.
+
+**Evidence examined:** Tests cover ciphertext-at-rest, digest verification, wrong-key
+and modified-ciphertext denial, unavailable-key denial and stop notification, size,
+type, classification and media-type rejection, idempotency conflicts, database update
+and deletion denial, custody/audit coverage, contract validation, migration
+idempotence, Ruff, mypy, and the full Python suite. Only clearly synthetic local bytes
+were used.
+
+**Findings:** Evidence content never enters SQLite or the audit ledger. The desktop's
+existing OS-keychain-backed master secret requires no additional user setup and derives
+a distinct evidence AEAD key. Metadata authority comes from the durable supervised
+workflow; optional execution traces must share its engagement and policy. Original
+content has no HTTP read route, and any key/blob failure in the composed application
+stops global execution pending human recovery.
+
+**Limitations and deferred work:** Sandboxed previewing, format-specific parsing,
+redaction derivatives, retention and secure deletion, export manifests, backup/restore,
+findings, reports, and Evidence UI are not implemented. The custody chain is locally
+hash-chained but not externally timestamped. Hosted cross-platform checks still need
+to run on the pull request.
+
+**Residual risk accepted:** The evidence key derives from the existing source master
+secret, so loss of that single OS credential makes both stores unavailable; key
+rotation and backup recovery remain release blockers. This review is self-authored and
+non-independent and cannot satisfy an external independent-review requirement.

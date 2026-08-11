@@ -37,6 +37,7 @@ class MigrationTests(unittest.TestCase):
                     "0018",
                     "0019",
                     "0020",
+                    "0021",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -74,6 +75,8 @@ class MigrationTests(unittest.TestCase):
                     "workflow_task_checkpoints",
                     "workflow_task_receipts",
                     "execution_traces",
+                    "evidence_objects",
+                    "evidence_custody_events",
                     "network_profile_proposals",
                     "network_profiles",
                 }

@@ -365,8 +365,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 
 ### 6.7 Actions: evidence, findings, reports, and UI
 
-- [ ] Implement encrypted content-addressed evidence storage.
-- [ ] Support metadata, files, screenshots, request/response records, notes, and tool output.
+- [x] Implement encrypted content-addressed evidence storage.
+  Immutable bounded originals now use an evidence-domain key derived from the existing
+  OS-keychain-backed master key, authenticated content-addressed files, exact workflow
+  and policy linkage, optional matching execution-trace linkage, and fail-closed storage.
+- [x] Support metadata, files, screenshots, request/response records, notes, and tool output.
+  The authenticated core accepts each as an explicitly typed, 2 MiB-bounded original;
+  previewing and format-specific interpretation remain disabled until sandboxing exists.
 - [ ] Implement classification, preview sandboxing, redaction derivatives, and retention.
 - [ ] Implement finding lifecycle, CVSS/CWE, affected assets, confidence, and validation status.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.

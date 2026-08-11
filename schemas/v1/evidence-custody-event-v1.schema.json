@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/evidence-custody-event-v1.schema.json",
+  "title": "PentAI EvidenceCustodyEvent v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "sequence", "event_id", "evidence_id", "action", "actor_type", "actor_id", "occurred_at", "previous_hash", "event_hash"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "event_id": {"type": "string", "format": "uuid"},
+    "evidence_id": {"type": "string", "format": "uuid"},
+    "action": {"enum": ["stored", "metadata_accessed", "content_accessed"]},
+    "actor_type": {"enum": ["human", "service"]},
+    "actor_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "previous_hash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "event_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

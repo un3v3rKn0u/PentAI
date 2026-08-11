@@ -61,8 +61,12 @@ jobs:
       - name: Run rootless containment probes using only TEST-NET destinations
         env:
           PYTHONPATH: services/core/src:packages/policy/src
-        run: >-
-          python scripts/run_network_probe_conformance.py
-          --runtime podman
-          --executable "$(command -v podman)"
-          --probe-binary tools/network-probe/target/x86_64-unknown-linux-musl/release/pentai-network-probe
+        run: |
+          runtime=/usr/bin/podman
+          test -f "$runtime"
+          test -x "$runtime"
+          test ! -w "$runtime"
+          python scripts/run_network_probe_conformance.py \
+            --runtime podman \
+            --executable "$runtime" \
+            --probe-binary tools/network-probe/target/x86_64-unknown-linux-musl/release/pentai-network-probe

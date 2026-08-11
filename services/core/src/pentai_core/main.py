@@ -17,6 +17,8 @@ from pentai_core import __version__
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.config import Settings, allowed_origins
 from pentai_core.controlled_dns_composition import compose_controlled_resolver_provider
+from pentai_core.evidence import EvidenceError, EvidenceService
+from pentai_core.evidence_store import EncryptedEvidenceStore
 from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
 from pentai_core.gateway_runtime_supervisor import RuntimeSupervisorControl
 from pentai_core.migrate import migrate
@@ -187,6 +189,15 @@ class WorkflowTaskFinalizeRequest(StrictRequest):
     retry_delay_seconds: int = Field(default=0, ge=0, le=3600)
 
 
+class EvidenceOriginalRequest(StrictRequest):
+    evidence_kind: str
+    media_type: str
+    classification: str = "restricted"
+    idempotency_key: str = Field(min_length=16, max_length=128)
+    content_base64: str = Field(max_length=2_796_204)
+    execution_trace_id: str | None = None
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -207,11 +218,30 @@ def workflow_call[T](operation: Callable[[], T]) -> T:
         ) from exc
 
 
+def evidence_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except EvidenceError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
 def _decode_file_content(encoded: str) -> bytes:
     try:
         return b64decode(encoded, validate=True)
     except (Base64Error, ValueError) as exc:
         raise DomainError("SOURCE_ENCODING_INVALID", "file content encoding is invalid") from exc
+
+
+def _decode_evidence_content(encoded: str) -> bytes:
+    try:
+        return b64decode(encoded, validate=True)
+    except (Base64Error, ValueError) as exc:
+        raise EvidenceError(
+            "EVIDENCE_ENCODING_INVALID", "evidence content encoding is invalid"
+        ) from exc
 
 
 def _unauthorized() -> JSONResponse:
@@ -245,6 +275,26 @@ def create_app(
     authorization = AuthorizationService(
         runtime.database_path, source_store=source_store, policy_signer=signer
     )
+
+    def stop_for_evidence_failure() -> None:
+        authorization.set_global_safety(
+            status="stopped",
+            reason="evidence storage failure requires human recovery",
+            actor_id="evidence-service",
+        )
+
+    evidence_store = (
+        EncryptedEvidenceStore(
+            runtime.source_store_path.parent / "evidence-blobs", runtime.source_master_key
+        )
+        if runtime.source_master_key is not None
+        else None
+    )
+    evidence = EvidenceService(
+        runtime.database_path,
+        evidence_store,
+        storage_failure_handler=stop_for_evidence_failure,
+    )
     audit_verification = authorization.verify_audit_chain()
     if not audit_verification["valid"]:
         raise RuntimeError("audit ledger verification failed; startup is denied")
@@ -275,6 +325,7 @@ def create_app(
     app.state.controlled_resolver_provider = controlled_resolver_provider
     app.state.network_profile_setup_service = profile_setup
     app.state.assessment_workflows = workflows
+    app.state.evidence = evidence
     app.router.add_event_handler("shutdown", network_supervisor.stop)
     app.router.add_event_handler("shutdown", supervisor.stop)
     app.add_middleware(
@@ -602,10 +653,31 @@ def create_app(
     def execution_trace(result_id: str) -> dict[str, Any]:
         return call(lambda: authorization.execution_trace(result_id))
 
-    @app.post("/api/v1/workflows")
-    def create_workflow(
-        requested: WorkflowCreateRequest, request: Request
+    @app.post("/api/v1/workflows/{workflow_id}/evidence/originals")
+    def create_evidence_original(
+        workflow_id: str, requested: EvidenceOriginalRequest, request: Request
     ) -> dict[str, Any]:
+        actor = principal(request)
+        return evidence_call(
+            lambda: evidence.create_original(
+                workflow_id,
+                content=_decode_evidence_content(requested.content_base64),
+                evidence_kind=requested.evidence_kind,
+                media_type=requested.media_type,
+                classification=requested.classification,
+                idempotency_key=requested.idempotency_key,
+                actor_id=actor.principal_id,
+                execution_trace_id=requested.execution_trace_id,
+            )
+        )
+
+    @app.get("/api/v1/evidence/{evidence_id}/metadata")
+    def evidence_metadata(evidence_id: str, request: Request) -> dict[str, Any]:
+        actor = principal(request)
+        return evidence_call(lambda: evidence.metadata(evidence_id, actor_id=actor.principal_id))
+
+    @app.post("/api/v1/workflows")
+    def create_workflow(requested: WorkflowCreateRequest, request: Request) -> dict[str, Any]:
         actor = principal(request)
         return workflow_call(
             lambda: workflows.create(
@@ -653,9 +725,7 @@ def create_app(
     @app.post("/api/v1/workflow-tasks/{task_id}/cancel")
     def cancel_workflow_task(task_id: str, request: Request) -> dict[str, Any]:
         actor = principal(request)
-        return workflow_call(
-            lambda: workflows.cancel_task(task_id, actor_id=actor.principal_id)
-        )
+        return workflow_call(lambda: workflows.cancel_task(task_id, actor_id=actor.principal_id))
 
     @app.post("/api/v1/workflow-tasks/{task_id}/claim")
     def claim_workflow_task(

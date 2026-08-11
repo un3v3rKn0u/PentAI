@@ -23,6 +23,7 @@ from pentai_policy import (
 )
 from pentai_policy.document import contract_issues, parse_time
 
+from pentai_core.audit import append_audit_event
 from pentai_core.controlled_dns import ControlledDnsError, ControlledResolver
 from pentai_core.database import transaction
 from pentai_core.gateway_response import GatewayResponseMeasurement
@@ -428,43 +429,16 @@ class AuthorizationService:
         data: dict[str, Any],
         occurred_at: str | None = None,
     ) -> dict[str, Any]:
-        previous = connection.execute(
-            "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
-        ).fetchone()
-        previous_hash = previous["event_hash"] if previous else None
-        event = {
-            "event_id": str(uuid4()),
-            "occurred_at": occurred_at or _timestamp(),
-            "actor_type": actor_type,
-            "actor_id": actor_id,
-            "action": action,
-            "subject_type": subject_type,
-            "subject_id": subject_id,
-            "data": data,
-            "previous_hash": previous_hash,
-        }
-        event_hash = content_hash(event)
-        connection.execute(
-            """
-            INSERT INTO audit_events(
-                event_id, occurred_at, actor_type, actor_id, action, subject_type,
-                subject_id, data_json, previous_hash, event_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                event["event_id"],
-                event["occurred_at"],
-                actor_type,
-                actor_id,
-                action,
-                subject_type,
-                subject_id,
-                canonical_json(data),
-                previous_hash,
-                event_hash,
-            ),
+        return append_audit_event(
+            connection,
+            action=action,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            data=data,
+            occurred_at=occurred_at or _timestamp(),
         )
-        return {**event, "event_hash": event_hash}
 
     def create_program(
         self,

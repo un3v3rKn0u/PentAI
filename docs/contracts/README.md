@@ -48,6 +48,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   decisions, lifecycle changes, and effects.
 - `execution-trace-v1.schema.json` — immutable owned-fixture execution linkage from
   intent and evaluated policy rules through grant, runtime version, result, and audit.
+- `evidence-original-v1.schema.json` — immutable encrypted evidence metadata bound to
+  one supervised workflow, exact policy, and optional matching execution trace.
+- `evidence-custody-event-v1.schema.json` — append-only per-object evidence custody
+  chain for storage and access events.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review
@@ -78,6 +82,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | WorkflowTaskCheckpoint v1 | Core Maintainer | Contract Maintainer | Product Safety Lead, Security Reviewer |
 | AuditEvent v1 | Core Security Maintainer | Contract Maintainer | Product Safety Lead, Security Reviewer |
 | ExecutionTrace v1 | Execution Safety Lead | Contract Maintainer | Gateway Maintainer, Security Reviewer |
+| EvidenceOriginal v1 | Evidence Maintainer | Contract Maintainer | Core Maintainer, Security Reviewer |
+| EvidenceCustodyEvent v1 | Evidence Maintainer | Contract Maintainer | Core Security Maintainer, Security Reviewer |
 | Canonical Types v1 | Policy Maintainer | Contract Maintainer | Gateway Maintainer, independent Security Reviewer |
 
 The owning role is accountable for semantics and consumers. The Contract Maintainer is

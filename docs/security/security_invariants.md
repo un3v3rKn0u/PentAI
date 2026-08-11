@@ -299,12 +299,19 @@ the connection slot exactly once, and never refunds committed capacity.
 **Primary enforcement:** Evidence service<br>
 **Verification:** API, filesystem, and digest tests.
 
+Migration 0021 and the evidence service enforce content-addressed authenticated
+encryption, immutable database originals, and derived-key separation from source
+blobs. No original-content HTTP read route exists in this slice.
+
 ### INV-DATA-003 — Complete privileged audit
 
 **Statement:** Every policy activation/revocation, approval, grant, execution, stop event, evidence access, and report transition produces an append-only audit event.
 
 **Primary enforcement:** Domain services with transactional outbox<br>
 **Verification:** Domain-event coverage tests.
+
+Evidence storage and every metadata/content access append both an evidence custody
+event and an audit-ledger event without including evidence bytes.
 
 The currently enabled owned-fixture effect atomically creates a content-hashed
 execution trace linking its intent, decision, evaluated policy rules, grant, committed
@@ -329,6 +336,9 @@ denies startup.
 
 **Primary enforcement:** Core health gate<br>
 **Verification:** Fault-injection tests.
+
+The composed evidence service stops global execution when its key is unavailable or
+an authenticated blob store/write/read fails. Resumption remains a human action.
 
 ## 10. Reliability Invariants
 
