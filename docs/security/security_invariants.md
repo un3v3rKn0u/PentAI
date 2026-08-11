@@ -157,7 +157,9 @@ exist.
 **Phase 1 setup note:** OS-discovered route and resolver values are untrusted,
 short-lived proposals only. They cannot satisfy this invariant, supply a registered
 source identity, or enable execution without explicit human confirmation and a later
-attestation against active policy.
+attestation against active policy. Human-confirmed profiles are durable configuration,
+but still cannot satisfy the invariant until independent observations match the active
+policy; profile activation always records `execution_enabled: false`.
 
 ### INV-NET-003 — Controlled DNS
 

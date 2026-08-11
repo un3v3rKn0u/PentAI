@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildIntentTarget, coreRequest, encodeBytesBase64, networkSetupRequirement, sourceFileMediaType } from "./App";
+import { buildIntentTarget, coreRequest, encodeBytesBase64, networkSetupRequirement, parseSourceAddresses, sourceFileMediaType } from "./App";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -21,6 +21,13 @@ describe("authorization workflow safety boundary", () => {
     expect(networkSetupRequirement("CONFIRM_RESOLVER_MODE")).toContain("confirm");
     expect(networkSetupRequirement("ENTER_REGISTERED_SOURCE_IP")).toContain("Enter");
     expect(networkSetupRequirement("UNKNOWN")).toContain("before activation");
+  });
+
+  it("normalizes human-entered source address lists without inventing an address", () => {
+    expect(parseSourceAddresses(" 8.8.8.8, 2001:4860:4860::8888 ")).toEqual([
+      "8.8.8.8", "2001:4860:4860::8888"
+    ]);
+    expect(parseSourceAddresses(" , ")).toEqual([]);
   });
 
   it("does not expose execution or grant issuance", () => {

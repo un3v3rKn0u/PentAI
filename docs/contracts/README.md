@@ -16,6 +16,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   one active policy.
 - `network-profile-proposal-v1.schema.json` — expiring, non-authoritative host route
   and resolver discovery result that requires human confirmation.
+- `network-profile-v1.schema.json` — durable human-confirmed route, resolver mode,
+  and registered source identity with explicit revocation state.
 - `destination-decision-v1.schema.json` — immutable, non-executing DNS and destination
   reauthorization result.
 - `gateway-session-v1.schema.json` — atomically budgeted, durable, non-executing
@@ -40,6 +42,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | ActionGrant v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | NetworkAttestation v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | NetworkProfileProposal v1 | Gateway Maintainer | Contract Maintainer | Product Safety Lead, Security Reviewer |
+| NetworkProfile v1 | Gateway Maintainer | Contract Maintainer | Product Safety Lead, Security Reviewer |
 | DestinationDecision v1 | Gateway Maintainer | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
 | GatewaySession v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | GatewayRuntimeInstance v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |

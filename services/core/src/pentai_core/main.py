@@ -129,6 +129,19 @@ class SafetyRequest(StrictRequest):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class NetworkProfileActivationRequest(StrictRequest):
+    proposal_id: str
+    confirm_route: bool
+    resolver_mode: str
+    registered_source_ipv4: list[str] = Field(default_factory=list, max_length=16)
+    registered_source_ipv6: list[str] = Field(default_factory=list, max_length=16)
+    ipv6_mode: str = "disabled"
+
+
+class NetworkProfileRevocationRequest(StrictRequest):
+    reason: str = Field(min_length=1, max_length=500)
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -279,12 +292,45 @@ def create_app(
     @app.get("/api/v1/network-profile-proposal")
     def network_profile_proposal() -> dict[str, Any]:
         try:
-            return profile_setup.discover()
+            proposal = profile_setup.discover()
         except NetworkProfileSetupError as exc:
             raise HTTPException(
                 status_code=409,
                 detail={"code": exc.code, "message": str(exc)},
             ) from exc
+        return call(lambda: authorization.save_network_profile_proposal(proposal))
+
+    @app.post("/api/v1/network-profiles/activate")
+    def activate_network_profile(
+        activation: NetworkProfileActivationRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return call(
+            lambda: authorization.activate_network_profile(
+                activation.proposal_id,
+                confirm_route=activation.confirm_route,
+                resolver_mode=activation.resolver_mode,
+                registered_source_ipv4=activation.registered_source_ipv4,
+                registered_source_ipv6=activation.registered_source_ipv6,
+                ipv6_mode=activation.ipv6_mode,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.get("/api/v1/network-profiles")
+    def list_network_profiles() -> dict[str, Any]:
+        return {"profiles": authorization.list_network_profiles(), "execution_enabled": False}
+
+    @app.post("/api/v1/network-profiles/{profile_id}/revoke")
+    def revoke_network_profile(
+        profile_id: str, revocation: NetworkProfileRevocationRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return call(
+            lambda: authorization.revoke_network_profile(
+                profile_id, reason=revocation.reason, actor_id=actor.principal_id
+            )
+        )
 
     @app.post("/api/v1/shutdown")
     def shutdown() -> dict[str, str]:

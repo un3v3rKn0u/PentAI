@@ -5,6 +5,7 @@ import json
 import secrets
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from ipaddress import ip_address
 from pathlib import Path, PurePath
 from typing import Any
 from uuid import uuid4
@@ -72,6 +73,47 @@ def _intent_target_digest(intent: dict[str, Any]) -> str:
             "account_reference": intent.get("account_reference"),
         }
     )
+
+
+def _canonical_registered_sources(values: list[str], *, version: int) -> tuple[str, ...]:
+    if len(values) > 16 or any(not isinstance(value, str) or "%" in value for value in values):
+        raise DomainError("NETWORK_PROFILE_SOURCE_INVALID", "registered source IP is invalid")
+    try:
+        addresses = tuple(sorted({ip_address(value).compressed for value in values}))
+        parsed = tuple(ip_address(value) for value in addresses)
+    except ValueError as exc:
+        raise DomainError(
+            "NETWORK_PROFILE_SOURCE_INVALID", "registered source IP is invalid"
+        ) from exc
+    if any(
+        address.version != version or not address.is_global or address.is_multicast
+        for address in parsed
+    ):
+        raise DomainError("NETWORK_PROFILE_SOURCE_INVALID", "registered source IP is invalid")
+    return addresses
+
+
+def _network_profile_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "schema_version": "1.0.0",
+        "profile_id": row["profile_id"],
+        "proposal_id": row["proposal_id"],
+        "route_profile_id": row["route_profile_id"],
+        "route_interface": row["route_interface"],
+        "route_gateway": row["route_gateway"],
+        "resolver_mode": row["resolver_mode"],
+        "resolver_id": row["resolver_id"],
+        "resolver_addresses": json.loads(row["resolver_addresses_json"]),
+        "registered_source_ipv4": json.loads(row["registered_source_ipv4_json"]),
+        "registered_source_ipv6": json.loads(row["registered_source_ipv6_json"]),
+        "ipv6_mode": row["ipv6_mode"],
+        "status": row["status"],
+        "confirmed_by": row["confirmed_by"],
+        "confirmed_at": row["confirmed_at"],
+        "revoked_at": row["revoked_at"],
+        "revocation_reason": row["revocation_reason"],
+        "execution_enabled": False,
+    }
 
 
 class AuthorizationService:
@@ -2576,6 +2618,294 @@ class AuthorizationService:
             }
             for row in rows
         ]
+
+    def save_network_profile_proposal(self, proposal: dict[str, Any]) -> dict[str, Any]:
+        if contract_issues(proposal, "network-profile-proposal-v1.schema.json"):
+            raise DomainError("NETWORK_PROFILE_PROPOSAL_INVALID", "network proposal is invalid")
+        try:
+            interface = proposal["route_interface"]
+            gateway = (
+                ip_address(proposal["route_gateway"]).compressed
+                if proposal["route_gateway"] is not None
+                else None
+            )
+            resolvers = tuple(
+                sorted({ip_address(value).compressed for value in proposal["resolver_addresses"]})
+            )
+            observed_at = parse_time(proposal["observed_at"])
+            expires_at = parse_time(proposal["expires_at"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise DomainError(
+                "NETWORK_PROFILE_PROPOSAL_INVALID", "network proposal is invalid"
+            ) from exc
+        route_identity = {
+            "interface": interface,
+            "gateway": gateway,
+            "resolver_addresses": resolvers,
+        }
+        expected_route_id = f"route-{content_hash(route_identity)[:24]}"
+        expected_resolver_id = f"resolver-{content_hash(resolvers)[:24]}"
+        if (
+            interface != interface.strip()
+            or proposal["route_gateway"] != gateway
+            or proposal["resolver_addresses"] != list(resolvers)
+            or proposal["route_profile_id"] != expected_route_id
+            or proposal["resolver_id"] != expected_resolver_id
+        ):
+            raise DomainError("NETWORK_PROFILE_PROPOSAL_INVALID", "network proposal is invalid")
+        now = _now()
+        if (
+            expires_at <= observed_at
+            or expires_at - observed_at > timedelta(minutes=10)
+            or observed_at > now
+            or expires_at <= now
+        ):
+            raise DomainError("NETWORK_PROFILE_PROPOSAL_STALE", "network proposal has expired")
+        serialized = canonical_json(proposal)
+        proposal_hash = content_hash(proposal)
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            stale_ids = [
+                row["proposal_id"]
+                for row in connection.execute(
+                    """
+                    SELECT proposal_id, expires_at FROM network_profile_proposals
+                    WHERE status = 'pending'
+                    """
+                ).fetchall()
+                if parse_time(row["expires_at"]) <= now
+            ]
+            connection.executemany(
+                "UPDATE network_profile_proposals SET status = 'expired' WHERE proposal_id = ?",
+                ((proposal_id,) for proposal_id in stale_ids),
+            )
+            existing = connection.execute(
+                """
+                SELECT document_json, content_hash, status FROM network_profile_proposals
+                WHERE proposal_id = ?
+                """,
+                (proposal["proposal_id"],),
+            ).fetchone()
+            if existing is not None:
+                identity_matches = (
+                    existing["document_json"] == serialized
+                    and existing["content_hash"] == proposal_hash
+                )
+                if not identity_matches:
+                    raise DomainError(
+                        "NETWORK_PROFILE_PROPOSAL_CONFLICT", "network proposal identity conflicts"
+                    )
+                if existing["status"] != "pending":
+                    raise DomainError(
+                        "NETWORK_PROFILE_PROPOSAL_USED", "network proposal is no longer pending"
+                    )
+                return proposal
+            pending_count = connection.execute(
+                "SELECT COUNT(*) AS amount FROM network_profile_proposals WHERE status = 'pending'"
+            ).fetchone()
+            if pending_count is None or pending_count["amount"] >= 64:
+                raise DomainError(
+                    "NETWORK_PROFILE_PROPOSAL_CAPACITY",
+                    "too many network proposals await confirmation",
+                )
+            connection.execute(
+                """
+                INSERT INTO network_profile_proposals(
+                    proposal_id, document_json, content_hash, route_profile_id,
+                    observed_at, expires_at, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+                """,
+                (
+                    proposal["proposal_id"],
+                    serialized,
+                    proposal_hash,
+                    proposal["route_profile_id"],
+                    proposal["observed_at"],
+                    proposal["expires_at"],
+                    _timestamp(),
+                ),
+            )
+        return proposal
+
+    def activate_network_profile(
+        self,
+        proposal_id: str,
+        *,
+        confirm_route: bool,
+        resolver_mode: str,
+        registered_source_ipv4: list[str],
+        registered_source_ipv6: list[str],
+        ipv6_mode: str,
+        actor_id: str,
+    ) -> dict[str, Any]:
+        if not confirm_route:
+            raise DomainError(
+                "NETWORK_PROFILE_CONFIRMATION_REQUIRED", "route confirmation is required"
+            )
+        if resolver_mode not in {"tunnel_resolver", "approved_resolver"}:
+            raise DomainError("NETWORK_PROFILE_RESOLVER_INVALID", "resolver mode is invalid")
+        if ipv6_mode not in {"disabled", "approved_only"}:
+            raise DomainError("NETWORK_PROFILE_IPV6_INVALID", "IPv6 mode is invalid")
+        if not actor_id.strip() or len(actor_id) > 128:
+            raise DomainError("NETWORK_PROFILE_ACTOR_INVALID", "actor identity is invalid")
+        ipv4 = _canonical_registered_sources(registered_source_ipv4, version=4)
+        ipv6 = _canonical_registered_sources(registered_source_ipv6, version=6)
+        if ipv6_mode == "disabled" and ipv6:
+            raise DomainError(
+                "NETWORK_PROFILE_IPV6_CONFLICT", "disabled IPv6 cannot have registered addresses"
+            )
+        if ipv6_mode == "approved_only" and not ipv6:
+            raise DomainError(
+                "NETWORK_PROFILE_IPV6_REQUIRED", "approved IPv6 requires a registered address"
+            )
+        if not ipv4 and not ipv6:
+            raise DomainError(
+                "NETWORK_PROFILE_SOURCE_REQUIRED", "a registered public source IP is required"
+            )
+        confirmed_at = _timestamp()
+        profile_id = str(uuid4())
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            proposal_row = connection.execute(
+                "SELECT * FROM network_profile_proposals WHERE proposal_id = ?",
+                (proposal_id,),
+            ).fetchone()
+            if proposal_row is None:
+                raise DomainError(
+                    "NETWORK_PROFILE_PROPOSAL_MISSING", "network proposal does not exist"
+                )
+            if proposal_row["status"] != "pending":
+                raise DomainError(
+                    "NETWORK_PROFILE_PROPOSAL_USED", "network proposal is no longer pending"
+                )
+            if parse_time(proposal_row["expires_at"]) <= parse_time(confirmed_at):
+                raise DomainError("NETWORK_PROFILE_PROPOSAL_STALE", "network proposal has expired")
+            if connection.execute(
+                "SELECT 1 FROM network_profiles WHERE status = 'active'"
+            ).fetchone():
+                raise DomainError(
+                    "NETWORK_PROFILE_ACTIVE_CONFLICT",
+                    "revoke the active network profile before activating another",
+                )
+            proposal = json.loads(proposal_row["document_json"])
+            profile = {
+                "schema_version": "1.0.0",
+                "profile_id": profile_id,
+                "proposal_id": proposal_id,
+                "route_profile_id": proposal["route_profile_id"],
+                "route_interface": proposal["route_interface"],
+                "route_gateway": proposal["route_gateway"],
+                "resolver_mode": resolver_mode,
+                "resolver_id": proposal["resolver_id"],
+                "resolver_addresses": proposal["resolver_addresses"],
+                "registered_source_ipv4": list(ipv4),
+                "registered_source_ipv6": list(ipv6),
+                "ipv6_mode": ipv6_mode,
+                "status": "active",
+                "confirmed_by": actor_id,
+                "confirmed_at": confirmed_at,
+                "revoked_at": None,
+                "revocation_reason": None,
+                "execution_enabled": False,
+            }
+            if contract_issues(profile, "network-profile-v1.schema.json"):
+                raise DomainError("NETWORK_PROFILE_INVALID", "network profile is invalid")
+            connection.execute(
+                """
+                INSERT INTO network_profiles(
+                    profile_id, proposal_id, route_profile_id, route_interface,
+                    route_gateway, resolver_mode, resolver_id, resolver_addresses_json,
+                    registered_source_ipv4_json, registered_source_ipv6_json, ipv6_mode,
+                    status, confirmed_by, confirmed_at, revoked_at, revocation_reason,
+                    execution_enabled
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL, NULL, 0)
+                """,
+                (
+                    profile_id,
+                    proposal_id,
+                    profile["route_profile_id"],
+                    profile["route_interface"],
+                    profile["route_gateway"],
+                    resolver_mode,
+                    profile["resolver_id"],
+                    canonical_json(profile["resolver_addresses"]),
+                    canonical_json(profile["registered_source_ipv4"]),
+                    canonical_json(profile["registered_source_ipv6"]),
+                    ipv6_mode,
+                    actor_id,
+                    confirmed_at,
+                ),
+            )
+            connection.execute(
+                "UPDATE network_profile_proposals SET status = 'confirmed' WHERE proposal_id = ?",
+                (proposal_id,),
+            )
+            self._audit(
+                connection,
+                action="network_profile.activated",
+                subject_type="network_profile",
+                subject_id=profile_id,
+                actor_type="human",
+                actor_id=actor_id,
+                data={
+                    "proposal_id": proposal_id,
+                    "profile_hash": content_hash(profile),
+                    "route_profile_id": profile["route_profile_id"],
+                    "resolver_id": profile["resolver_id"],
+                    "resolver_mode": resolver_mode,
+                    "ipv4_source_count": len(ipv4),
+                    "ipv6_source_count": len(ipv6),
+                    "execution_enabled": False,
+                },
+                occurred_at=confirmed_at,
+            )
+        return profile
+
+    def list_network_profiles(self) -> list[dict[str, Any]]:
+        with transaction(self.database_path) as connection:
+            rows = connection.execute(
+                "SELECT * FROM network_profiles ORDER BY confirmed_at, profile_id"
+            ).fetchall()
+        return [_network_profile_from_row(row) for row in rows]
+
+    def revoke_network_profile(
+        self, profile_id: str, *, reason: str, actor_id: str
+    ) -> dict[str, Any]:
+        if not reason.strip() or len(reason) > 500:
+            raise DomainError("NETWORK_PROFILE_REASON_INVALID", "revocation reason is invalid")
+        revoked_at = _timestamp()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM network_profiles WHERE profile_id = ?", (profile_id,)
+            ).fetchone()
+            if row is None:
+                raise DomainError("NETWORK_PROFILE_MISSING", "network profile does not exist")
+            if row["status"] != "active":
+                raise DomainError("NETWORK_PROFILE_REVOKED", "network profile is not active")
+            connection.execute(
+                """
+                UPDATE network_profiles
+                SET status = 'revoked', revoked_at = ?, revocation_reason = ?
+                WHERE profile_id = ?
+                """,
+                (revoked_at, reason.strip(), profile_id),
+            )
+            self._audit(
+                connection,
+                action="network_profile.revoked",
+                subject_type="network_profile",
+                subject_id=profile_id,
+                actor_type="human",
+                actor_id=actor_id,
+                data={"reason": reason.strip(), "execution_enabled": False},
+                occurred_at=revoked_at,
+            )
+            updated = connection.execute(
+                "SELECT * FROM network_profiles WHERE profile_id = ?", (profile_id,)
+            ).fetchone()
+        assert updated is not None
+        return _network_profile_from_row(updated)
 
     def verify_audit_chain(self) -> dict[str, Any]:
         events = self.audit_events()
