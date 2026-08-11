@@ -1,0 +1,494 @@
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import os
+import sqlite3
+import tempfile
+import zipfile
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import cast
+from uuid import UUID, uuid4
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from pentai_policy.document import contract_issues
+
+from pentai_core.audit import append_audit_event
+from pentai_core.database import transaction
+from pentai_core.evidence_store import EncryptedEvidenceStore, EvidenceStoreError
+
+_MAGIC = b"PENTAI-ENCRYPTED-BACKUP-V1\x00"
+_NONCE_SIZE = 12
+_MAX_BACKUP_BYTES = 256 * 1024 * 1024
+_DATABASE_MEMBER = "database/pentai.db"
+_MANIFEST_MEMBER = "manifest.json"
+
+
+class BackupError(RuntimeError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class BackupService:
+    """Create authenticated snapshots and restore them only into an isolated drill path."""
+
+    def __init__(
+        self,
+        database_path: Path,
+        evidence_store: EncryptedEvidenceStore | None,
+        master_key: bytes | None,
+    ) -> None:
+        self.database_path = database_path
+        self.evidence_store = evidence_store
+        self._master_key = master_key
+        if master_key is None:
+            self._cipher = None
+        elif len(master_key) != 32:
+            raise ValueError("backup master key must contain 32 bytes")
+        else:
+            key = HKDF(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=b"pentai-local-backup-v1",
+                info=b"database-and-evidence",
+            ).derive(master_key)
+            self._cipher = AESGCM(key)
+
+    def create(
+        self, destination: Path, *, actor_id: str, backup_id: str | None = None
+    ) -> dict[str, object]:
+        self._available(actor_id)
+        if destination.exists() or not destination.name:
+            raise BackupError("BACKUP_DESTINATION_INVALID", "backup destination must not exist")
+        identifier = backup_id or str(uuid4())
+        if not _uuid(identifier):
+            raise BackupError("BACKUP_ID_INVALID", "backup id is invalid")
+        self._audit(
+            "backup.creation_requested",
+            identifier,
+            actor_id,
+            {"destination_name": destination.name, "live_data_replaced": False},
+        )
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="pentai-backup-") as temporary:
+            snapshot = Path(temporary) / "pentai.db"
+            self._snapshot_database(snapshot)
+            manifest, members = self._build_archive(
+                snapshot, actor_id=actor_id, backup_id=identifier
+            )
+            archive = self._archive(manifest, members)
+        if len(archive) > _MAX_BACKUP_BYTES:
+            raise BackupError("BACKUP_SIZE_EXCEEDED", "encrypted backup exceeds the local limit")
+        nonce = os.urandom(_NONCE_SIZE)
+        assert self._cipher is not None
+        envelope = _MAGIC + nonce + self._cipher.encrypt(nonce, archive, _MAGIC)
+        self._atomic_write(destination, envelope)
+        self._audit(
+            "backup.created",
+            identifier,
+            actor_id,
+            {
+                "destination_name": destination.name,
+                "encrypted_backup_sha256": hashlib.sha256(envelope).hexdigest(),
+                "live_data_replaced": False,
+            },
+        )
+        return self._report(manifest, envelope, destination, status="created")
+
+    def restore_drill(
+        self, backup: Path, destination: Path, *, actor_id: str = "restore-drill"
+    ) -> dict[str, object]:
+        self._available(actor_id)
+        if destination.exists() or not destination.name:
+            raise BackupError(
+                "RESTORE_DESTINATION_INVALID", "restore drill destination must not exist"
+            )
+        try:
+            envelope = backup.read_bytes()
+        except OSError as exc:
+            raise BackupError("BACKUP_UNAVAILABLE", "encrypted backup is unavailable") from exc
+        if len(envelope) > _MAX_BACKUP_BYTES or not envelope.startswith(_MAGIC):
+            raise BackupError("BACKUP_FORMAT_INVALID", "encrypted backup format is invalid")
+        self._audit(
+            "backup.restore_drill_requested",
+            backup.stem,
+            actor_id,
+            {"backup_name": backup.name, "live_data_replaced": False},
+        )
+        start = len(_MAGIC)
+        if len(envelope) <= start + _NONCE_SIZE:
+            raise BackupError("BACKUP_FORMAT_INVALID", "encrypted backup format is invalid")
+        assert self._cipher is not None
+        try:
+            archive = self._cipher.decrypt(
+                envelope[start : start + _NONCE_SIZE], envelope[start + _NONCE_SIZE :], _MAGIC
+            )
+        except InvalidTag as exc:
+            raise BackupError(
+                "BACKUP_AUTHENTICATION_FAILED", "backup authentication failed"
+            ) from exc
+
+        temporary = destination.parent / f".{destination.name}.{uuid4().hex}.restore"
+        try:
+            manifest = self._extract_and_verify(archive, temporary)
+            os.replace(temporary, destination)
+            self._fsync_directory(destination.parent)
+        except Exception:
+            self._remove_drill(temporary)
+            raise
+        self._audit(
+            "backup.restore_drill_verified",
+            str(manifest["backup_id"]),
+            actor_id,
+            {
+                "backup_name": backup.name,
+                "encrypted_backup_sha256": hashlib.sha256(envelope).hexdigest(),
+                "live_data_replaced": False,
+            },
+        )
+        return self._report(manifest, envelope, destination, status="verified")
+
+    def _available(self, actor_id: str) -> None:
+        if self._cipher is None or self.evidence_store is None:
+            raise BackupError("BACKUP_KEY_UNAVAILABLE", "backup encryption is unavailable")
+        if not actor_id or len(actor_id) > 128:
+            raise BackupError("BACKUP_ACTOR_INVALID", "backup actor is invalid")
+
+    def _audit(
+        self,
+        action: str,
+        backup_id: str,
+        actor_id: str,
+        data: dict[str, object],
+    ) -> None:
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            append_audit_event(
+                connection,
+                action=action,
+                subject_type="backup",
+                subject_id=backup_id,
+                actor_type="human",
+                actor_id=actor_id,
+                data=data,
+                occurred_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            )
+
+    def _snapshot_database(self, destination: Path) -> None:
+        try:
+            source = sqlite3.connect(f"file:{self.database_path}?mode=ro", uri=True)
+            target = sqlite3.connect(destination)
+            try:
+                source.backup(target)
+                target.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            finally:
+                target.close()
+                source.close()
+        except sqlite3.Error as exc:
+            raise BackupError("BACKUP_DATABASE_FAILED", "database snapshot failed") from exc
+
+    def _build_archive(
+        self, snapshot: Path, *, actor_id: str, backup_id: str
+    ) -> tuple[dict[str, object], dict[str, bytes]]:
+        database_bytes = snapshot.read_bytes()
+        connection = sqlite3.connect(snapshot)
+        connection.row_factory = sqlite3.Row
+        try:
+            integrity = connection.execute("PRAGMA integrity_check").fetchone()
+            if integrity is None or integrity[0] != "ok":
+                raise BackupError("BACKUP_DATABASE_INVALID", "database snapshot is not integral")
+            migrations = [
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT version FROM schema_migrations ORDER BY version"
+                )
+            ]
+            audit = connection.execute(
+                "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+            ).fetchone()
+            deleted = {
+                str(row[0]) for row in connection.execute("SELECT sha256 FROM evidence_deletions")
+            }
+            active = self._active_digests(connection)
+        finally:
+            connection.close()
+        deleted -= active
+        members: dict[str, bytes] = {_DATABASE_MEMBER: database_bytes}
+        assert self.evidence_store is not None
+        for digest in sorted(active):
+            try:
+                self.evidence_store.load(digest)
+                members[f"evidence/{digest}.blob"] = self.evidence_store._path(digest).read_bytes()
+            except (EvidenceStoreError, OSError) as exc:
+                raise BackupError(
+                    "BACKUP_EVIDENCE_INVALID", "evidence backup failed closed"
+                ) from exc
+        created_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        manifest: dict[str, object] = {
+            "schema_version": "1.0.0",
+            "backup_id": backup_id,
+            "created_at": created_at,
+            "created_by": actor_id,
+            "database_sha256": hashlib.sha256(database_bytes).hexdigest(),
+            "audit_head_hash": str(audit[0]) if audit is not None else None,
+            "migration_versions": migrations,
+            "evidence_sha256": sorted(active),
+            "deletion_tombstones": sorted(deleted),
+        }
+        self._validate_manifest(manifest)
+        return manifest, members
+
+    @staticmethod
+    def _archive(manifest: dict[str, object], members: dict[str, bytes]) -> bytes:
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(
+                _MANIFEST_MEMBER, json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+            )
+            for name, content in sorted(members.items()):
+                archive.writestr(name, content)
+        return output.getvalue()
+
+    def _extract_and_verify(self, archive_bytes: bytes, destination: Path) -> dict[str, object]:
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        destination.mkdir(mode=0o700)
+        try:
+            with zipfile.ZipFile(io.BytesIO(archive_bytes), "r") as archive:
+                names = archive.namelist()
+                if len(names) != len(set(names)) or _MANIFEST_MEMBER not in names:
+                    raise BackupError("BACKUP_MANIFEST_INVALID", "backup members are ambiguous")
+                if any(info.file_size > _MAX_BACKUP_BYTES for info in archive.infolist()):
+                    raise BackupError("BACKUP_SIZE_EXCEEDED", "backup member exceeds the limit")
+                if sum(info.file_size for info in archive.infolist()) > _MAX_BACKUP_BYTES:
+                    raise BackupError("BACKUP_SIZE_EXCEEDED", "expanded backup exceeds the limit")
+                manifest = cast(dict[str, object], json.loads(archive.read(_MANIFEST_MEMBER)))
+                self._validate_manifest(manifest)
+                evidence = set(cast(list[str], manifest["evidence_sha256"]))
+                expected = {_MANIFEST_MEMBER, _DATABASE_MEMBER} | {
+                    f"evidence/{digest}.blob" for digest in evidence
+                }
+                if set(names) != expected:
+                    raise BackupError(
+                        "BACKUP_MEMBERS_INVALID", "backup members do not match manifest"
+                    )
+                current_tombstones = self._current_tombstones()
+                if evidence & current_tombstones:
+                    raise BackupError(
+                        "BACKUP_TOMBSTONE_STALE", "backup would restore deleted evidence"
+                    )
+                database = archive.read(_DATABASE_MEMBER)
+                if hashlib.sha256(database).hexdigest() != manifest["database_sha256"]:
+                    raise BackupError("BACKUP_DATABASE_INVALID", "database digest does not match")
+                database_path = destination / "pentai.db"
+                database_path.write_bytes(database)
+                evidence_root = destination / "evidence-blobs"
+                for digest in sorted(evidence):
+                    path = evidence_root / digest[:2] / f"{digest}.blob"
+                    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    path.write_bytes(archive.read(f"evidence/{digest}.blob"))
+            self._verify_restored_database(database_path, manifest)
+            assert self._master_key is not None
+            restored_store = EncryptedEvidenceStore(evidence_root, self._master_key)
+            for digest in cast(list[str], manifest["evidence_sha256"]):
+                restored_store.load(digest)
+        except (OSError, zipfile.BadZipFile, json.JSONDecodeError, EvidenceStoreError) as exc:
+            if isinstance(exc, BackupError):
+                raise
+            raise BackupError(
+                "BACKUP_RESTORE_INVALID", "backup restore verification failed"
+            ) from exc
+        return manifest
+
+    def _verify_restored_database(self, path: Path, manifest: dict[str, object]) -> None:
+        connection = sqlite3.connect(path)
+        try:
+            row = connection.execute("PRAGMA integrity_check").fetchone()
+            migrations = [
+                str(item[0])
+                for item in connection.execute(
+                    "SELECT version FROM schema_migrations ORDER BY version"
+                )
+            ]
+            audit = connection.execute(
+                "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+            ).fetchone()
+            active = sorted(self._active_digests(connection))
+            deleted = {
+                str(item[0]) for item in connection.execute("SELECT sha256 FROM evidence_deletions")
+            }
+            tombstones = sorted(deleted - set(active))
+        except sqlite3.Error as exc:
+            raise BackupError("BACKUP_DATABASE_INVALID", "restored database is invalid") from exc
+        finally:
+            connection.close()
+        if (
+            row is None
+            or row[0] != "ok"
+            or migrations != manifest["migration_versions"]
+            or (str(audit[0]) if audit is not None else None) != manifest["audit_head_hash"]
+            or active != manifest["evidence_sha256"]
+            or tombstones != manifest["deletion_tombstones"]
+        ):
+            raise BackupError("BACKUP_DATABASE_INVALID", "restored database verification failed")
+        from pentai_core.authorization import AuthorizationService
+
+        if not AuthorizationService(path).verify_audit_chain()["valid"]:
+            raise BackupError("BACKUP_AUDIT_INVALID", "restored audit chain is invalid")
+
+    def _current_tombstones(self) -> set[str]:
+        connection = sqlite3.connect(self.database_path)
+        try:
+            deleted = {
+                str(row[0]) for row in connection.execute("SELECT sha256 FROM evidence_deletions")
+            }
+            return deleted - self._active_digests(connection)
+        except sqlite3.Error as exc:
+            raise BackupError(
+                "BACKUP_TOMBSTONES_UNAVAILABLE", "deletion state is unavailable"
+            ) from exc
+        finally:
+            connection.close()
+
+    @staticmethod
+    def _validate_manifest(manifest: object) -> None:
+        required = {
+            "schema_version",
+            "backup_id",
+            "created_at",
+            "created_by",
+            "database_sha256",
+            "audit_head_hash",
+            "migration_versions",
+            "evidence_sha256",
+            "deletion_tombstones",
+        }
+        if not isinstance(manifest, dict) or set(manifest) != required:
+            raise BackupError("BACKUP_MANIFEST_INVALID", "backup manifest is invalid")
+        digests = manifest.get("evidence_sha256")
+        tombstones = manifest.get("deletion_tombstones")
+        if (
+            manifest.get("schema_version") != "1.0.0"
+            or not _uuid(manifest.get("backup_id"))
+            or not isinstance(manifest.get("created_at"), str)
+            or not isinstance(manifest.get("created_by"), str)
+            or not 1 <= len(cast(str, manifest.get("created_by"))) <= 128
+            or not _digest(manifest.get("database_sha256"))
+            or not (
+                manifest.get("audit_head_hash") is None or _digest(manifest.get("audit_head_hash"))
+            )
+            or not isinstance(manifest.get("migration_versions"), list)
+            or any(
+                not isinstance(value, str) or not value.isdigit() or len(value) != 4
+                for value in cast(list[object], manifest.get("migration_versions"))
+            )
+            or not isinstance(digests, list)
+            or not isinstance(tombstones, list)
+            or digests != sorted(set(digests))
+            or tombstones != sorted(set(tombstones))
+            or any(not _digest(value) for value in [*digests, *tombstones])
+            or set(digests) & set(tombstones)
+        ):
+            raise BackupError("BACKUP_MANIFEST_INVALID", "backup manifest is invalid")
+
+    @staticmethod
+    def _active_digests(connection: sqlite3.Connection) -> set[str]:
+        return {
+            str(row[0])
+            for row in connection.execute(
+                """SELECT sha256 FROM evidence_objects o
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM evidence_deletions d
+                       WHERE d.artifact_type = 'original' AND d.artifact_id = o.evidence_id
+                   )
+                   UNION
+                   SELECT sha256 FROM evidence_derivatives r
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM evidence_deletions d
+                       WHERE d.artifact_type = 'redaction' AND d.artifact_id = r.derivative_id
+                   )"""
+            )
+        }
+
+    @staticmethod
+    def _atomic_write(destination: Path, content: bytes) -> None:
+        temporary = destination.parent / f".{destination.name}.{uuid4().hex}.tmp"
+        descriptor: int | None = None
+        try:
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "wb") as stream:
+                descriptor = None
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, destination)
+            BackupService._fsync_directory(destination.parent)
+        except OSError as exc:
+            raise BackupError(
+                "BACKUP_WRITE_FAILED", "encrypted backup could not be persisted"
+            ) from exc
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        descriptor = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    @staticmethod
+    def _remove_drill(path: Path) -> None:
+        if not path.exists():
+            return
+        for child in sorted(path.rglob("*"), reverse=True):
+            if child.is_file():
+                child.unlink(missing_ok=True)
+            elif child.is_dir():
+                child.rmdir()
+        path.rmdir()
+
+    def _report(
+        self, manifest: dict[str, object], envelope: bytes, destination: Path, *, status: str
+    ) -> dict[str, object]:
+        report = {
+            "schema_version": "1.0.0",
+            "backup_id": manifest["backup_id"],
+            "status": status,
+            "created_at": manifest["created_at"],
+            "database_sha256": manifest["database_sha256"],
+            "audit_head_hash": manifest["audit_head_hash"],
+            "evidence_blob_count": len(cast(list[object], manifest["evidence_sha256"])),
+            "deletion_tombstone_count": len(cast(list[object], manifest["deletion_tombstones"])),
+            "encrypted_backup_sha256": hashlib.sha256(envelope).hexdigest(),
+            "destination": destination.name,
+            "live_data_replaced": False,
+        }
+        if contract_issues(report, "backup-restore-report-v1.schema.json"):
+            raise BackupError("BACKUP_CONTRACT_INVALID", "backup report contract is invalid")
+        return report
+
+
+def _digest(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _uuid(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        return str(UUID(value)) == value
+    except ValueError:
+        return False

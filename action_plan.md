@@ -376,9 +376,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   Immutable server-generated text redactions now preserve exact source provenance and
   classification, and only derivatives have a bounded inactive plain-text preview.
   Policy-derived retention and human-confirmed crash-recoverable content deletion now
-  preserve shared blobs and immutable tombstones. General sandboxed file/image previews,
-  backup-copy purge, and per-object-key cryptographic erasure remain required before
-  this combined item is complete.
+  preserve shared blobs and immutable tombstones. Authenticated encrypted snapshots now
+  exclude fully tombstoned blobs, and isolated restore drills reject older snapshots
+  that conflict with live tombstones. General sandboxed file/image previews, backup
+  inventory/purge, full-device-loss tombstone custody, and per-object-key cryptographic
+  erasure remain required before this combined item is complete.
 - [ ] Implement finding lifecycle, CVSS/CWE, affected assets, confidence, and validation status.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
 - [ ] Generate Markdown, HTML, JSON, and PDF report drafts.
@@ -403,7 +405,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - Every target-facing execution has complete audit linkage.
 - Public-IP or route change blocks new actions and closes active gateway sessions.
 - Crash/power-loss tests show no committed state loss or duplicate external action.
-- Backup and restore pass integrity verification.
+- Backup and restore pass integrity verification. Isolated encrypted database/evidence
+  restore drills now verify SQLite, migrations, audit head, blob authentication, and
+  live deletion state; production replacement and full-device-loss drills remain open.
 - Reports contain policy version, testing timestamps, evidence references, and coverage limits.
 - The product remains supervised; no autonomous active testing is enabled.
 

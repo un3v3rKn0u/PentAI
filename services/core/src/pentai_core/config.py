@@ -26,6 +26,7 @@ class Settings:
     port: int = 8741
     database_path: Path = Path("var/pentai.db")
     source_store_path: Path = Path("var/source-blobs")
+    backup_store_path: Path = Path("var/backups")
     source_master_key: bytes | None = None
     policy_signing_key: bytes | None = None
     launch_credential: str | None = None
@@ -88,6 +89,7 @@ class Settings:
             port=int(os.getenv("PENTAI_CORE_PORT", "8741")),
             database_path=Path(os.getenv("PENTAI_DATABASE_PATH", "var/pentai.db")),
             source_store_path=Path(os.getenv("PENTAI_SOURCE_STORE_PATH", "var/source-blobs")),
+            backup_store_path=Path(os.getenv("PENTAI_BACKUP_STORE_PATH", "var/backups")),
             source_master_key=source_master_key,
             policy_signing_key=policy_signing_key,
             launch_credential=os.getenv("PENTAI_LAUNCH_CREDENTIAL"),

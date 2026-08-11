@@ -356,6 +356,14 @@ Deletion I/O failure also stops global execution. Startup resumes durable pendin
 processing deletions without restoring content visibility; content-addressed blobs are
 unlinked only after every reference is tombstoned.
 
+Encrypted backups use a key domain separated from evidence storage, an online SQLite
+snapshot, an exact authenticated member manifest, and authenticated evidence reads.
+Restore verification occurs only in a newly created isolated directory and never
+replaces live data. Current deletion tombstones take precedence over older backup
+content, including shared-digest last-reference semantics. Missing keys, inconsistent
+members, corruption, path conflicts, or stale deletion state deny the operation and
+remove the incomplete drill directory.
+
 ## 10. Reliability Invariants
 
 ### INV-REL-001 — At-most-once external effect
