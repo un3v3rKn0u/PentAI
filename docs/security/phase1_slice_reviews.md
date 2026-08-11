@@ -1178,3 +1178,47 @@ gateway must load immutable authority itself, use its absolute deadline, re-atte
 dual-homed route, and terminate live sessions on safety changes. This self-authored
 review is non-independent and cannot satisfy an external independent-review
 requirement.
+
+## 2026-08-11 — Durable fixture execution authority binding
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+synthetic development without external target-facing execution<br>
+**Author/reviewer:** `un3v3rKn0u` (author, sole maintainer, Product Owner, Security
+Lead, repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** One-use execution-claim schema and migration, committed-start and
+grant validation, budget/rate/destination/runtime linkage, containment identity,
+absolute deadline propagation, claim-bound finalization, replay behavior, recovery,
+audit linkage, hosted workflow triggers, compatibility, and rollback.
+
+**Evidence examined:** Migration tests prove additive application, idempotence, and
+immutable identity/status history. Authorization integration tests exercise the exact
+owned fixture decision, reject containment mismatch and missing claim identity, deny
+replay, complete the claim atomically with the request result, and abandon an
+unfinalized claim during startup recovery. Adapter tests inspect the fixed OCI vector
+and absolute deadline, reject unsafe or stale inputs, and prove the coordinator claims
+before transport and binds finalization. Rust tests reject expired or overlong
+deadlines and continue to cover strict HTTP framing and response bounds. The hosted
+rootless workflow is triggered by every authority, contract, migration, adapter, and
+probe file in this slice.
+
+**Findings:** AI, UI, and worker state cannot mint authority. Only the deterministic
+core may create a claim, and only after reloading all durable prerequisite state in an
+immediate transaction. A start and runtime can each be claimed once. The adapter
+derives every effect parameter from the schema-valid claim and fresh matching
+containment, while the isolated client converts the absolute wall deadline once to a
+monotonic I/O deadline. Finalization without the matching active claim rolls back.
+
+**Limitations and deferred work:** The effect remains fixed to the owned HTTP TEST-NET
+fixture and is not exposed through the product API or UI. The isolated probe does not
+independently load signed grants or database state. HTTPS/TLS, policy-derived
+destinations, live controlled DNS, redirects, evidence bodies, worker routing, and
+external targets remain prohibited. Live rootless evidence is not claimed until the
+hosted workflow passes.
+
+**Residual risk accepted:** The trusted core creates the claim and supplies it to the
+isolated adapter; compromise of that same core is not independently checked inside the
+probe. Runtime termination after a successful one-shot request remains owned by the
+existing lifecycle supervisor. This self-authored review is non-independent and cannot
+satisfy an external independent-review requirement.

@@ -271,6 +271,90 @@ class AuthorizationSliceTests(unittest.TestCase):
         )
         return NetworkAttestor(tuple(observers), route_inspector, lifetime_seconds=60)
 
+    def fixture_request_authority(
+        self,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        asset = self.manifest["scope"]["assets"][0]  # type: ignore[index]
+        asset["allowed_paths"] = ["/fixture"]
+        asset["denied_paths"] = []
+        asset["allowed_ports"] = [8080]
+        self.manifest["network"]["registered_source_ipv4"] = ["192.0.2.10"]  # type: ignore[index]
+        _, bundle = self.activate()
+        intent = intent_for(
+            self.engagement["id"],
+            bundle["content_hash"],
+            "http://example.test:8080/fixture",
+        )
+        decision = self.service.evaluate_intent(self.engagement["id"], intent)
+        grant = self.service.mint_action_grant(
+            decision["decision_id"], audience="pentai-egress-gateway"
+        )
+        attestation = self.service.attest_network(
+            self.engagement["id"],
+            attestor=self.network_attestor(),
+            attestor_id="fixture-attestor",
+        )
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],  # type: ignore[index]
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
+            sni_host="example.test",
+            host_header="example.test",
+        )
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
+        started = self.service.commit_gateway_request_start(session["session_id"])
+        now = datetime.now(UTC)
+        containment = {
+            "schema_version": "1.0.0",
+            "attestation_id": str(uuid4()),
+            "runtime": "podman",
+            "runtime_instance_id": "fixture-runtime",
+            "rootless": True,
+            "read_only_root": True,
+            "capabilities_dropped": True,
+            "no_new_privileges": True,
+            "host_pid_disabled": True,
+            "host_ipc_disabled": True,
+            "host_network_disabled": True,
+            "runtime_socket_mounted": False,
+            "resource_limits_supported": True,
+            "temporary_mounts_only": True,
+            "gateway_network_id": "fixture-network",
+            "direct_egress_disabled": True,
+            "external_dns_disabled": True,
+            "ipv6_disabled": True,
+            "observed_at": now.isoformat().replace("+00:00", "Z"),
+            "expires_at": (now + timedelta(seconds=30)).isoformat().replace(
+                "+00:00", "Z"
+            ),
+        }
+        with transaction(self.database) as connection:
+            connection.execute(
+                """
+                INSERT INTO gateway_runtime_instances(
+                    runtime_id, session_id, containment_attestation_id, oci_runtime,
+                    oci_runtime_instance_id, gateway_network_id, image_digest,
+                    container_id, status, created_at, last_checked_at, execution_enabled
+                ) VALUES (?, ?, ?, 'podman', ?, ?, ?, ?, 'running', ?, ?, 0)
+                """,
+                (
+                    str(uuid4()),
+                    session["session_id"],
+                    containment["attestation_id"],
+                    containment["runtime_instance_id"],
+                    containment["gateway_network_id"],
+                    "sha256:" + "a" * 64,
+                    "fixture-container",
+                    containment["observed_at"],
+                    containment["observed_at"],
+                ),
+            )
+        return started, containment
+
     def test_network_destination_authorization_pins_fixture_dns_without_executing(self) -> None:
         intent, grant, attestation = self.network_authority()
 
@@ -876,6 +960,82 @@ class AuthorizationSliceTests(unittest.TestCase):
                 session["session_id"], reason="must not refund committed capacity"
             )
         self.assertEqual(abort.exception.code, "GATEWAY_REQUEST_COMMITTED")
+
+    def test_gateway_fixture_claim_is_single_use_and_required_for_finalization(self) -> None:
+        started, containment = self.fixture_request_authority()
+
+        claim = self.service.claim_gateway_fixture_execution(
+            started["start_id"], containment=containment
+        )
+
+        self.assertEqual(
+            contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json"), ()
+        )
+        self.assertEqual(claim["target_ip"], "192.0.2.20")
+        with self.assertRaises(DomainError) as replayed:
+            self.service.claim_gateway_fixture_execution(
+                started["start_id"], containment=containment
+            )
+        self.assertEqual(replayed.exception.code, "GATEWAY_FIXTURE_REPLAYED")
+        completed_at = parse_time(started["committed_at"]) + timedelta(milliseconds=1)
+        with self.assertRaises(DomainError) as unbound:
+            self.service.finalize_gateway_request(
+                started["start_id"],
+                GatewayResponseMeasurement("completed", 17, 17, completed_at),
+            )
+        self.assertEqual(unbound.exception.code, "GATEWAY_CLAIM_INVALID")
+
+        result = self.service.finalize_gateway_request(
+            started["start_id"],
+            GatewayResponseMeasurement("completed", 17, 17, completed_at),
+            execution_claim_id=claim["claim_id"],
+        )
+
+        self.assertEqual(result["outcome"], "completed")
+        with closing(sqlite3.connect(self.database)) as connection:
+            state = connection.execute(
+                "SELECT status FROM gateway_fixture_execution_claims WHERE claim_id = ?",
+                (claim["claim_id"],),
+            ).fetchone()[0]
+            audit = json.loads(
+                connection.execute(
+                    """
+                    SELECT data_json FROM audit_events
+                    WHERE action = 'gateway.request_finalized'
+                    ORDER BY sequence DESC LIMIT 1
+                    """
+                ).fetchone()[0]
+            )
+        self.assertEqual(state, "completed")
+        self.assertEqual(audit["execution_claim_id"], claim["claim_id"])
+
+    def test_gateway_fixture_claim_denies_mismatch_and_recovery_abandons_claim(self) -> None:
+        started, containment = self.fixture_request_authority()
+        mismatched = dict(containment)
+        mismatched["gateway_network_id"] = "other-network"
+        with self.assertRaises(DomainError) as denied:
+            self.service.claim_gateway_fixture_execution(
+                started["start_id"], containment=mismatched
+            )
+        self.assertEqual(denied.exception.code, "GATEWAY_FIXTURE_DENIED")
+
+        claim = self.service.claim_gateway_fixture_execution(
+            started["start_id"], containment=containment
+        )
+        recovered = self.service.recover_startup()
+
+        self.assertEqual(recovered["aborted_gateway_sessions"], 1)
+        with closing(sqlite3.connect(self.database)) as connection:
+            states = connection.execute(
+                """
+                SELECT gfc.status, grs.status
+                FROM gateway_fixture_execution_claims gfc
+                JOIN gateway_request_starts grs USING (start_id)
+                WHERE gfc.claim_id = ?
+                """,
+                (claim["claim_id"],),
+            ).fetchone()
+        self.assertEqual(tuple(states), ("abandoned", "cancelled"))
 
     def test_gateway_request_start_denies_expired_attestation_without_consumption(
         self,

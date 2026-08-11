@@ -30,6 +30,7 @@ from pentai_core.network_attestation import AttestationError, NetworkAttestor
 from pentai_core.network_control import authorize_destination, validate_attestation
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
+from pentai_core.worker_containment import validate_containment_attestation
 
 _SOURCE_AUTHORITIES = {
     "contract",
@@ -237,6 +238,29 @@ class AuthorizationService:
     def _abort_gateway_sessions(
         connection: sqlite3.Connection, *, finalized_at: str, engagement_id: str | None = None
     ) -> int:
+        if engagement_id is None:
+            connection.execute(
+                """
+                UPDATE gateway_fixture_execution_claims
+                SET status = 'abandoned', finalized_at = ?
+                WHERE status = 'claimed'
+                """,
+                (finalized_at,),
+            )
+        else:
+            connection.execute(
+                """
+                UPDATE gateway_fixture_execution_claims
+                SET status = 'abandoned', finalized_at = ?
+                WHERE status = 'claimed' AND start_id IN (
+                    SELECT grs.start_id FROM gateway_request_starts grs
+                    JOIN budget_reservations br
+                      ON br.reservation_id = grs.reservation_id
+                    WHERE br.engagement_id = ?
+                )
+                """,
+                (finalized_at, engagement_id),
+            )
         committed = connection.execute(
             """
             SELECT br.engagement_id, COUNT(*) AS amount
@@ -2914,7 +2938,11 @@ class AuthorizationService:
         return document
 
     def finalize_gateway_request(
-        self, start_id: str, measurement: GatewayResponseMeasurement
+        self,
+        start_id: str,
+        measurement: GatewayResponseMeasurement,
+        *,
+        execution_claim_id: str | None = None,
     ) -> dict[str, Any]:
         if (
             not isinstance(measurement.completed_at, datetime)
@@ -2955,6 +2983,16 @@ class AuthorizationService:
                 "SELECT 1 FROM gateway_request_results WHERE start_id = ?", (start_id,)
             ).fetchone() is not None:
                 raise DomainError("GATEWAY_RESULT_REPLAYED", "request result already exists")
+            claim = connection.execute(
+                "SELECT * FROM gateway_fixture_execution_claims WHERE start_id = ?",
+                (start_id,),
+            ).fetchone()
+            if claim is not None and (
+                execution_claim_id != claim["claim_id"] or claim["status"] != "claimed"
+            ):
+                raise DomainError("GATEWAY_CLAIM_INVALID", "execution claim is inactive")
+            if claim is None and execution_claim_id is not None:
+                raise DomainError("GATEWAY_CLAIM_INVALID", "execution claim does not exist")
             if row["status"] != "committed" or row["session_status"] != "prepared":
                 raise DomainError("GATEWAY_REQUEST_INACTIVE", "request start is inactive")
             deadline = parse_time(row["deadline_at"])
@@ -3046,6 +3084,17 @@ class AuthorizationService:
                     completed_at,
                 ),
             )
+            if claim is not None:
+                updated_claim = connection.execute(
+                    """
+                    UPDATE gateway_fixture_execution_claims
+                    SET status = 'completed', finalized_at = ?
+                    WHERE claim_id = ? AND status = 'claimed'
+                    """,
+                    (completed_at, execution_claim_id),
+                )
+                if updated_claim.rowcount != 1:
+                    raise DomainError("GATEWAY_CLAIM_INVALID", "execution claim is inactive")
             self._audit(
                 connection,
                 action="gateway.request_finalized",
@@ -3062,11 +3111,153 @@ class AuthorizationService:
                     "observed_response_bytes": observed,
                     "retained_response_bytes": retained,
                     "deadline_at": row["deadline_at"],
+                    "execution_claim_id": execution_claim_id,
                     "execution_enabled": False,
                 },
                 occurred_at=completed_at,
             )
         return result
+
+    def claim_gateway_fixture_execution(
+        self,
+        start_id: str,
+        *,
+        containment: dict[str, Any],
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        instant = now or _now()
+        claimed_at = _timestamp(instant)
+        try:
+            validate_containment_attestation(containment, now=instant)
+        except Exception as exc:
+            raise DomainError("GATEWAY_FIXTURE_DENIED", "containment is invalid") from exc
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT grs.*, gs.status AS session_status,
+                       br.status AS reservation_status, br.response_bytes_limit,
+                       grr.status AS rate_status, ag.used_at, ag.revoked_at,
+                       da.decision_json, da.decision_hash,
+                       gri.runtime_id, gri.containment_attestation_id,
+                       gri.oci_runtime, gri.oci_runtime_instance_id,
+                       gri.gateway_network_id, gri.image_digest,
+                       gri.status AS runtime_status
+                FROM gateway_request_starts grs
+                JOIN gateway_sessions gs ON gs.session_id = grs.session_id
+                JOIN budget_reservations br ON br.reservation_id = grs.reservation_id
+                JOIN gateway_rate_reservations grr
+                  ON grr.reservation_id = grs.reservation_id
+                JOIN action_grants ag ON ag.grant_id = grs.grant_id
+                JOIN destination_authorizations da
+                  ON da.authorization_id = gs.destination_authorization_id
+                JOIN gateway_runtime_instances gri ON gri.session_id = gs.session_id
+                WHERE grs.start_id = ?
+                """,
+                (start_id,),
+            ).fetchone()
+            if row is None:
+                raise DomainError("GATEWAY_FIXTURE_DENIED", "runtime authority is missing")
+            if connection.execute(
+                "SELECT 1 FROM gateway_fixture_execution_claims WHERE start_id = ?",
+                (start_id,),
+            ).fetchone() is not None:
+                raise DomainError("GATEWAY_FIXTURE_REPLAYED", "fixture execution is claimed")
+            if connection.execute(
+                "SELECT 1 FROM gateway_request_results WHERE start_id = ?", (start_id,)
+            ).fetchone() is not None:
+                raise DomainError("GATEWAY_FIXTURE_REPLAYED", "fixture request is finalized")
+            decision = json.loads(row["decision_json"])
+            raw_candidate = decision.get("candidate", {})
+            candidate = raw_candidate if isinstance(raw_candidate, dict) else {}
+            raw_host = candidate.get("host", {})
+            host = raw_host if isinstance(raw_host, dict) else {}
+            if (
+                row["status"] != "committed"
+                or row["session_status"] != "prepared"
+                or row["reservation_status"] != "committed"
+                or row["rate_status"] != "committed"
+                or row["used_at"] is None
+                or row["revoked_at"] is not None
+                or row["runtime_status"] != "running"
+                or parse_time(row["deadline_at"]) <= instant
+                or not 1 <= int(row["response_bytes_limit"]) <= 1_048_576
+                or content_hash(decision) != row["decision_hash"]
+                or decision.get("outcome") != "allow"
+                or decision.get("execution_enabled") is not False
+                or candidate.get("canonical_url")
+                != "http://example.test:8080/fixture"
+                or candidate.get("scheme") != "http"
+                or candidate.get("port") != 8080
+                or candidate.get("path") != "/fixture"
+                or host.get("value") != "example.test"
+                or decision.get("pinned_addresses") != ["192.0.2.20"]
+                or containment.get("attestation_id")
+                != row["containment_attestation_id"]
+                or containment.get("runtime") != row["oci_runtime"]
+                or containment.get("runtime_instance_id")
+                != row["oci_runtime_instance_id"]
+                or containment.get("gateway_network_id") != row["gateway_network_id"]
+            ):
+                raise DomainError("GATEWAY_FIXTURE_DENIED", "runtime authority is inactive")
+            claim_id = str(uuid4())
+            claim = {
+                "schema_version": "1.0.0",
+                "claim_id": claim_id,
+                "start_id": start_id,
+                "session_id": row["session_id"],
+                "runtime_id": row["runtime_id"],
+                "containment_attestation_id": row["containment_attestation_id"],
+                "gateway_network_id": row["gateway_network_id"],
+                "image_digest": row["image_digest"],
+                "method": "GET",
+                "target_ip": "192.0.2.20",
+                "port": 8080,
+                "host": "example.test",
+                "path": "/fixture",
+                "response_bytes_limit": row["response_bytes_limit"],
+                "deadline_at": row["deadline_at"],
+                "claimed_at": claimed_at,
+                "status": "claimed",
+                "fixture_execution_enabled": True,
+                "external_execution_enabled": False,
+            }
+            if contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json"):
+                raise DomainError("GATEWAY_FIXTURE_DENIED", "execution claim is invalid")
+            connection.execute(
+                """
+                INSERT INTO gateway_fixture_execution_claims(
+                    claim_id, start_id, runtime_id, containment_attestation_id,
+                    status, claimed_at
+                ) VALUES (?, ?, ?, ?, 'claimed', ?)
+                """,
+                (
+                    claim_id,
+                    start_id,
+                    row["runtime_id"],
+                    row["containment_attestation_id"],
+                    claimed_at,
+                ),
+            )
+            self._audit(
+                connection,
+                action="gateway.fixture_execution_claimed",
+                subject_type="gateway_session",
+                subject_id=row["session_id"],
+                actor_type="service",
+                actor_id="gateway-control",
+                data={
+                    "claim_id": claim_id,
+                    "start_id": start_id,
+                    "runtime_id": row["runtime_id"],
+                    "containment_attestation_id": row["containment_attestation_id"],
+                    "deadline_at": row["deadline_at"],
+                    "fixture_execution_enabled": True,
+                    "external_execution_enabled": False,
+                },
+                occurred_at=claimed_at,
+            )
+        return claim
 
     def abort_gateway_session(self, session_id: str, *, reason: str) -> dict[str, Any]:
         if not reason.strip():

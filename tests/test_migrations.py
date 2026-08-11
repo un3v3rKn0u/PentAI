@@ -33,6 +33,7 @@ class MigrationTests(unittest.TestCase):
                     "0014",
                     "0015",
                     "0016",
+                    "0017",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -63,6 +64,7 @@ class MigrationTests(unittest.TestCase):
                     "gateway_runtime_instances",
                     "gateway_request_starts",
                     "gateway_request_results",
+                    "gateway_fixture_execution_claims",
                     "network_profile_proposals",
                     "network_profiles",
                 }
@@ -459,6 +461,48 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("observed_response_bytes", columns)
             self.assertIn("gateway_request_results_immutable", triggers)
             self.assertIn("gateway_request_results_no_delete", triggers)
+
+    def test_gateway_fixture_claim_upgrade_is_additive_and_protected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("*.sql")):
+                if path.name >= "0017_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+
+            migration = repository_migrations / "0017_gateway_fixture_execution_claims.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0017"])
+                self.assertEqual(migrate(database), [])
+
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+                    )
+                }
+                columns = {
+                    row[1]
+                    for row in connection.execute(
+                        "PRAGMA table_info(gateway_fixture_execution_claims)"
+                    )
+                }
+            self.assertIn("containment_attestation_id", columns)
+            self.assertIn("gateway_fixture_execution_claims_identity_immutable", triggers)
+            self.assertIn("gateway_fixture_execution_claims_status_transition", triggers)
+            self.assertIn("gateway_fixture_execution_claims_no_delete", triggers)
 
 
 if __name__ == "__main__":

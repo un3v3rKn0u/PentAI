@@ -5,7 +5,7 @@ use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::process;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 
@@ -83,7 +83,7 @@ fn main() {
 
 struct HttpFixtureArguments {
     maximum_response_bytes: usize,
-    timeout: Duration,
+    deadline_unix_milliseconds: u128,
 }
 
 struct HttpFixtureResult {
@@ -98,7 +98,7 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
     let mut host = false;
     let mut path = false;
     let mut maximum_response_bytes = None;
-    let mut timeout_milliseconds = None;
+    let mut deadline_unix_milliseconds = None;
     for argument in arguments {
         match argument.as_str() {
             "--mode=http-fixture-client" if !mode => mode = true,
@@ -114,14 +114,14 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
                     .and_then(|raw| raw.parse::<usize>().ok())
                     .filter(|value| (1..=1_048_576).contains(value));
             }
-            value if value.starts_with("--timeout-milliseconds=") => {
-                if timeout_milliseconds.is_some() {
-                    return Err("duplicate timeout");
+            value if value.starts_with("--deadline-unix-milliseconds=") => {
+                if deadline_unix_milliseconds.is_some() {
+                    return Err("duplicate deadline");
                 }
-                timeout_milliseconds = value
-                    .strip_prefix("--timeout-milliseconds=")
-                    .and_then(|raw| raw.parse::<u64>().ok())
-                    .filter(|value| (1..=5_000).contains(value));
+                deadline_unix_milliseconds = value
+                    .strip_prefix("--deadline-unix-milliseconds=")
+                    .and_then(|raw| raw.parse::<u128>().ok())
+                    .filter(|value| *value > 0);
             }
             _ => return Err("unsupported or duplicate HTTP fixture argument"),
         }
@@ -132,11 +132,11 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
         host,
         path,
         maximum_response_bytes,
-        timeout_milliseconds,
+        deadline_unix_milliseconds,
     ) {
-        (true, true, true, true, Some(limit), Some(timeout)) => Ok(HttpFixtureArguments {
+        (true, true, true, true, Some(limit), Some(deadline)) => Ok(HttpFixtureArguments {
             maximum_response_bytes: limit,
-            timeout: Duration::from_millis(timeout),
+            deadline_unix_milliseconds: deadline,
         }),
         _ => Err("required HTTP fixture argument is missing or invalid"),
     }
@@ -145,8 +145,22 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
 fn run_http_fixture_client(
     arguments: HttpFixtureArguments,
 ) -> Result<HttpFixtureResult, &'static str> {
+    let wall_now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "HTTP fixture clock is invalid")?
+        .as_millis();
+    let remaining_milliseconds = arguments
+        .deadline_unix_milliseconds
+        .checked_sub(wall_now)
+        .filter(|value| (1..=5_000).contains(value))
+        .ok_or("HTTP fixture deadline is invalid")?;
     let started = Instant::now();
-    let deadline = started + arguments.timeout;
+    let deadline = started
+        + Duration::from_millis(
+            remaining_milliseconds
+                .try_into()
+                .map_err(|_| "HTTP fixture deadline is invalid")?,
+        );
     let address = "192.0.2.20:8080"
         .parse::<SocketAddr>()
         .map_err(|_| "fixed fixture address is invalid")?;
@@ -559,23 +573,33 @@ mod tests {
 
     #[test]
     fn fixture_client_accepts_only_the_owned_test_net_tuple() {
+        let deadline = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("wall clock")
+            .as_millis()
+            + 1_000;
         let approved = vec![
             "--mode=http-fixture-client".to_owned(),
             "--target=192.0.2.20:8080".to_owned(),
             "--host=example.test".to_owned(),
             "--path=/fixture".to_owned(),
             "--maximum-response-bytes=1024".to_owned(),
-            "--timeout-milliseconds=5000".to_owned(),
+            format!("--deadline-unix-milliseconds={deadline}"),
         ];
         let parsed = parse_http_fixture_client(&approved).expect("approved fixture request");
         assert_eq!(parsed.maximum_response_bytes, 1024);
+        assert!(run_http_fixture_client(HttpFixtureArguments {
+            maximum_response_bytes: 1024,
+            deadline_unix_milliseconds: deadline + 6_000,
+        })
+        .is_err());
         for denied in [
             "--target=127.0.0.1:8080",
             "--target=192.0.2.21:8080",
             "--host=other.test",
             "--path=/other",
             "--maximum-response-bytes=0",
-            "--timeout-milliseconds=5001",
+            "--deadline-unix-milliseconds=0",
         ] {
             let prefix = denied.split('=').next().expect("argument prefix");
             let changed = approved
