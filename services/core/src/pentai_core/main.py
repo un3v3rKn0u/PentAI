@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import sqlite3
 import threading
 from base64 import b64decode
 from binascii import Error as Base64Error
@@ -19,6 +20,7 @@ from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.backup import BackupError, BackupService
 from pentai_core.config import Settings, allowed_origins
 from pentai_core.controlled_dns_composition import compose_controlled_resolver_provider
+from pentai_core.database import register_storage_failure_handler
 from pentai_core.evidence import EvidenceError, EvidenceService
 from pentai_core.evidence_store import EncryptedEvidenceStore
 from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
@@ -35,6 +37,7 @@ from pentai_core.network_safety_supervisor import (
 )
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
+from pentai_core.storage_safety import StorageSafetyLatch
 from pentai_core.url_acquisition import AcquisitionError, UrlAcquirer
 from pentai_core.workflow import AssessmentWorkflowService, WorkflowError
 
@@ -317,26 +320,42 @@ def create_app(
     runtime = settings or Settings.from_environment()
     runtime.validate()
     migrate(runtime.database_path)
+    storage_safety = StorageSafetyLatch()
     source_store = (
-        EncryptedSourceStore(runtime.source_store_path, runtime.source_master_key)
+        EncryptedSourceStore(
+            runtime.source_store_path,
+            runtime.source_master_key,
+            failure_handler=storage_safety.trip,
+        )
         if runtime.source_master_key is not None
         else None
     )
     signer = PolicySigner(runtime.policy_signing_key) if runtime.policy_signing_key else None
     authorization = AuthorizationService(
-        runtime.database_path, source_store=source_store, policy_signer=signer
+        runtime.database_path,
+        source_store=source_store,
+        policy_signer=signer,
+        storage_safety=storage_safety,
     )
+    register_storage_failure_handler(runtime.database_path, storage_safety.trip)
 
     def stop_for_evidence_failure() -> None:
-        authorization.set_global_safety(
-            status="stopped",
-            reason="evidence storage failure requires human recovery",
-            actor_id="evidence-service",
-        )
+        storage_safety.trip()
+        try:
+            authorization.set_global_safety(
+                status="stopped",
+                reason="evidence storage failure requires human recovery",
+                actor_id="evidence-service",
+            )
+        except (DomainError, sqlite3.Error):
+            # The in-memory latch remains authoritative when storage cannot record the stop.
+            pass
 
     evidence_store = (
         EncryptedEvidenceStore(
-            runtime.source_store_path.parent / "evidence-blobs", runtime.source_master_key
+            runtime.source_store_path.parent / "evidence-blobs",
+            runtime.source_master_key,
+            failure_handler=storage_safety.trip,
         )
         if runtime.source_master_key is not None
         else None
@@ -351,6 +370,7 @@ def create_app(
         evidence_store,
         runtime.source_master_key,
         source_store=source_store,
+        storage_failure_handler=storage_safety.trip,
     )
     audit_verification = authorization.verify_audit_chain()
     if not audit_verification["valid"]:
@@ -385,6 +405,7 @@ def create_app(
     app.state.assessment_workflows = workflows
     app.state.evidence = evidence
     app.state.backups = backups
+    app.state.storage_safety = storage_safety
     app.router.add_event_handler("shutdown", network_supervisor.stop)
     app.router.add_event_handler("shutdown", supervisor.stop)
     app.add_middleware(
@@ -426,7 +447,8 @@ def create_app(
         return HealthResponse(
             status=(
                 "degraded"
-                if "degraded" in {runtime_status["status"], network_status["status"]}
+                if storage_safety.reason_code() is not None
+                or "degraded" in {runtime_status["status"], network_status["status"]}
                 else "ok"
             ),
             version=__version__,
@@ -438,6 +460,15 @@ def create_app(
     def readiness() -> Any:
         runtime_status = supervisor.status()
         network_status = network_supervisor.status()
+        if storage_safety.reason_code() is not None:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "degraded",
+                    "reason_code": storage_safety.reason_code(),
+                    "execution_enabled": False,
+                },
+            )
         if runtime_status["status"] == "degraded" or network_status["status"] == "degraded":
             reason_code = (
                 runtime_status["reason_code"]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
@@ -17,11 +18,14 @@ class SourceStoreError(RuntimeError):
 
 
 class EncryptedSourceStore:
-    def __init__(self, root: Path, key: bytes) -> None:
+    def __init__(
+        self, root: Path, key: bytes, *, failure_handler: Callable[[], None] | None = None
+    ) -> None:
         if len(key) != 32:
             raise ValueError("source encryption key must contain 32 bytes")
         self.root = root
         self._cipher = AESGCM(key)
+        self._failure_handler = failure_handler
 
     def _path(self, digest: str) -> Path:
         if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
@@ -57,6 +61,8 @@ class EncryptedSourceStore:
             finally:
                 os.close(directory_descriptor)
         except OSError as exc:
+            if self._failure_handler is not None:
+                self._failure_handler()
             raise SourceStoreError("encrypted source blob could not be persisted") from exc
         finally:
             if descriptor is not None:
