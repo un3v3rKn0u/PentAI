@@ -364,6 +364,13 @@ Deletion I/O failure also stops global execution. Startup resumes durable pendin
 processing deletions without restoring content visibility; content-addressed blobs are
 unlinked only after every reference is tombstoned.
 
+Findings bind to one workflow and its exact immutable policy. Creation rejects denied
+or unknown asset rules, cross-workflow/policy evidence, deleted evidence, malformed CWE
+or CVSS input, score/severity disagreement, and conflicting idempotent replay. Only a
+human may perform ordered, version-fenced scope, duplicate, validation, report-readiness,
+retest, rejection, and closure transitions. Full finding versions and audit events are
+append-only; findings cannot grant execution authority or approve report export.
+
 Encrypted backups use a key domain separated from evidence storage, an online SQLite
 snapshot, an exact authenticated member manifest, and authenticated evidence reads.
 Restore verification occurs only in a newly created isolated directory and never

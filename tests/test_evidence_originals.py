@@ -13,6 +13,8 @@ from pentai_core.evidence_store import EncryptedEvidenceStore, EvidenceStoreErro
 from pentai_core.migrate import migrate
 from pentai_policy.document import parse_time
 
+EVIDENCE_ASSET_RULE_ID = "10000000-0000-4000-8000-000000000001"
+
 
 def evidence_fixture(tmp_path: Path) -> tuple[Path, str, EvidenceService, EncryptedEvidenceStore]:
     database = tmp_path / "pentai.db"
@@ -49,8 +51,15 @@ def evidence_fixture(tmp_path: Path) -> tuple[Path, str, EvidenceService, Encryp
             """INSERT INTO policy_bundles(
                 id, engagement_id, manifest_version_id, schema_version,
                 compiler_version, policy_json, content_hash, activated_at
-            ) VALUES (?, ?, ?, '1.0.0', 'test', '{}', ?, '2026-08-01T00:00:00Z')""",
-            (policy_id, engagement_id, manifest_id, "b" * 64),
+            ) VALUES (?, ?, ?, '1.0.0', 'test', ?, ?, '2026-08-01T00:00:00Z')""",
+            (
+                policy_id,
+                engagement_id,
+                manifest_id,
+                '{"asset_rules":[{"asset_type":"domain","effect":"allow",'
+                f'"rule_id":"{EVIDENCE_ASSET_RULE_ID}"}}]}}',
+                "b" * 64,
+            ),
         )
         connection.execute(
             "UPDATE engagements SET active_policy_id = ? WHERE id = ?",
