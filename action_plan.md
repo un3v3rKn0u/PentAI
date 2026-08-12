@@ -235,6 +235,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
 - [ ] Build policy compilation, deterministic decision evaluation, signing, activation, revocation, and version history.
+  The Policy workspace now separates manifest validation, signed compilation, typed
+  expiring human decisions, activation, and reasoned revocation while showing immutable
+  manifest/policy history and semantic diffs. Target execution remains disabled.
 - [ ] Build typed, expiring approvals and activation workflow.
   - Signed lifecycle implementation was merged in PR #26 and accepted under the
     explicitly non-independent local-development governance scope. This does not grant

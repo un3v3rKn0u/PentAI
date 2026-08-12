@@ -94,6 +94,9 @@ button.danger { border-color: #9b4351; background: #491e26; }
 .workflow-task-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; background: #0c1016; }
 .workflow-task-list li div { min-width: 0; display: grid; gap: 4px; }
 .workflow-task-list span, .workflow-task-list code { overflow-wrap: anywhere; color: #7f8b99; font-size: 11px; }
+.policy-workspace { grid-column: 1 / -1; }
+.policy-history-grid, .policy-approval-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.policy-history-grid > div { min-width: 0; }
 .panel { border: 1px solid #252c36; border-radius: 14px; background: rgba(17, 22, 29, .94); padding: 20px; min-width: 0; }
 .panel.wide { grid-column: 2; }
 .panel h2 { margin: 0 0 16px; font-size: 18px; }
@@ -193,7 +196,7 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
   .report-form-grid { grid-template-columns: 1fr; }
   .finding-form-grid, .findings-layout, .logs-layout { grid-template-columns: 1fr; }
   .evidence-form-grid { grid-template-columns: 1fr; }
-  .assessment-lookup, .task-form-grid { grid-template-columns: 1fr; }
+  .assessment-lookup, .task-form-grid, .policy-history-grid, .policy-approval-grid { grid-template-columns: 1fr; }
   .dashboard-grid, .program-list { grid-template-columns: 1fr 1fr; }
 }
 
