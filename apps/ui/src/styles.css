@@ -104,6 +104,14 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
 .audit-list li { display: grid; grid-template-columns: 1fr .7fr auto; gap: 10px; padding: 9px 10px; border-radius: 7px; background: #0c1016; font-size: 12px; }
 .audit-list span { color: #8995a4; }
 .audit-list code { color: #647283; }
+.reports-workspace { grid-column: 1 / -1; }
+.report-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.report-review { margin-top: 16px; display: grid; gap: 12px; }
+.report-review table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.report-review caption { padding: 8px 0; text-align: left; color: #aeb8c5; font-weight: 800; }
+.report-review th, .report-review td { padding: 9px; text-align: left; border-bottom: 1px solid #29323c; }
+.report-review th { color: #758393; text-transform: uppercase; font-size: 10px; }
+.report-review a { color: #72dbb7; }
 .state-key { max-width: 1400px; margin: 18px auto 0; display: flex; flex-wrap: wrap; gap: 7px; }
 .state-key span { padding: 5px 8px; border: 1px solid #29323c; border-radius: 999px; color: #667382; font-size: 10px; text-transform: uppercase; }
 .state-key .current { color: #c7d1dc; border-color: #596777; }
@@ -115,4 +123,5 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
   .safety-banner { grid-template-columns: 1fr; }
   .network-setup { grid-template-columns: 1fr; }
   .setup-proposal dl { grid-template-columns: 1fr 1fr; }
+  .report-form-grid { grid-template-columns: 1fr; }
 }

@@ -390,6 +390,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   history. Finding UI, automatic duplicate proposals, and report rendering remain later
   slices.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
+  - The Reports workspace now creates exact findings or coverage-aware No Findings
+    drafts, displays immutable artifact integrity metadata, and requires explicit human
+    confirmation before export-ready approval. File export and submission remain absent;
+    the broader multi-page workspace is still incomplete.
 - [x] Generate Markdown, HTML, JSON, and PDF report drafts.
   Human-requested immutable drafts now snapshot exact `report_ready` finding versions,
   bind the workflow policy, render four bounded digested formats, escape inactive HTML,
