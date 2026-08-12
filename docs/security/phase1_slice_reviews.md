@@ -2371,3 +2371,37 @@ inside the authenticated same-user desktop boundary. Snapshot validation in the 
 defense-in-depth presentation control; core contracts remain authoritative. This review
 is self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
+
+## 2026-08-12 — Supervised Authorization workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Target canonicalization, intent construction, exact decision identity
+and hash binding, explicit-allow gating, exact single-use grant binding, consumption
+receipt validation, target-edit invalidation, policy/safety invalidation, error behavior,
+compatibility, rollback, and absence of gateway/network execution.
+
+**Evidence examined:** UI typecheck; Vitest coverage for ambiguous target denial, exact
+decision binding, wrong-policy denial, exact audience-bound grant validation, and exact
+consumption receipt validation; production UI build; desktop Cargo check; complete diff;
+ActionIntent, PolicyDecision, and ActionGrant schemas; authorization service evaluation,
+issuance, consumption, audit, and revocation behavior.
+
+**Findings:** A response cannot unlock the next presentation step unless it matches the
+entire displayed authorization chain. Deny and approval-required outcomes cannot mint a
+grant. Safety or policy changes remove displayed intent, decision, and grant state. The
+workspace calls no gateway or execution endpoint and states that evaluation makes no
+connection.
+
+**Limitations and deferred work:** This is a non-executing local demonstration. It does
+not attest a route, resolve DNS, authorize redirects, prepare gateway capacity, claim a
+worker, open a socket, or capture execution evidence. Rollback affects presentation only.
+
+**Residual risk accepted:** Authorization identifiers and canonical synthetic targets are
+visible inside the authenticated same-user desktop boundary. UI validation is defense in
+depth and cannot replace core enforcement. This review is self-authored and
+non-independent and cannot satisfy an external independent-review requirement.

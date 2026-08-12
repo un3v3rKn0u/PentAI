@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildIntentTarget, coreRequest, networkManifestSettings } from "./App";
+import { coreRequest, networkManifestSettings } from "./App";
+import { buildIntentTarget } from "./AuthorizationWorkspace";
 import { networkSetupRequirement, parseSourceAddresses } from "./NetworkProfilesWorkspace";
 
 afterEach(() => {
