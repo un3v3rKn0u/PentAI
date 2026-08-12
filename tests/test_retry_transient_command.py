@@ -55,3 +55,22 @@ def test_stops_after_the_retry_limit() -> None:
 
     assert status == 1
     assert calls == 3
+
+
+def test_uses_the_windows_shell_for_command_shims() -> None:
+    received_shell: list[bool] = []
+
+    def succeed(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        received_shell.append(bool(kwargs["shell"]))
+        return completed(0)
+
+    status = run_with_retry(
+        ["pnpm", "exec", "tauri"],
+        attempts=1,
+        base_delay=0,
+        runner=succeed,
+        use_shell=True,
+    )
+
+    assert status == 0
+    assert received_shell == [True]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -32,13 +33,23 @@ def run_with_retry(
     base_delay: float,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     sleeper: Callable[[float], None] = time.sleep,
+    use_shell: bool | None = None,
 ) -> int:
     """Return the command exit code after bounded, network-only retries."""
     if attempts < 1:
         raise ValueError("attempts must be at least 1")
 
+    if use_shell is None:
+        use_shell = os.name == "nt"
+
     for attempt in range(1, attempts + 1):
-        result = runner(command, capture_output=True, text=True, check=False)
+        result = runner(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            shell=use_shell,
+        )
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
 
