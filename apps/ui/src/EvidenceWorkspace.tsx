@@ -1,7 +1,8 @@
 import { useState } from "react";
 
 import type { CoreConnection } from "./App";
-import { coreRequest, encodeBytesBase64 } from "./App";
+import { coreRequest } from "./App";
+import { encodeBytesBase64 } from "./IntakeWorkspace";
 
 type Json = Record<string, any>;
 type RedactionReason = "secret" | "personal_data" | "irrelevant" | "operator_selected";
