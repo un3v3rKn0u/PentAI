@@ -81,6 +81,12 @@ button.danger { border-color: #9b4351; background: #491e26; }
 .program-list button.selected { background: #15382f; border-color: #4c9b81; }
 .program-list span, .program-list code { overflow-wrap: anywhere; color: #7f8b99; font-size: 11px; }
 .intake-workspace { grid-column: 1 / -1; }
+.assessments-workspace { grid-column: 1 / -1; }
+.assessment-lookup { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin-top: 16px; }
+.assessment-review { display: grid; gap: 12px; margin-top: 14px; padding: 14px; border: 1px solid #315447; border-radius: 10px; background: #0d1815; }
+.assessment-identity { display: grid; grid-template-columns: minmax(120px, .4fr) minmax(0, 1fr); gap: 7px 12px; margin: 0; }
+.assessment-identity dt { color: #758393; font-size: 10px; text-transform: uppercase; }
+.assessment-identity dd { margin: 0; overflow-wrap: anywhere; color: #a8d1c4; font-family: monospace; font-size: 11px; }
 .panel { border: 1px solid #252c36; border-radius: 14px; background: rgba(17, 22, 29, .94); padding: 20px; min-width: 0; }
 .panel.wide { grid-column: 2; }
 .panel h2 { margin: 0 0 16px; font-size: 18px; }
@@ -180,6 +186,7 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
   .report-form-grid { grid-template-columns: 1fr; }
   .finding-form-grid, .findings-layout, .logs-layout { grid-template-columns: 1fr; }
   .evidence-form-grid { grid-template-columns: 1fr; }
+  .assessment-lookup { grid-template-columns: 1fr; }
   .dashboard-grid, .program-list { grid-template-columns: 1fr 1fr; }
 }
 

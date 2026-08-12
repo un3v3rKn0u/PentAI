@@ -2205,3 +2205,35 @@ own workspace slices. Rollback restores the inline presentation without data cha
 memory, and URLs can contain sensitive path/query values. The authenticated same-user
 desktop boundary remains trusted. This review is self-authored and non-independent and
 cannot satisfy an external independent-review requirement.
+
+## 2026-08-12 — Supervised Assessments workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Exact engagement-bound idempotent workflow creation, UUID lookup,
+active displayed-policy comparison, execution-disabled assertion, contract-defined
+lifecycle edges, expected-version fencing, human start/resume labels, error behavior,
+responsive layout, compatibility, rollback, and absence of task or execution authority.
+
+**Evidence examined:** UI typecheck; Vitest coverage for coordination-only routing,
+creation identity/idempotency binding, complete lifecycle edges, version fencing, and
+invalid transition denial; production UI build; complete diff; workflow contract,
+service transition implementation, recovery behavior, and authorization boundary.
+
+**Findings:** The workspace cannot manufacture a transition edge or omit the displayed
+version. A mismatched active policy or any response claiming execution enabled disables
+all transitions. Creation keeps its key after errors and rotates it only after a confirmed
+response. Core authority revalidation remains mandatory and workflows grant no authority.
+
+**Limitations and deferred work:** There is no workflow collection endpoint, task list,
+task creation, lease/progress display, recovery history, program-level rollup, or evidence
+navigation. Those remain separate slices. Rollback leaves durable workflow records intact.
+
+**Residual risk accepted:** Exact workflow and policy identifiers are visible inside the
+authenticated same-user desktop boundary. A stale presentation may cause a safe fenced
+denial. This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.
