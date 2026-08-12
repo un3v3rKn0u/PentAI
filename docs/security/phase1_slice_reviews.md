@@ -1851,3 +1851,39 @@ so this does not provide dual control. Artifact confidentiality still depends on
 local authenticated boundary and any future export implementation must preserve safe
 destination and filesystem semantics. This review is self-authored and non-independent
 and cannot satisfy an external independent-review requirement.
+
+## 2026-08-12 — Supervised Reports workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Reports presentation component, exact UUID selection parsing,
+findings/No Findings endpoint routing, authenticated request reuse, immutable artifact
+metadata display, explicit export-ready reason and confirmation, error handling,
+responsive layout, absence of artifact embedding and unauthenticated links, and absence
+of download, destination, upload, retry, or submission controls.
+
+**Evidence examined:** UI typecheck; 20 Vitest tests including empty, malformed,
+duplicate, and valid selection cases and endpoint non-submission checks; production UI
+build; complete diff; API-boundary review; security invariant and workspace guidance.
+
+**Findings:** The UI supplies no authority beyond the existing authenticated core
+contracts. It generates a fresh idempotency key, passes exact operator-entered IDs,
+shows only classification, policy identity, sizes, and shortened digests, and requires
+a non-empty review reason plus explicit checkbox before calling approval. Core
+default-deny validation remains authoritative. Artifact bytes are not exposed through
+an unauthenticated browser link.
+
+**Limitations and deferred work:** Operators currently enter workflow and record UUIDs
+manually; searchable workflow, finding, and coverage lists remain future workspace
+slices. The UI does not render artifact contents or write files. Broader Dashboard,
+Programs, Assessments, Evidence, Findings, Reports history, and Logs navigation remains
+incomplete.
+
+**Residual risk accepted:** Manual UUID entry is usable for a vertical slice but can
+produce safe denials and operator friction. The local session remains the human
+identity boundary. This review is self-authored and non-independent and cannot satisfy
+an external independent-review requirement.

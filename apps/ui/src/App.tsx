@@ -1,6 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { ReportsWorkspace } from "./ReportsWorkspace";
+
 const emptyHash = "0".repeat(64);
 
 type Json = Record<string, any>;
@@ -955,6 +957,7 @@ export function App() {
             ))}
           </ol>
         </section>
+        <ReportsWorkspace connection={connection} />
       </div>
 
       <footer className="state-key" aria-label="Policy state legend">
