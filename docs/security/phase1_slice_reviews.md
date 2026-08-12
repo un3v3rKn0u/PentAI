@@ -2003,3 +2003,41 @@ immutable finding records unchanged.
 denials and operator friction. Sensitive finding narratives are displayed locally and
 remain protected by the authenticated desktop boundary. This review is self-authored
 and non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-12 — Supervised Evidence workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Bounded note/file capture, browser byte encoding without path
+disclosure, exact workflow and optional execution-trace binding, evidence kind/media
+type/classification input, metadata lookup, Unicode-codepoint redaction parsing,
+classification confirmation, derivative-only preview, inactive text rendering, API
+authentication, error handling, responsive layout, compatibility, privacy, rollback,
+and absence of original preview, deletion, execution, or submission authority.
+
+**Evidence examined:** UI typecheck; Vitest coverage for exact custody endpoint routing,
+absence of execution/grant/submission paths, ordered redaction parsing, and malformed
+range/reason denial; production UI build; complete diff; evidence original, redaction,
+preview, retention, and security-invariant review.
+
+**Findings:** The UI sends selected bytes but never a filesystem path and enforces the
+same 2 MiB client bound before the authoritative core check. It never requests original
+content. Redaction requests contain only ranges, reasons, classification, and explicit
+confirmation; derivative bytes remain server-generated. Preview rendering proceeds only
+after exact inactive plain-text assertions and uses React text rendering, not HTML.
+
+**Limitations and deferred work:** Operators manually enter workflow, trace, evidence,
+and redaction offsets. The workspace does not list evidence by workflow, visualize text
+offsets, preview files/images/originals, manage annotations, initiate retention deletion,
+or route data to models. Those remain separate slices. Rollback removes presentation
+code without changing immutable evidence, derivative, custody, or audit records.
+
+**Residual risk accepted:** Selected evidence bytes briefly exist in webview memory for
+base64 transport, and derivative text displayed locally may remain sensitive despite
+redaction. The authenticated local session and OS boundary remain trusted. This review
+is self-authored and non-independent and cannot satisfy an external independent-review
+requirement.
