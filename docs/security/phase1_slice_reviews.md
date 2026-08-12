@@ -2305,3 +2305,35 @@ authenticated same-user desktop boundary. Host clock error can cause safe approv
 or an unsuitable requested expiry that the core still validates. This review is
 self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
+
+## 2026-08-12 — Supervised Network Profiles workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Non-authoritative discovery presentation, exact proposal activation,
+explicit route confirmation, allowlisted resolver modes, normalized unique registered
+source input, active-profile identity display, ambiguity warning, reasoned exact-profile
+revocation, error behavior, compatibility, rollback, and absence of attestation/execution.
+
+**Evidence examined:** UI typecheck; Vitest coverage for exact activation shape,
+incomplete confirmation denial, unknown resolver denial, normalized addresses, bounded
+revocation reasons, and unresolved requirement display; production UI build; complete
+diff; network-profile setup contract, persistence implementation, and core validation.
+
+**Findings:** Discovery cannot activate a profile. The workspace constructs only the
+allowlisted confirmation contract and cannot claim attestation. Revocation can no longer
+use a hidden generic reason. Multiple active profiles are explicitly treated as ambiguous;
+the authenticated core remains authoritative for every mutation and execution stays off.
+
+**Limitations and deferred work:** IPv6 confirmation remains disabled in this UI slice.
+There is no observer enrollment, live public-IP comparison, attestation history, route
+health timeline, VPN matrix, or execution control. Rollback affects presentation only.
+
+**Residual risk accepted:** Local interface, resolver, and registered source addresses are
+visible inside the authenticated same-user desktop boundary. Browser-side validation is
+advisory and core denial remains required. This review is self-authored and non-independent
+and cannot satisfy an external independent-review requirement.

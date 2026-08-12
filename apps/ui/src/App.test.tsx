@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildIntentTarget, coreRequest, networkManifestSettings, networkSetupRequirement, parseSourceAddresses } from "./App";
+import { buildIntentTarget, coreRequest, networkManifestSettings } from "./App";
+import { networkSetupRequirement, parseSourceAddresses } from "./NetworkProfilesWorkspace";
 
 afterEach(() => {
   vi.restoreAllMocks();
