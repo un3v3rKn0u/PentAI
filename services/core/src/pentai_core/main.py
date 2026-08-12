@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from pentai_core import __version__
@@ -37,6 +37,7 @@ from pentai_core.network_safety_supervisor import (
     NetworkSafetySupervisorControl,
 )
 from pentai_core.policy_signing import PolicySigner
+from pentai_core.reports import ReportError, ReportService
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_core.storage_safety import StorageSafetyLatch
 from pentai_core.url_acquisition import AcquisitionError, UrlAcquirer
@@ -268,6 +269,13 @@ class FindingTransitionRequest(StrictRequest):
     duplicate_of: str | None = None
 
 
+class ReportDraftRequest(StrictRequest):
+    idempotency_key: str = Field(min_length=16, max_length=128)
+    title: str = Field(min_length=1, max_length=200)
+    template: str = "generic"
+    finding_ids: list[str] = Field(min_length=1, max_length=100)
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -312,6 +320,16 @@ def finding_call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
     except FindingError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
+def report_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except ReportError as exc:
         raise HTTPException(
             status_code=409,
             detail={"code": exc.code, "message": str(exc)},
@@ -402,6 +420,7 @@ def create_app(
         storage_failure_handler=stop_for_evidence_failure,
     )
     findings = FindingService(runtime.database_path)
+    reports = ReportService(runtime.database_path)
     backups = BackupService(
         runtime.database_path,
         evidence_store,
@@ -442,6 +461,7 @@ def create_app(
     app.state.assessment_workflows = workflows
     app.state.evidence = evidence
     app.state.findings = findings
+    app.state.reports = reports
     app.state.backups = backups
     app.state.storage_safety = storage_safety
     app.router.add_event_handler("shutdown", network_supervisor.stop)
@@ -894,6 +914,42 @@ def create_app(
                 duplicate_of=requested.duplicate_of,
                 actor_id=actor.principal_id,
             )
+        )
+
+    @app.post("/api/v1/workflows/{workflow_id}/report-drafts")
+    def create_report_draft(
+        workflow_id: str, requested: ReportDraftRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return report_call(
+            lambda: reports.create_draft(
+                workflow_id,
+                idempotency_key=requested.idempotency_key,
+                title=requested.title,
+                template=requested.template,
+                finding_ids=requested.finding_ids,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.get("/api/v1/report-drafts/{report_id}")
+    def get_report_draft(report_id: str) -> dict[str, Any]:
+        return report_call(lambda: reports.get(report_id))
+
+    @app.get("/api/v1/report-drafts/{report_id}/artifacts/{format_name}")
+    def get_report_artifact(report_id: str, format_name: str) -> Response:
+        media_type, content, digest = report_call(
+            lambda: reports.artifact(report_id, format_name)
+        )
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                "X-Content-SHA256": digest,
+                "X-PentAI-Report-Status": "draft",
+                "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "default-src 'none'; sandbox",
+            },
         )
 
     @app.post("/api/v1/backups")

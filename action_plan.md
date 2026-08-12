@@ -390,7 +390,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   history. Finding UI, automatic duplicate proposals, and report rendering remain later
   slices.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
-- [ ] Generate Markdown, HTML, JSON, and PDF report drafts.
+- [x] Generate Markdown, HTML, JSON, and PDF report drafts.
+  Human-requested immutable drafts now snapshot exact `report_ready` finding versions,
+  bind the workflow policy, render four bounded digested formats, escape inactive HTML,
+  and append audit linkage. Drafts confer no approval, export-ready, or submission authority.
 - [ ] Generate a coverage-aware “No Findings” report.
 - [ ] Require explicit human report approval before export-ready status.
 
