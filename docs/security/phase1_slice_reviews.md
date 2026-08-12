@@ -1772,3 +1772,42 @@ while leaving its unused immutable table in place; no data transformation is req
 evidence quality. A later sufficiency slice must default-deny missing matrix cells,
 gaps, stale policy bindings, and ambiguous outcomes. This review is self-authored and
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-12 — Coverage-aware No Findings report drafts
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** No Findings report draft v1 contract, additive migration 0027,
+completed-workflow requirement, immutable policy matrix derivation, explicit coverage
+selection, latest-record fencing, evidence availability, finding absence, deterministic
+Markdown/HTML/JSON/PDF rendering, output bounds and digests, immutable storage, audit
+linkage, authenticated API surface, compatibility, privacy, rollback, and absence of
+approval, export-ready, or submission authority.
+
+**Evidence examined:** Successful complete-matrix generation, contract validation,
+four artifact formats and digest verification, immutable metadata, audit content,
+idempotent replay, and denial of incomplete workflows, missing coverage, blocked
+coverage, unresolved findings, deleted evidence, and incomplete policy matrices; 189
+unittest tests, 399 pytest tests plus 235 subtests, Ruff, mypy, and 40 contract files.
+
+**Findings:** Generation recomputes the full allowed policy asset/capability matrix in
+one immediate transaction and requires the explicitly selected records to equal it.
+Each selected record must be the unique latest record for its pair, retain its content
+hash, have outcome `tested_no_findings`, and reference available same-workflow,
+same-policy evidence. Any non-rejected finding denies. The report states only that no
+findings were identified within documented coverage and preserves every limitation.
+
+**Limitations and deferred work:** The result remains a restricted immutable draft and
+does not prove exhaustive security, assess methodology quality, approve export, or
+submit externally. The minimal PDF is text-only. The additive migration can be rolled
+back by reverting application code and leaving its unused immutable tables in place;
+no existing data is transformed.
+
+**Residual risk accepted:** Coverage assertions and linked evidence remain
+human-authored, and policy matrix completeness reflects the policy's declared rules
+rather than an independent methodology catalog. This review is self-authored and
+non-independent and cannot satisfy an external independent-review requirement.

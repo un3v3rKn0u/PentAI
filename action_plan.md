@@ -394,10 +394,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   Human-requested immutable drafts now snapshot exact `report_ready` finding versions,
   bind the workflow policy, render four bounded digested formats, escape inactive HTML,
   and append audit linkage. Drafts confer no approval, export-ready, or submission authority.
-- [ ] Generate a coverage-aware “No Findings” report.
+- [x] Generate a coverage-aware “No Findings” report.
   - Immutable human-recorded coverage now binds exact allowed policy asset/capability
     rules, testing intervals, available evidence, outcomes, and explicit limitations.
-    Coverage sufficiency and “No Findings” rendering remain a separate dependent slice.
+    Completed workflows can now produce immutable four-format drafts only when the
+    latest evidence-backed `tested_no_findings` records exactly cover every allowed
+    policy asset/capability pair and no unresolved finding exists.
 - [ ] Require explicit human report approval before export-ready status.
 
 ### 6.8 Phase 1 vertical demonstrations

@@ -67,6 +67,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   exact finding-version references and digested Markdown, HTML, JSON, and PDF artifacts.
 - `assessment-coverage-v1.schema.json` — immutable human-recorded testing coverage for
   an exact policy asset/capability pair, with evidence and explicit limitations.
+- `no-findings-report-draft-v1.schema.json` — coverage-complete immutable report draft
+  that snapshots exact coverage and evidence references without granting export authority.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review
