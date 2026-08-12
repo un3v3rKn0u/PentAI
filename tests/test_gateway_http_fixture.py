@@ -114,7 +114,7 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     assert measurement.outcome == "completed"
     assert measurement.observed_response_bytes == 17
     command, timeout, output_limit = executor.calls[0]
-    assert command[:3] == (str(RUNTIME), "run", "--rm")
+    assert command[:4] == (str(RUNTIME), "run", "--log-driver=none", "--rm")
     assert "--network" in command
     assert NETWORK in command
     assert "--read-only" in command

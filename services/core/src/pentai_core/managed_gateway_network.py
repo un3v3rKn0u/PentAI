@@ -8,6 +8,7 @@ from pathlib import Path
 from time import sleep
 from typing import cast
 
+from pentai_core.oci_runtime_command import oci_run_command
 from pentai_core.runtime_snapshot_collector import (
     BoundedCommandExecutor,
     NetworkConformanceResult,
@@ -305,9 +306,8 @@ class OciNetworkConformanceProbe:
     def verify(self, network_id: str) -> NetworkConformanceResult:
         if not _IDENTIFIER.fullmatch(network_id):
             raise SnapshotCollectionError("NETWORK_IDENTITY_INVALID", "network identity is invalid")
-        command = (
+        command = oci_run_command(
             self._executable,
-            "run",
             "--rm",
             "--network",
             network_id,

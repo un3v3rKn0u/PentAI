@@ -327,6 +327,9 @@ class GatewayRuntimeLifecycleTests(unittest.TestCase):
         container_id = controller.launch("runtime-1", NETWORK_ID, IMAGE)
         controller.verify("runtime-1", container_id, NETWORK_ID)
         launch = executor.calls[0]
+        self.assertEqual(
+            launch[:4], (str(OCI), "run", "--log-driver=none", "--detach")
+        )
         for required in (
             "--read-only",
             "--cap-drop=all",

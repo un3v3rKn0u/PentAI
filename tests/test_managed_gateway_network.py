@@ -259,7 +259,9 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
         ).verify(NETWORK_ID)
         self.assertTrue(result.direct_egress_blocked)
         command, timeout, output_limit = executor.calls[0]
-        self.assertEqual(command[:3], (str(DOCKER), "run", "--rm"))
+        self.assertEqual(
+            command[:4], (str(DOCKER), "run", "--log-driver=none", "--rm")
+        )
         self.assertIn("--read-only", command)
         self.assertIn("--cap-drop=ALL", command)
         self.assertIn("--security-opt=no-new-privileges", command)

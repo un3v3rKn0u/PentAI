@@ -37,6 +37,7 @@ from pentai_core.managed_gateway_network import (
     require_rootless_runtime,
 )
 from pentai_core.migrate import migrate
+from pentai_core.oci_runtime_command import oci_run_command
 from pentai_core.runtime_containment import RuntimeContainmentAttestor
 from pentai_core.runtime_snapshot_collector import (
     LocalBoundedCommandExecutor,
@@ -203,9 +204,8 @@ def _run_http_fixture(
     expected_retained: int,
 ) -> dict[str, Any]:
     launched = executor.execute(
-        (
+        oci_run_command(
             str(executable),
-            "run",
             "--detach",
             "--network",
             network_id,
