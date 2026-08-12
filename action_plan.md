@@ -393,8 +393,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - The Reports workspace now creates exact findings or coverage-aware No Findings
     drafts, displays immutable artifact integrity metadata, and requires explicit human
     confirmation before export-ready approval. The core can now publish one approved
-    artifact to a supervised local directory, while UI export controls and submission
-    remain absent; the broader multi-page workspace is still incomplete.
+    artifact to a desktop-selected local directory. The UI requires explicit restricted
+    plaintext acknowledgement and displays the immutable export receipt; submission
+    remains absent and the broader multi-page workspace is still incomplete.
 - [x] Generate Markdown, HTML, JSON, and PDF report drafts.
   Human-requested immutable drafts now snapshot exact `report_ready` finding versions,
   bind the workflow policy, render four bounded digested formats, escape inactive HTML,

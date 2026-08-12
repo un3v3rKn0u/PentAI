@@ -1,3 +1,5 @@
+import { isTauri } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useState } from "react";
 
 import type { CoreConnection } from "./App";
@@ -5,6 +7,7 @@ import { coreRequest } from "./App";
 
 type Json = Record<string, any>;
 type ReportKind = "findings" | "no_findings";
+type ReportFormat = "markdown" | "html" | "json" | "pdf";
 
 export function parseReportIds(value: string, maximum: number) {
   const ids = value.split(",").map((item) => item.trim()).filter(Boolean);
@@ -22,6 +25,24 @@ export function reportDraftPath(kind: ReportKind, workflowId: string) {
     : `/workflows/${workflowId}/no-findings-report-drafts`;
 }
 
+export function reportFileExportPath(reportId: string) {
+  return `/report-drafts/${reportId}/file-exports`;
+}
+
+export function reportFileExportRequest(
+  kind: ReportKind,
+  format: ReportFormat,
+  destinationDirectory: string,
+  confirmed: boolean
+) {
+  return {
+    report_kind: kind,
+    format,
+    destination_directory: destinationDirectory,
+    confirm_restricted_export: confirmed
+  };
+}
+
 export function ReportsWorkspace({ connection }: { connection: CoreConnection | null }) {
   const [workflowId, setWorkflowId] = useState("");
   const [kind, setKind] = useState<ReportKind>("findings");
@@ -31,6 +52,10 @@ export function ReportsWorkspace({ connection }: { connection: CoreConnection | 
   const [approval, setApproval] = useState<Json | null>(null);
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ReportFormat>("markdown");
+  const [exportDirectory, setExportDirectory] = useState("");
+  const [exportConfirmed, setExportConfirmed] = useState(false);
+  const [receipt, setReceipt] = useState<Json | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -40,6 +65,7 @@ export function ReportsWorkspace({ connection }: { connection: CoreConnection | 
     setError("");
     setDraft(null);
     setApproval(null);
+    setReceipt(null);
     try {
       const ids = parseReportIds(selectedIds, kind === "findings" ? 100 : 500);
       const body = {
@@ -51,6 +77,36 @@ export function ReportsWorkspace({ connection }: { connection: CoreConnection | 
       setDraft(await coreRequest(connection, reportDraftPath(kind, workflowId.trim()), body));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "REPORT_REQUEST_FAILED");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function chooseExportDirectory() {
+    setError("");
+    try {
+      const selected = await open({ directory: true, multiple: false, title: "Choose report export folder" });
+      if (typeof selected === "string") {
+        setExportDirectory(selected);
+        setReceipt(null);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "REPORT_EXPORT_DIRECTORY_FAILED");
+    }
+  }
+
+  async function exportFile() {
+    if (!connection || !draft || !approval?.export_ready) return;
+    setBusy(true);
+    setError("");
+    try {
+      setReceipt(await coreRequest(
+        connection,
+        reportFileExportPath(draft.report_id),
+        reportFileExportRequest(kind, exportFormat, exportDirectory, exportConfirmed)
+      ));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "REPORT_FILE_EXPORT_FAILED");
     } finally {
       setBusy(false);
     }
@@ -78,12 +134,12 @@ export function ReportsWorkspace({ connection }: { connection: CoreConnection | 
     <section className="panel wide reports-workspace" aria-busy={busy}>
       <div className="panel-heading">
         <h2><span>6</span> Reports</h2>
-        <strong className={approval?.export_ready ? "verified" : "hint"}>
-          {approval?.export_ready ? "Export-ready" : "Draft review required"}
+        <strong className={receipt ? "verified" : approval?.export_ready ? "verified" : "hint"}>
+          {receipt ? "Export complete" : approval?.export_ready ? "Export-ready" : "Draft review required"}
         </strong>
       </div>
       <p className="hint">
-        Create a restricted immutable draft from exact IDs. Nothing is submitted or written to a destination.
+        Create, approve, and save one restricted immutable artifact. Nothing is uploaded or submitted.
       </p>
       <div className="report-form-grid">
         <label>
@@ -96,6 +152,7 @@ export function ReportsWorkspace({ connection }: { connection: CoreConnection | 
             setKind(event.target.value as ReportKind);
             setDraft(null);
             setApproval(null);
+            setReceipt(null);
           }}>
             <option value="findings">Validated findings</option>
             <option value="no_findings">Coverage-aware No Findings</option>
@@ -144,6 +201,48 @@ export function ReportsWorkspace({ connection }: { connection: CoreConnection | 
             Explicitly approve export-ready status
           </button>
           <p className="hint">Approval does not download, save, upload, or submit the report.</p>
+          {approval?.export_ready && (
+            <div className="report-export">
+              <h3>Save approved artifact</h3>
+              <div className="report-form-grid">
+                <label>
+                  Format
+                  <select value={exportFormat} onChange={(event) => {
+                    setExportFormat(event.target.value as ReportFormat);
+                    setReceipt(null);
+                  }}>
+                    <option value="markdown">Markdown</option>
+                    <option value="html">HTML</option>
+                    <option value="json">JSON</option>
+                    <option value="pdf">PDF</option>
+                  </select>
+                </label>
+                <label>
+                  Destination folder
+                  <span className="directory-picker">
+                    <input value={exportDirectory} readOnly placeholder="No folder selected" />
+                    <button type="button" onClick={chooseExportDirectory} disabled={busy || !isTauri()}>
+                      Choose folder
+                    </button>
+                  </span>
+                </label>
+              </div>
+              <label className="confirmation-check">
+                <input type="checkbox" checked={exportConfirmed} onChange={(event) => setExportConfirmed(event.target.checked)} />
+                I understand this saves a restricted plaintext file under local OS custody.
+              </label>
+              <button onClick={exportFile} disabled={busy || !exportDirectory || !exportConfirmed || Boolean(receipt)}>
+                Save approved {exportFormat} artifact
+              </button>
+              {receipt && (
+                <div className="result good">
+                  <strong>Saved {receipt.filename}</strong>
+                  <p>{receipt.size_bytes} bytes · SHA-256 <code>{receipt.artifact_sha256.slice(0, 16)}…</code></p>
+                  <p>Restricted local file · no submission performed</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </section>
