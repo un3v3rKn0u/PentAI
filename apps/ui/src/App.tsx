@@ -5,6 +5,7 @@ import { ReportsWorkspace } from "./ReportsWorkspace";
 import { FindingsWorkspace } from "./FindingsWorkspace";
 import { EvidenceWorkspace } from "./EvidenceWorkspace";
 import { auditPath, LogsWorkspace } from "./LogsWorkspace";
+import { DashboardWorkspace } from "./DashboardWorkspace";
 
 const emptyHash = "0".repeat(64);
 
@@ -342,6 +343,13 @@ export function App() {
       })
       .catch(() => {
         if (active) setNetworkSetupState("degraded");
+      });
+    coreRequest(connection, auditPath())
+      .then((result) => {
+        if (active) setAudit(result);
+      })
+      .catch(() => {
+        if (active) setAudit({ events: [], verification: { valid: false, event_count: 0 } });
       });
     return () => { active = false; };
   }, [connection]);
@@ -754,6 +762,13 @@ export function App() {
       </section>
 
       <div className="workflow-grid">
+        <DashboardWorkspace
+          connected={Boolean(connection)}
+          safetyState={safetyState}
+          policyState={state}
+          networkProfiles={networkProfiles}
+          audit={audit}
+        />
         <section className="panel">
           <h2><span>1</span> Program and source</h2>
           <form onSubmit={createProgram}>
