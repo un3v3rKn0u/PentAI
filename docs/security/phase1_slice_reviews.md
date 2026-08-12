@@ -2143,3 +2143,33 @@ operator actions. Those remain separate slices. Rollback removes presentation on
 this cannot authorize an operation because action boundaries revalidate authoritative
 state. This review is self-authored and non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-12 — Supervised Programs workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Authenticated program list/create reuse, trimmed bounded name input,
+explicit immutable-ID selection, downstream state clearing, source-history refresh,
+error behavior, responsive layout, compatibility, privacy, rollback, and absence of
+program edit/delete/activation or execution authority.
+
+**Evidence examined:** UI typecheck; Vitest coverage for collection routing, normalized
+creation input, and empty-name preservation for default-deny handling; production UI
+build; complete diff; existing program service validation, persistence, and audit path.
+
+**Findings:** The workspace never infers selection from list ordering or program status.
+Selecting any program clears all source-derived and authorization presentation state
+before its source history is requested. Program identity, status, and version remain
+core-generated; creation cannot activate a program or authorize work.
+
+**Limitations and deferred work:** Program URL and platform selection, status lifecycle,
+editing, archival, deletion, search, pagination, and engagement inventory are absent.
+Source intake remains a separate adjacent UI flow. Rollback affects presentation only.
+
+**Residual risk accepted:** Program names and identifiers are displayed within the
+authenticated same-user desktop boundary. This review is self-authored and
+non-independent and cannot satisfy an external independent-review requirement.

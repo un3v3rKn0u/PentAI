@@ -394,6 +394,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     policy lifecycle, active network-profile cardinality, and complete audit verification.
     Missing or ambiguous inputs are never presented as ready, and the summary grants no
     authority because every protected action remains independently core-validated.
+  - The Programs workspace lists authenticated durable programs, creates local draft
+    programs, and requires explicit selection. Changing identity clears all downstream
+    source, manifest, policy, decision, and grant presentation state.
   - The Evidence workspace captures bounded encrypted originals, displays custody
     metadata, creates exact server-derived text redactions, and renders only derivatives
     that explicitly assert inactive plain-text preview semantics. It also exposes a
