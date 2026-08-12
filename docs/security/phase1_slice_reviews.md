@@ -2405,3 +2405,38 @@ worker, open a socket, or capture execution evidence. Rollback affects presentat
 visible inside the authenticated same-user desktop boundary. UI validation is defense in
 depth and cannot replace core enforcement. This review is self-authored and
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-12 — Supervised report coverage workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Exact workflow coverage routes, asset/capability rule identifiers,
+capability syntax, ordered intervals, outcome allowlist, evidence requirements, unique
+evidence/limitations, human notes, retry-stable idempotency, response workflow binding,
+individual-incompleteness assertion, history loading, draft selection, compatibility,
+rollback, and absence of inferred sufficiency/submission.
+
+**Evidence examined:** UI typecheck; Vitest coverage for exact request construction,
+tested-without-evidence denial, authority-bearing completeness denial, and deterministic
+coverage selection; production UI build; desktop Cargo check; complete diff; assessment
+coverage and No Findings contracts; core coverage validation, immutability, audit, and
+report completeness implementation.
+
+**Findings:** The UI cannot claim that one record is complete and cannot record tested
+coverage without evidence. Every record retains explicit limitations. History is accepted
+only for the exact workflow. The core still computes final matrix sufficiency and rejects
+stale, missing, incomplete, or finding-conflicted selections.
+
+**Limitations and deferred work:** Policy rule discovery is not yet presented, so users
+must copy exact rule identifiers from authoritative policy information. There is no
+automatic testing inference, bulk matrix editor, submission, or network execution.
+Rollback affects presentation only.
+
+**Residual risk accepted:** Coverage notes and synthetic identifiers are visible inside
+the authenticated same-user desktop boundary. Host-local datetime conversion may lead to
+a safe core denial if unsuitable. This review is self-authored and non-independent and
+cannot satisfy an external independent-review requirement.

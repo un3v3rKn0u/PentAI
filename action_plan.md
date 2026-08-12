@@ -430,8 +430,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     drafts, displays immutable artifact integrity metadata, and requires explicit human
     confirmation before export-ready approval. The core can now publish one approved
     artifact to a desktop-selected local directory. The UI requires explicit restricted
-    plaintext acknowledgement and displays the immutable export receipt; submission
-    remains absent and the broader multi-page workspace is still incomplete.
+    plaintext acknowledgement and displays the immutable export receipt. It now also
+    records and reloads exact policy/evidence-bound coverage while treating each record
+    as individually incomplete; final No Findings sufficiency remains core-authoritative.
+    Submission remains absent and the broader multi-page workspace is still incomplete.
   - The Logs workspace presents the authenticated tamper-evident ledger as a read-only,
     locally filtered history with explicit chain validity and exact event identity/hash
     inspection. It does not expose event-data search, mutation, export, or replay.

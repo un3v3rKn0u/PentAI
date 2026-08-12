@@ -8,6 +8,7 @@ import { coreRequest } from "./App";
 type Json = Record<string, any>;
 type ReportKind = "findings" | "no_findings";
 type ReportFormat = "markdown" | "html" | "json" | "pdf";
+type CoverageOutcome = "tested_no_findings" | "finding_identified" | "blocked" | "not_tested";
 
 export function parseReportIds(value: string, maximum: number) {
   const ids = value.split(",").map((item) => item.trim()).filter(Boolean);
@@ -43,6 +44,28 @@ export function reportFileExportRequest(
   };
 }
 
+export function coveragePath(workflowId: string) { return `/workflows/${workflowId}/coverage`; }
+
+export function coverageRecordRequest(values: { assetRuleId: string; capabilityRuleId: string; capability: string; outcome: CoverageOutcome; startedAt: string; endedAt: string; evidenceIds: string; limitations: string; notes: string; idempotencyKey: string }) {
+  const evidenceIds = values.evidenceIds.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+  const limitations = values.limitations.split("\n").map((item) => item.trim()).filter(Boolean);
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const startedAt = new Date(values.startedAt); const endedAt = new Date(values.endedAt);
+  if (!uuid.test(values.assetRuleId.trim()) || !uuid.test(values.capabilityRuleId.trim()) || evidenceIds.some((item) => !uuid.test(item)) || new Set(evidenceIds).size !== evidenceIds.length || limitations.length === 0 || new Set(limitations).size !== limitations.length || !values.notes.trim() || !values.capability.match(/^[a-z][a-z0-9_.-]+$/) || !Number.isFinite(startedAt.getTime()) || !Number.isFinite(endedAt.getTime()) || startedAt >= endedAt || (["tested_no_findings", "finding_identified"].includes(values.outcome) && evidenceIds.length === 0)) throw new Error("COVERAGE_RECORD_INVALID");
+  return { idempotency_key: values.idempotencyKey, asset_rule_id: values.assetRuleId.trim(), capability_rule_id: values.capabilityRuleId.trim(), capability: values.capability, outcome: values.outcome, started_at: startedAt.toISOString(), ended_at: endedAt.toISOString(), evidence_ids: evidenceIds, limitations, notes: values.notes.trim() };
+}
+
+export function verifiedCoverage(response: Json, workflowId: string) {
+  if (!response.coverage_id || response.workflow_id !== workflowId || response.coverage_complete !== false || !["tested_no_findings", "finding_identified", "blocked", "not_tested"].includes(response.outcome) || !Array.isArray(response.evidence_ids) || !Array.isArray(response.limitations)) throw new Error("COVERAGE_RESPONSE_INVALID");
+  return response;
+}
+
+export function selectCoverageId(current: string, coverageId: string) {
+  if (!current.trim()) return coverageId;
+  const selected = parseReportIds(current, 500);
+  return selected.includes(coverageId) ? current : `${current},${coverageId}`;
+}
+
 export function ReportsWorkspace({ connection }: { connection: CoreConnection | null }) {
   const [workflowId, setWorkflowId] = useState("");
   const [kind, setKind] = useState<ReportKind>("findings");
@@ -56,6 +79,17 @@ export function ReportsWorkspace({ connection }: { connection: CoreConnection | 
   const [exportDirectory, setExportDirectory] = useState("");
   const [exportConfirmed, setExportConfirmed] = useState(false);
   const [receipt, setReceipt] = useState<Json | null>(null);
+  const [coverage, setCoverage] = useState<Json[]>([]);
+  const [assetRuleId, setAssetRuleId] = useState("");
+  const [capabilityRuleId, setCapabilityRuleId] = useState("");
+  const [capability, setCapability] = useState("network.http.get");
+  const [coverageOutcome, setCoverageOutcome] = useState<CoverageOutcome>("tested_no_findings");
+  const [coverageStartedAt, setCoverageStartedAt] = useState("");
+  const [coverageEndedAt, setCoverageEndedAt] = useState("");
+  const [coverageEvidenceIds, setCoverageEvidenceIds] = useState("");
+  const [coverageLimitations, setCoverageLimitations] = useState("");
+  const [coverageNotes, setCoverageNotes] = useState("");
+  const [coverageKey, setCoverageKey] = useState(() => `coverage-ui-${crypto.randomUUID()}`);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -80,6 +114,23 @@ export function ReportsWorkspace({ connection }: { connection: CoreConnection | 
     } finally {
       setBusy(false);
     }
+  }
+
+  async function refreshCoverage() {
+    if (!connection || !workflowId.trim()) return;
+    const result = await coreRequest(connection, coveragePath(workflowId.trim()));
+    if (!Array.isArray(result.coverage)) throw new Error("COVERAGE_RESPONSE_INVALID");
+    setCoverage(result.coverage.map((item: Json) => verifiedCoverage(item, workflowId.trim())));
+  }
+
+  async function recordCoverage() {
+    if (!connection || !workflowId.trim()) return;
+    setBusy(true); setError("");
+    try {
+      const recorded = verifiedCoverage(await coreRequest(connection, coveragePath(workflowId.trim()), coverageRecordRequest({ assetRuleId, capabilityRuleId, capability, outcome: coverageOutcome, startedAt: coverageStartedAt, endedAt: coverageEndedAt, evidenceIds: coverageEvidenceIds, limitations: coverageLimitations, notes: coverageNotes, idempotencyKey: coverageKey })), workflowId.trim());
+      await refreshCoverage(); setSelectedIds(recorded.coverage_id); setCoverageKey(`coverage-ui-${crypto.randomUUID()}`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "COVERAGE_REQUEST_FAILED"); }
+    finally { setBusy(false); }
   }
 
   async function chooseExportDirectory() {
@@ -167,6 +218,23 @@ export function ReportsWorkspace({ connection }: { connection: CoreConnection | 
           <textarea rows={3} value={selectedIds} onChange={(event) => setSelectedIds(event.target.value)} />
         </label>
       </div>
+      {kind === "no_findings" && <div className="report-review">
+        <h3>Record supervised coverage</h3>
+        <p className="hint">Each immutable record covers one exact policy asset/capability pair. Individual records never claim complete coverage.</p>
+        <div className="report-form-grid">
+          <label>Asset allow-rule UUID<input value={assetRuleId} onChange={(event) => setAssetRuleId(event.target.value)} /></label>
+          <label>Capability rule UUID<input value={capabilityRuleId} onChange={(event) => setCapabilityRuleId(event.target.value)} /></label>
+          <label>Capability<input value={capability} onChange={(event) => setCapability(event.target.value)} /></label>
+          <label>Outcome<select value={coverageOutcome} onChange={(event) => setCoverageOutcome(event.target.value as CoverageOutcome)}><option value="tested_no_findings">Tested — no findings</option><option value="finding_identified">Finding identified</option><option value="blocked">Blocked</option><option value="not_tested">Not tested</option></select></label>
+          <label>Started<input type="datetime-local" value={coverageStartedAt} onChange={(event) => setCoverageStartedAt(event.target.value)} /></label>
+          <label>Ended<input type="datetime-local" value={coverageEndedAt} onChange={(event) => setCoverageEndedAt(event.target.value)} /></label>
+        </div>
+        <label>Evidence UUIDs (one per line; required for tested outcomes)<textarea rows={2} value={coverageEvidenceIds} onChange={(event) => setCoverageEvidenceIds(event.target.value)} /></label>
+        <label>Limitations (one per line; at least one required)<textarea rows={2} value={coverageLimitations} onChange={(event) => setCoverageLimitations(event.target.value)} /></label>
+        <label>Human notes<textarea rows={2} value={coverageNotes} onChange={(event) => setCoverageNotes(event.target.value)} /></label>
+        <div className="button-row"><button onClick={recordCoverage} disabled={!connection || busy || !workflowId.trim()}>Record immutable coverage</button><button onClick={() => void refreshCoverage().catch((cause) => setError(cause instanceof Error ? cause.message : "COVERAGE_REQUEST_FAILED"))} disabled={!connection || busy || !workflowId.trim()}>Load coverage history</button></div>
+        {coverage.length > 0 && <ol className="workflow-task-list">{coverage.map((item) => <li key={item.coverage_id}><div><strong>{item.capability} · {item.outcome}</strong><span>{item.started_at} → {item.ended_at} · individual completeness: no</span><code>{item.coverage_id}</code></div><button onClick={() => setSelectedIds((current) => selectCoverageId(current, item.coverage_id))}>Select for draft</button></li>)}</ol>}
+      </div>}
       <button onClick={createDraft} disabled={!connection || busy || !workflowId.trim() || !title.trim()}>
         {busy ? "Working…" : "Create immutable draft"}
       </button>
