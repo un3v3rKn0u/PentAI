@@ -1927,3 +1927,42 @@ so confidentiality thereafter depends on the operator-selected local destination
 OS controls. The receipt proves the approved bytes written by PentAI, not continuing
 custody after export. This review is self-authored and non-independent and cannot
 satisfy an external independent-review requirement.
+
+## 2026-08-12 — Reports workspace local export control
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Desktop directory-dialog dependency and least-privilege capability,
+post-approval export presentation, exact report-kind/format/directory request binding,
+restricted-plaintext confirmation, immutable receipt display, state reset behavior,
+error handling, responsive layout, compatibility, privacy, rollback, and absence of
+upload or submission controls.
+
+**Evidence examined:** UI typecheck; 22 Vitest tests including exact endpoint/body
+construction and explicit absence of submit/upload paths; production UI build; desktop
+Cargo check with the official Tauri dialog plugin; complete manifest and lockfile diff;
+API-boundary, capability, and security-invariant review.
+
+**Findings:** The export control appears only after the core returns exact export-ready
+approval. The operator chooses one bounded format through a native directory picker and
+must separately acknowledge restricted plaintext custody. The UI cannot provide a
+filename, does not read or render artifact bytes, and displays only the core-issued
+filename, size, and shortened digest. The desktop grants only core defaults and dialog
+open permission; no filesystem-read, network-upload, or shell capability is added.
+
+**Limitations and deferred work:** The dialog permission can select a file as well as a
+directory at the plugin boundary, although this UI invokes directory-only mode and the
+core independently requires an existing directory. Export history, destination
+bookmarks, signed manifests, richer report preview, searchable report inputs, and
+external submission remain separate slices. Rollback removes the dialog plugin and UI
+controls without changing persisted report or export records.
+
+**Residual risk accepted:** The selected directory path is visible in the local UI and
+passed to the authenticated loopback core; it is not persisted in the receipt or audit
+ledger. Exported plaintext remains under operator and OS custody. This review is
+self-authored and non-independent and cannot satisfy an external independent-review
+requirement.

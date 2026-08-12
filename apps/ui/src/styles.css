@@ -112,6 +112,10 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
 .report-review th, .report-review td { padding: 9px; text-align: left; border-bottom: 1px solid #29323c; }
 .report-review th { color: #758393; text-transform: uppercase; font-size: 10px; }
 .report-review a { color: #72dbb7; }
+.report-export { display: grid; gap: 10px; padding: 14px; border: 1px solid #315447; border-radius: 10px; background: #0d1815; }
+.report-export h3 { margin: 0; font-size: 15px; }
+.directory-picker { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.directory-picker input { overflow: hidden; text-overflow: ellipsis; }
 .state-key { max-width: 1400px; margin: 18px auto 0; display: flex; flex-wrap: wrap; gap: 7px; }
 .state-key span { padding: 5px 8px; border: 1px solid #29323c; border-radius: 999px; color: #667382; font-size: 10px; text-transform: uppercase; }
 .state-key .current { color: #c7d1dc; border-color: #596777; }

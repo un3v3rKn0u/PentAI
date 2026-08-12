@@ -362,6 +362,7 @@ fn main() {
 #[cfg(not(feature = "bootstrap-smoke"))]
 fn main() {
     let application = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![core_bootstrap])
         .setup(|app| {
             let credential = launch_credential()?;
