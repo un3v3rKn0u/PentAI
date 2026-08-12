@@ -45,6 +45,29 @@ export function workflowTaskRequest(taskKind: TaskKind, idempotencyKey: string, 
   return { task_kind: taskKind, idempotency_key: idempotencyKey, input_refs: inputRefs, parent_task_id: parentTaskId.trim() || null };
 }
 
+export function workflowSnapshot(response: Json, expectedWorkflowId: string) {
+  const workflow = response.workflow;
+  const tasks = response.tasks;
+  const lifecycles = response.task_lifecycles;
+  const checkpoints = response.checkpoints;
+  if (
+    !workflow || workflow.workflow_id !== expectedWorkflowId || workflow.execution_enabled !== false
+    || !Array.isArray(tasks) || !Array.isArray(lifecycles) || !Array.isArray(checkpoints)
+    || tasks.some((task) => task.workflow_id !== expectedWorkflowId || task.dispatch_enabled !== false || task.external_effect_enabled !== false)
+    || lifecycles.some((lifecycle) => lifecycle.dispatch_enabled !== false || lifecycle.external_effect_enabled !== false)
+    || new Set(tasks.map((task) => task.task_id)).size !== tasks.length
+    || new Set(lifecycles.map((lifecycle) => lifecycle.task_id)).size !== lifecycles.length
+    || tasks.some((task) => !lifecycles.some((lifecycle) => lifecycle.task_id === task.task_id))
+    || lifecycles.some((lifecycle) => !tasks.some((task) => task.task_id === lifecycle.task_id))
+    || checkpoints.some((checkpoint) => !tasks.some((task) => task.task_id === checkpoint.task_id))
+  ) throw new Error("WORKFLOW_SNAPSHOT_INVALID");
+  const lifecycleByTask = new Map(lifecycles.map((item) => [item.task_id, item]));
+  return {
+    workflow,
+    tasks: tasks.map((task) => ({ ...task, lifecycle: lifecycleByTask.get(task.task_id), checkpoint_count: checkpoints.filter((item) => item.task_id === task.task_id).length }))
+  };
+}
+
 export function AssessmentsWorkspace({
   connected,
   engagement,
@@ -96,10 +119,19 @@ export function AssessmentsWorkspace({
     }
   }
 
+  async function readSnapshot(expectedWorkflowId: string) {
+    const snapshot = workflowSnapshot(await request(workflowPath(expectedWorkflowId)), expectedWorkflowId);
+    setWorkflow(snapshot.workflow); setTasks(snapshot.tasks); setWorkflowId(expectedWorkflowId);
+  }
+
   async function loadWorkflow() {
     if (!workflowId.trim()) return;
-    setTasks([]);
-    await perform(() => request(workflowPath(workflowId.trim())));
+    setBusy(true); setError("");
+    try {
+      const expectedWorkflowId = workflowId.trim();
+      await readSnapshot(expectedWorkflowId); auditRefresh();
+    } catch (cause) { setWorkflow(null); setTasks([]); setError(cause instanceof Error ? cause.message : "WORKFLOW_REQUEST_FAILED"); }
+    finally { setBusy(false); }
   }
 
   async function transition(targetStatus: string) {
@@ -116,7 +148,7 @@ export function AssessmentsWorkspace({
     try {
       const created = await request(workflowTasksPath(workflow.workflow_id), workflowTaskRequest(taskKind, taskIdempotencyKey, parseTaskInputRefs(taskInputRefs), parentTaskId));
       if (created.workflow_id !== workflow.workflow_id || created.dispatch_enabled !== false || created.external_effect_enabled !== false) throw new Error("WORKFLOW_TASK_AUTHORITY_INVALID");
-      setTasks((current) => current.some((item) => item.task_id === created.task_id) ? current : [...current, created]);
+      await readSnapshot(workflow.workflow_id);
       setTaskIdempotencyKey(`workflow-task-ui-${crypto.randomUUID()}`); setTaskInputRefs(""); setParentTaskId(""); auditRefresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "WORKFLOW_TASK_REQUEST_FAILED"); }
     finally { setBusy(false); }
@@ -131,7 +163,7 @@ export function AssessmentsWorkspace({
         || cancelled.state !== "cancelled" || cancelled.dispatch_enabled !== false
         || cancelled.external_effect_enabled !== false
       ) throw new Error("WORKFLOW_TASK_CANCEL_INVALID");
-      setTasks((current) => current.map((item) => item.task_id === taskId ? cancelled : item)); auditRefresh();
+      await readSnapshot(cancelled.workflow_id); auditRefresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "WORKFLOW_TASK_CANCEL_FAILED"); }
     finally { setBusy(false); }
   }
@@ -174,8 +206,8 @@ export function AssessmentsWorkspace({
             ))}
           </div>
           <div className="assessment-tasks">
-            <h3>Session task queue</h3>
-            <p className="hint">Only tasks created in this UI session are shown. Tasks are durable coordination records with dispatch and external effects disabled.</p>
+            <h3>Durable task history</h3>
+            <p className="hint">Loading an exact assessment reconstructs its core-authoritative task lifecycle and checkpoints. Lease credentials, dispatch, and external-effect controls are never exposed.</p>
             <div className="task-form-grid">
               <label>Task kind<select value={taskKind} onChange={(event) => setTaskKind(event.target.value as TaskKind)}>
                 <option value="manual_checkpoint">Manual checkpoint</option><option value="supervised_action">Supervised action</option><option value="evidence_capture">Evidence capture</option><option value="report_draft">Report draft</option>
@@ -184,7 +216,8 @@ export function AssessmentsWorkspace({
             </div>
             <label>Input reference UUIDs (one per line, maximum 64)<textarea rows={3} value={taskInputRefs} onChange={(event) => setTaskInputRefs(event.target.value)} /></label>
             <button onClick={enqueueTask} disabled={busy || !exactAuthority || workflow.execution_enabled !== false || !["ready", "running"].includes(workflow.status)}>Queue non-dispatching task</button>
-            {tasks.length > 0 && <ol className="workflow-task-list">{tasks.map((task) => <li key={task.task_id}><div><strong>{task.task_kind}</strong><span>{task.state} · no dispatch · no external effects</span><code>{task.task_id}</code></div><button className="danger" onClick={() => void cancelTask(task.task_id)} disabled={busy || task.state !== "queued"}>Cancel queued task</button></li>)}</ol>}
+            {tasks.length === 0 && <p className="hint">No durable tasks are recorded for this workflow.</p>}
+            {tasks.length > 0 && <ol className="workflow-task-list">{tasks.map((task) => <li key={task.task_id}><div><strong>{task.task_kind}</strong><span>{task.lifecycle?.state ?? task.state} · attempt {task.lifecycle?.attempt_count ?? 0}/{task.lifecycle?.max_attempts ?? 0} · {task.checkpoint_count} checkpoints · no dispatch · no external effects</span>{task.lifecycle?.last_error_code && <span>Last error: {task.lifecycle.last_error_code}</span>}<code>{task.task_id}</code></div><button className="danger" onClick={() => void cancelTask(task.task_id)} disabled={busy || task.lifecycle?.state !== "queued"}>Cancel queued task</button></li>)}</ol>}
           </div>
         </div>
       )}

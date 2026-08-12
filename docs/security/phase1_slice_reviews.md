@@ -2337,3 +2337,37 @@ health timeline, VPN matrix, or execution control. Rollback affects presentation
 visible inside the authenticated same-user desktop boundary. Browser-side validation is
 advisory and core denial remains required. This review is self-authored and non-independent
 and cannot satisfy an external independent-review requirement.
+
+## 2026-08-12 — Durable assessment task history
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Exact workflow snapshot loading, workflow/task identity binding,
+unique and complete task/lifecycle joins, execution and dispatch denial assertions,
+post-enqueue and post-cancel refresh, attempt/failure presentation, error clearing,
+compatibility, rollback, and absence of lease/worker/gateway controls.
+
+**Evidence examined:** UI typecheck; Vitest coverage for exact snapshot reconstruction,
+mismatched workflow denial, and authority-bearing task denial; production UI build;
+desktop Cargo check; complete diff; workflow snapshot service, task and lifecycle schemas,
+authenticated route coverage, recovery behavior, and task lifecycle contract.
+
+**Findings:** Session memory is no longer treated as durable task truth. A partial,
+mismatched, duplicated, or authority-bearing snapshot is denied and cleared. Mutation
+success is followed by an exact authenticated read. No lease token, dispatch operation,
+worker capability, checkpoint output, or external-effect path is added.
+
+**Limitations and deferred work:** The workspace displays task lifecycle and bounded error
+codes but not checkpoint content, receipts, outbox state, or a cross-workflow queue. It
+cannot claim, heartbeat, retry, complete, or dead-letter tasks. Rollback affects only task
+presentation; durable workflow records remain unchanged.
+
+**Residual risk accepted:** Task identifiers and bounded internal error codes are visible
+inside the authenticated same-user desktop boundary. Snapshot validation in the UI is a
+defense-in-depth presentation control; core contracts remain authoritative. This review
+is self-authored and non-independent and cannot satisfy an external independent-review
+requirement.
