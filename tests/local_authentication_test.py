@@ -195,6 +195,7 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("POST", "/api/v1/workflows/unknown/report-drafts"),
         ("GET", "/api/v1/report-drafts/unknown"),
         ("GET", "/api/v1/report-drafts/unknown/artifacts/json"),
+        ("POST", "/api/v1/report-drafts/unknown/file-exports"),
     ],
 )
 def test_every_api_route_rejects_missing_credentials(
@@ -479,6 +480,7 @@ def test_report_draft_api_exposes_no_submission_capability(
     assert "/api/v1/workflows/{workflow_id}/no-findings-report-drafts" in paths
     assert "/api/v1/no-findings-report-drafts/{report_id}/artifacts/{format_name}" in paths
     assert "/api/v1/report-drafts/{report_id}/export-approval" in paths
+    assert "/api/v1/report-drafts/{report_id}/file-exports" in paths
 
 
 @pytest.mark.parametrize(

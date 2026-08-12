@@ -71,6 +71,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   that snapshots exact coverage and evidence references without granting export authority.
 - `report-export-approval-v1.schema.json` — explicit immutable human approval binding
   one exact draft hash and all artifact digests to export-ready status.
+- `report-file-export-v1.schema.json` — one immutable local export receipt binding an
+  approved artifact digest to a server-generated filename without submission authority.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review
@@ -108,6 +110,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | EvidenceDerivativeEvent v1 | Evidence Maintainer | Contract Maintainer | Core Security Maintainer, Security Reviewer |
 | EvidenceDeletion v1 | Evidence Maintainer | Contract Maintainer | Core Security Maintainer, Security Reviewer |
 | Finding v1 | Evidence and Reporting Lead | Contract Maintainer | Product Safety Lead, Security Reviewer |
+| ReportFileExport v1 | Evidence and Reporting Lead | Contract Maintainer | Product Safety Lead, Security Reviewer |
 | BackupRestoreReport v1 | Core Maintainer | Contract Maintainer | Evidence Maintainer, Security Reviewer |
 | BackupRestoreReport v2 | Core Maintainer | Contract Maintainer | Evidence Maintainer, Security Reviewer |
 | BackupInventory v1 | Core Maintainer | Contract Maintainer | Evidence Maintainer, Security Reviewer |

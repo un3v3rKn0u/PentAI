@@ -1887,3 +1887,43 @@ incomplete.
 produce safe denials and operator friction. The local session remains the human
 identity boundary. This review is self-authored and non-independent and cannot satisfy
 an external independent-review requirement.
+
+## 2026-08-12 — Supervised local report file export
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Report file export v1 contract, additive migration 0029, exact
+approval and artifact binding, authenticated-human confirmation, existing-directory
+selection, server-derived filenames, exclusive same-directory publication, overwrite
+denial, output synchronization, immutable receipts, audit linkage, API authentication,
+compatibility, privacy, rollback, and absence of submission authority.
+
+**Evidence examined:** Successful exact Markdown export and digest binding; contract
+validation; immutable receipt and audit metadata; idempotent exact retry; denial without
+approval or confirmation, for missing directories, existing destinations, changed
+exported bytes, and changed approved artifacts; cleanup after publication/audit failure;
+the complete migration, contract, lint, type, and Python suites required before
+publication.
+
+**Findings:** A caller cannot choose the output filename or export an unapproved or
+changed artifact. The service recomputes the approval document hash and selected
+artifact digest in one immediate transaction, refuses existing targets, publishes from
+an exclusively created temporary file, and records no destination path or report body
+in audit data. The capability has no network transport or submission endpoint.
+
+**Limitations and deferred work:** Directory selection relies on the authenticated
+local-user boundary and does not defend against a malicious same-user process racing
+the selected directory. A crash after filesystem publication but before database
+commit can leave an unrecorded file that a retry safely refuses to overwrite. UI file
+selection, export history, detached signed manifests, and external submission remain
+separate capabilities. Rollback leaves the unused immutable receipt table in place.
+
+**Residual risk accepted:** Export deliberately creates a restricted plaintext file,
+so confidentiality thereafter depends on the operator-selected local destination and
+OS controls. The receipt proves the approved bytes written by PentAI, not continuing
+custody after export. This review is self-authored and non-independent and cannot
+satisfy an external independent-review requirement.

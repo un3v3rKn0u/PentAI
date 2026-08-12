@@ -392,8 +392,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
   - The Reports workspace now creates exact findings or coverage-aware No Findings
     drafts, displays immutable artifact integrity metadata, and requires explicit human
-    confirmation before export-ready approval. File export and submission remain absent;
-    the broader multi-page workspace is still incomplete.
+    confirmation before export-ready approval. The core can now publish one approved
+    artifact to a supervised local directory, while UI export controls and submission
+    remain absent; the broader multi-page workspace is still incomplete.
 - [x] Generate Markdown, HTML, JSON, and PDF report drafts.
   Human-requested immutable drafts now snapshot exact `report_ready` finding versions,
   bind the workflow policy, render four bounded digested formats, escape inactive HTML,
@@ -408,6 +409,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - Authenticated human approval now binds the exact immutable findings or No Findings
     draft hash and all four reverified artifact digests. Approval is version-fenced to
     draft status, audit-linked, and does not enable file export or submission.
+- [x] Export an approved report artifact to a supervised local destination.
+  - The core revalidates the exact approval and artifact digest, derives a safe filename,
+    refuses overwrite, publishes atomically in the selected directory, and records an
+    immutable restricted export receipt. No network or submission capability is added.
 
 ### 6.8 Phase 1 vertical demonstrations
 
