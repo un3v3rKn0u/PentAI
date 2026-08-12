@@ -85,6 +85,7 @@ jobs:
       - name: Bundle release desktop with embedded sidecar identity
         working-directory: apps/desktop
         run: >-
+          python ../../scripts/retry_transient_command.py --attempts 3 --base-delay 10 --
           pnpm exec tauri build --bundles ${{ matrix.bundle }}
           --features bootstrap-smoke
       - name: Test bundled desktop bootstrap lifecycle

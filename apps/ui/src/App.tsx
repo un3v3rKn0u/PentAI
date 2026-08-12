@@ -1,5 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ReportsWorkspace } from "./ReportsWorkspace";
 import { FindingsWorkspace } from "./FindingsWorkspace";
@@ -9,6 +9,7 @@ import { DashboardWorkspace } from "./DashboardWorkspace";
 import { ProgramsWorkspace, programsPath } from "./ProgramsWorkspace";
 import { IntakeWorkspace, type IntakeState, type SourceImport } from "./IntakeWorkspace";
 import { AssessmentsWorkspace } from "./AssessmentsWorkspace";
+import { PolicyWorkspace } from "./PolicyWorkspace";
 
 const emptyHash = "0".repeat(64);
 
@@ -244,12 +245,7 @@ export function App() {
   const [error, setError] = useState("");
   const selectedProgramId = useRef("");
 
-  const canValidate = Boolean(engagement && source && manifestText);
   const statusClass = state.replace(" ", "-");
-  const policyPreview = useMemo(
-    () => policy?.policy ? JSON.stringify(policy.policy, null, 2) : "Compile a valid manifest to preview Policy IR v1.",
-    [policy]
-  );
 
   useEffect(() => {
     let active = true;
@@ -529,69 +525,45 @@ export function App() {
 
   async function validateManifest() {
     if (!engagement) return;
-    await run(async () => {
-      let document: Json;
-      try {
-        document = JSON.parse(manifestText);
-      } catch {
-        setState("invalid");
-        throw new Error("MANIFEST_JSON_INVALID");
-      }
-      const saved = await request("/manifests", {
-        engagement_id: engagement.id,
-        document
-      });
-      setManifest(saved);
-      setManifestText(JSON.stringify(saved.document, null, 2));
-      setState(saved.valid ? "awaiting approval" : "invalid");
-      const history = await request(`/engagements/${engagement.id}/manifests`);
-      setManifestHistory(history.manifests);
-      if (saved.supersedes_id) {
-        setManifestDiff(await request(
-          `/engagements/${engagement.id}/manifests/diff?from_id=${encodeURIComponent(saved.supersedes_id)}&to_id=${encodeURIComponent(saved.id)}`
-        ));
-      } else {
-        setManifestDiff(null);
-      }
-    });
+    let document: Json;
+    try { document = JSON.parse(manifestText); }
+    catch { setState("invalid"); throw new Error("MANIFEST_JSON_INVALID"); }
+    const saved = await request("/manifests", { engagement_id: engagement.id, document });
+    setManifest(saved); setManifestText(JSON.stringify(saved.document, null, 2));
+    setPolicy(null); setState(saved.valid ? "awaiting approval" : "invalid");
+    const history = await request(`/engagements/${engagement.id}/manifests`);
+    setManifestHistory(history.manifests);
+    setManifestDiff(saved.supersedes_id ? await request(`/engagements/${engagement.id}/manifests/diff?from_id=${encodeURIComponent(saved.supersedes_id)}&to_id=${encodeURIComponent(saved.id)}`) : null);
   }
 
   async function compilePolicy() {
     if (!manifest?.valid || !engagement) return;
-    await run(async () => {
-      const compiled = await request(`/manifests/${manifest.id}/compile`, {});
-      setPolicy(compiled);
-      setState("awaiting approval");
-      const history = await request(`/engagements/${engagement.id}/policies`);
-      setPolicyHistory(history.policies);
-    });
+    const compiled = await request(`/manifests/${manifest.id}/compile`, {});
+    setPolicy(compiled); setState("awaiting approval");
+    const history = await request(`/engagements/${engagement.id}/policies`); setPolicyHistory(history.policies);
   }
 
-  async function approveAndActivate() {
+  async function approvePolicy(approval: Json) {
     if (!policy || !engagement) return;
-    await run(async () => {
-      await request(`/policies/${policy.id}/approval`, {
-        decision: "approved"
-      });
-      await request(`/policies/${policy.id}/activate`, {});
-      setState("active");
-      const history = await request(`/engagements/${engagement.id}/policies`);
-      setPolicyHistory(history.policies);
-      await refreshAudit();
-    });
+    const recorded = await request(`/policies/${policy.id}/approval`, approval);
+    if (recorded.subject?.subject_id !== policy.id || recorded.policy_hash !== policy.content_hash || recorded.decision !== approval.decision) throw new Error("POLICY_APPROVAL_RESPONSE_INVALID");
+    void run(async () => { const history = await request(`/engagements/${engagement.id}/policies`); setPolicyHistory(history.policies); await refreshAudit(); });
   }
 
-  async function revokeActivePolicy() {
+  async function activatePolicy() {
     if (!policy || !engagement) return;
-    await run(async () => {
-      await request(`/policies/${policy.id}/revoke`, {
-        reason: "Explicit supervised revocation"
-      });
-      setState("revoked");
-      const history = await request(`/engagements/${engagement.id}/policies`);
-      setPolicyHistory(history.policies);
-      await refreshAudit();
-    });
+    const activated = await request(`/policies/${policy.id}/activate`, {});
+    if (activated.id !== policy.id || activated.status !== "active") throw new Error("POLICY_ACTIVATION_RESPONSE_INVALID");
+    setState("active");
+    void run(async () => { const history = await request(`/engagements/${engagement.id}/policies`); setPolicyHistory(history.policies); await refreshAudit(); });
+  }
+
+  async function revokeActivePolicy(revocation: Json) {
+    if (!policy || !engagement) return;
+    const revoked = await request(`/policies/${policy.id}/revoke`, revocation);
+    if (revoked.id !== policy.id || revoked.status !== "revoked") throw new Error("POLICY_REVOCATION_RESPONSE_INVALID");
+    setState("revoked");
+    void run(async () => { const history = await request(`/engagements/${engagement.id}/policies`); setPolicyHistory(history.policies); await refreshAudit(); });
   }
 
   async function simulate() {
@@ -772,83 +744,7 @@ export function App() {
           auditRefresh={() => void run(refreshAudit)}
         />
 
-        <section className="panel wide">
-          <h2><span>2</span> Manifest v2</h2>
-          <textarea
-            className="editor"
-            aria-label="Manifest v2 JSON"
-            value={manifestText}
-            onChange={(event) => {
-              setManifestText(event.target.value);
-              if (manifest?.valid) setState("draft");
-            }}
-            placeholder="Import a source to create a provenance-linked draft."
-          />
-          <div className="button-row">
-            <button onClick={validateManifest} disabled={!connection || !canValidate}>Validate and canonicalize</button>
-            <button onClick={compilePolicy} disabled={!connection || !manifest?.valid}>Compile Policy IR v1</button>
-          </div>
-          {manifest && (
-            <div className={manifest.valid ? "result good" : "result bad"}>
-              <strong>{manifest.valid ? "Fully resolved" : "Activation blocked"}</strong>
-              <ul>
-                {manifest.issues.length === 0
-                  ? <li>Schema, semantics, provenance, validity, and scope passed.</li>
-                  : manifest.issues.map((issue: Json) => <li key={`${issue.path}:${issue.code}`}>{issue.code} — {issue.path}</li>)}
-              </ul>
-            </div>
-          )}
-          <div className="panel-heading">
-            <strong>Immutable version history</strong>
-            <span>{manifestHistory.length} saved</span>
-          </div>
-          {manifestHistory.length === 0 ? (
-            <p className="hint">No manifest versions have been saved.</p>
-          ) : (
-            <ol className="source-list">
-              {manifestHistory.map((item) => (
-                <li key={item.id}>
-                  <strong>Version {item.version_number}</strong>
-                  <span>{item.validation_status}</span>
-                  <code>{item.content_hash.slice(0, 16)}…</code>
-                </li>
-              ))}
-            </ol>
-          )}
-          {manifestDiff && (
-            <div className="result">
-              <strong>Changes from version {manifestDiff.from.version_number}</strong>
-              <p>{manifestDiff.changed_sections.length
-                ? manifestDiff.changed_sections.join(", ")
-                : "No authorization-bearing sections changed."}</p>
-            </div>
-          )}
-        </section>
-
-        <section className="panel">
-          <h2><span>3</span> Review and activation</h2>
-          <pre className="preview">{policyPreview}</pre>
-          <button onClick={approveAndActivate} disabled={!connection || !policy || state === "active"}>
-            Explicitly approve and activate
-          </button>
-          <button onClick={revokeActivePolicy} disabled={!connection || !policy || state !== "active"}>
-            Revoke active policy
-          </button>
-          <p className="hint">Approval binds the exact manifest and compiled-policy hashes.</p>
-          {policyHistory.length === 0 ? (
-            <p className="hint">No signed policy versions have been compiled.</p>
-          ) : (
-            <ol className="source-list">
-              {policyHistory.map((item) => (
-                <li key={item.id}>
-                  <strong>{item.status}</strong>
-                  <span>Compiler {item.compiler_version}</span>
-                  <code>{item.content_hash.slice(0, 16)}…</code>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
+        <PolicyWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "draft"}`} connected={Boolean(connection)} manifestText={manifestText} setManifestText={(value) => { setManifestText(value); if (manifest?.valid) { setManifest(null); setPolicy(null); setState("draft"); } }} manifest={manifest} manifestHistory={manifestHistory} manifestDiff={manifestDiff} policy={policy} policyHistory={policyHistory} state={state} validate={validateManifest} compile={compilePolicy} approve={approvePolicy} activate={activatePolicy} revoke={revokeActivePolicy} />
 
         <section className="panel">
           <h2><span>4</span> ActionIntent simulator</h2>

@@ -2271,3 +2271,37 @@ dispatch, worker, and gateway UI remain absent. Rollback leaves durable tasks un
 same-user desktop boundary. A lost success response may require idempotent retry before
 the task appears locally. This review is self-authored and non-independent and cannot
 satisfy an external independent-review requirement.
+
+## 2026-08-12 — Supervised Policy lifecycle workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Manifest editing/validation, immutable history and semantic diff,
+signed compilation, full digest presentation, separate typed approval and activation,
+future expiry, bounded mandatory reasons, rejection, reasoned revocation, exact response
+binding, stale local approval clearing, compatibility, rollback, and absent execution.
+
+**Evidence examined:** UI typecheck; Vitest coverage for exact approval shape, malformed,
+past, or missing expiry denial, bounded reason denial, and normalized revocation; existing
+App regression tests; production UI build; complete diff; approval contract, compilation,
+activation, revocation, signing, and audit implementation review.
+
+**Findings:** Approval no longer implies activation. The UI requires a confirmed response
+matching the displayed policy ID, digest, and decision before enabling activation, and
+validates activation/revocation identity and status. Editing any approval-bearing input
+or changing engagement/policy clears the local gate. Core checks remain authoritative.
+
+**Limitations and deferred work:** The datetime control uses the host locale before ISO
+conversion, and policy history remains engagement-scoped rather than globally searchable.
+There is no dual-human approval, external identity provider, production signing custody,
+or target execution. Rollback affects presentation only.
+
+**Residual risk accepted:** Policy documents and identifiers are visible inside the
+authenticated same-user desktop boundary. Host clock error can cause safe approval denial
+or an unsuitable requested expiry that the core still validates. This review is
+self-authored and non-independent and cannot satisfy an external independent-review
+requirement.
