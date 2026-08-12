@@ -153,7 +153,8 @@ def test_url_is_idempotent_and_stdlib_authority_differential(
     assert canonicalize_url(str(result["canonical_url"])) == result
     parsed = urlsplit(str(result["canonical_url"]))
     assert parsed.hostname == domain
-    assert parsed.port == result["port"]
+    parsed_port = parsed.port or {"http": 80, "https": 443}[parsed.scheme]
+    assert parsed_port == result["port"]
 
 
 @given(st.text(max_size=80))

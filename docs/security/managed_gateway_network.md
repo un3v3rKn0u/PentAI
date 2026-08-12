@@ -41,6 +41,9 @@ oversized, mismatched, legacy, or negative results fail closed. The runtime snap
 collector will not issue a safe network snapshot unless every bypass probe succeeds.
 The runtime command additionally uses a read-only root, dropped capabilities,
 no-new-privileges, private default namespaces, and fixed CPU, memory, and PID limits.
+Every PentAI-managed OCI launch also sets `--log-driver=none` through the shared
+runtime-command builder. Launches therefore cannot inherit a host journald dependency
+or persist synthetic probe output in a runtime log store.
 
 The CI harness refuses to build an image or create a network until the selected runtime
 reports rootless operation. It creates randomly named, run-scoped fixtures and removes

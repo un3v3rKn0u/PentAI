@@ -60,6 +60,9 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   chain for redaction storage and preview access.
 - `evidence-deletion-v1.schema.json` — policy-deadline-bound, human-confirmed,
   crash-recoverable content deletion with explicit erasure limitations.
+- `finding-v1.schema.json` — policy/evidence-bound supervised finding with deterministic
+  CVSS validation, affected assets, duplicate review, validation state, and immutable
+  version history.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review
@@ -96,6 +99,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | EvidencePreview v1 | Evidence Maintainer | Contract Maintainer | UI Maintainer, Security Reviewer |
 | EvidenceDerivativeEvent v1 | Evidence Maintainer | Contract Maintainer | Core Security Maintainer, Security Reviewer |
 | EvidenceDeletion v1 | Evidence Maintainer | Contract Maintainer | Core Security Maintainer, Security Reviewer |
+| Finding v1 | Evidence and Reporting Lead | Contract Maintainer | Product Safety Lead, Security Reviewer |
 | BackupRestoreReport v1 | Core Maintainer | Contract Maintainer | Evidence Maintainer, Security Reviewer |
 | BackupRestoreReport v2 | Core Maintainer | Contract Maintainer | Evidence Maintainer, Security Reviewer |
 | BackupInventory v1 | Core Maintainer | Contract Maintainer | Evidence Maintainer, Security Reviewer |

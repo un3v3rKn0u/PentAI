@@ -1644,3 +1644,53 @@ storage.
 state preservation under injected failures, not physical-media durability. This review
 is self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
+
+## 2026-08-11 — Supervised findings lifecycle
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Finding v1 contract, migration 0024, exact workflow/policy/evidence
+binding, policy allow-rule validation, deleted-evidence exclusion, deterministic CVSS
+3.1 scoring and severity mapping, CWE/confidence bounds, duplicate identity, human-only
+ordered transitions, optimistic fencing, immutable version history, audit coverage,
+API authentication, compatibility, privacy, and rollback.
+
+**Evidence examined:** Success tests create a synthetic finding and traverse scope,
+duplicate, validation, report-readiness, and closure with six immutable versions and
+matching audit events. Negative tests reject conflicting replay, CVSS mismatch,
+severity mismatch, malformed CWE, unknown policy assets, missing evidence, skipped
+review, stale versions, missing duplicate outcomes, and invalid duplicate identity.
+Database tests deny forged current-row changes and deletion of current/history records.
+The complete migration, contract, lint, type, and Python suites are required before
+publication.
+
+**Findings:** Callers cannot assert an arbitrary score, severity, asset, evidence link,
+duplicate, or validation result. Exact policy and evidence provenance are checked in the
+same transaction as creation. Every state change is human-authored, reasoned, fenced,
+fully snapshotted, content hashed, and audit linked. Finding state has no authority over
+the gateway or report export.
+
+**Limitations and deferred work:** Program-specific severity, automated similarity
+search, rich finding editing, retest evidence replacement, UI rendering, report drafts,
+and human report approval/export remain separate slices. CVSS v4 is not supported by
+this v1 contract. Local custody is not externally timestamped.
+
+**Residual risk accepted:** CVSS 3.1 computation is locally implemented and requires
+independent corpus comparison before release assurance. This review is self-authored and
+non-independent and cannot satisfy an external independent-review requirement.
+
+### Hosted containment follow-up — bounded Podman startup readiness
+
+PR #100 exposed the recurring rootless Podman race where a freshly created internal
+network was inspectable but the first isolated probe process failed to start. The
+conformance verifier now permits exactly three process-start attempts separated by a
+fixed 250 ms delay. It retries only OCI runtime exit 125 (container startup failure);
+probe exit failures, malformed output, identity mismatch, and every unsafe containment
+measurement still deny on the first observation. Persistent startup failure denies with
+an explicit bounded-attempt reason. Unit tests prove eventual readiness, exact
+exhaustion, and no retry of invalid or unsafe successful output. Hosted Linux remains
+the required live evidence.

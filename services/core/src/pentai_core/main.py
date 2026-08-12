@@ -23,6 +23,7 @@ from pentai_core.controlled_dns_composition import compose_controlled_resolver_p
 from pentai_core.database import register_storage_failure_handler
 from pentai_core.evidence import EvidenceError, EvidenceService
 from pentai_core.evidence_store import EncryptedEvidenceStore
+from pentai_core.findings import FindingError, FindingService
 from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
 from pentai_core.gateway_runtime_supervisor import RuntimeSupervisorControl
 from pentai_core.migrate import migrate
@@ -242,6 +243,31 @@ class BackupPurgeRequest(StrictRequest):
     confirm_permanent_deletion: bool
 
 
+class FindingCreateRequest(StrictRequest):
+    idempotency_key: str = Field(min_length=16, max_length=128)
+    title: str = Field(min_length=1, max_length=200)
+    severity: str
+    cvss_vector: str
+    cvss_score: float = Field(ge=0, le=10)
+    cwe: str
+    confidence: int = Field(ge=0, le=100)
+    affected_asset_rule_ids: list[str] = Field(min_length=1, max_length=64)
+    evidence_ids: list[str] = Field(min_length=1, max_length=128)
+    reproduction: str = Field(min_length=1, max_length=20_000)
+    impact: str = Field(min_length=1, max_length=10_000)
+    remediation: str = Field(min_length=1, max_length=10_000)
+    references: list[str] = Field(default_factory=list, max_length=32)
+
+
+class FindingTransitionRequest(StrictRequest):
+    target_state: str
+    expected_version: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=1000)
+    validation_status: str | None = None
+    duplicate_status: str | None = None
+    duplicate_of: str | None = None
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -276,6 +302,16 @@ def backup_call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
     except BackupError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
+def finding_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except FindingError as exc:
         raise HTTPException(
             status_code=409,
             detail={"code": exc.code, "message": str(exc)},
@@ -365,6 +401,7 @@ def create_app(
         evidence_store,
         storage_failure_handler=stop_for_evidence_failure,
     )
+    findings = FindingService(runtime.database_path)
     backups = BackupService(
         runtime.database_path,
         evidence_store,
@@ -404,6 +441,7 @@ def create_app(
     app.state.network_profile_setup_service = profile_setup
     app.state.assessment_workflows = workflows
     app.state.evidence = evidence
+    app.state.findings = findings
     app.state.backups = backups
     app.state.storage_safety = storage_safety
     app.router.add_event_handler("shutdown", network_supervisor.stop)
@@ -799,6 +837,61 @@ def create_app(
                 expected_sha256=requested.expected_sha256,
                 reason=requested.reason,
                 confirm_permanent_deletion=requested.confirm_permanent_deletion,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.post("/api/v1/workflows/{workflow_id}/findings")
+    def create_finding(
+        workflow_id: str, requested: FindingCreateRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return finding_call(
+            lambda: findings.create(
+                workflow_id,
+                idempotency_key=requested.idempotency_key,
+                title=requested.title,
+                severity=requested.severity,
+                cvss_vector=requested.cvss_vector,
+                cvss_score=requested.cvss_score,
+                cwe=requested.cwe,
+                confidence=requested.confidence,
+                affected_asset_rule_ids=requested.affected_asset_rule_ids,
+                evidence_ids=requested.evidence_ids,
+                reproduction=requested.reproduction,
+                impact=requested.impact,
+                remediation=requested.remediation,
+                references=requested.references,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.get("/api/v1/workflows/{workflow_id}/findings")
+    def list_findings(workflow_id: str) -> dict[str, Any]:
+        return {"findings": finding_call(lambda: findings.list_for_workflow(workflow_id))}
+
+    @app.get("/api/v1/findings/{finding_id}")
+    def get_finding(finding_id: str) -> dict[str, Any]:
+        return finding_call(lambda: findings.get(finding_id))
+
+    @app.get("/api/v1/findings/{finding_id}/history")
+    def finding_history(finding_id: str) -> dict[str, Any]:
+        return {"versions": finding_call(lambda: findings.history(finding_id))}
+
+    @app.post("/api/v1/findings/{finding_id}/transition")
+    def transition_finding(
+        finding_id: str, requested: FindingTransitionRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return finding_call(
+            lambda: findings.transition(
+                finding_id,
+                target_state=requested.target_state,
+                expected_version=requested.expected_version,
+                reason=requested.reason,
+                validation_status=requested.validation_status,
+                duplicate_status=requested.duplicate_status,
+                duplicate_of=requested.duplicate_of,
                 actor_id=actor.principal_id,
             )
         )

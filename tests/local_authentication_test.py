@@ -187,6 +187,11 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("POST", "/api/v1/workflow-tasks/unknown/heartbeat"),
         ("POST", "/api/v1/workflow-tasks/unknown/checkpoints"),
         ("POST", "/api/v1/workflow-tasks/unknown/finalize"),
+        ("POST", "/api/v1/workflows/unknown/findings"),
+        ("GET", "/api/v1/workflows/unknown/findings"),
+        ("GET", "/api/v1/findings/unknown"),
+        ("GET", "/api/v1/findings/unknown/history"),
+        ("POST", "/api/v1/findings/unknown/transition"),
     ],
 )
 def test_every_api_route_rejects_missing_credentials(
@@ -321,14 +326,10 @@ def test_runtime_supervisor_degradation_blocks_readiness_without_exposing_detail
     tmp_path: Path,
 ) -> None:
     settings = runtime_settings(tmp_path / "degraded.db")
-    supervisor = FixtureRuntimeSupervisor(
-        state="degraded", reason_code="GATEWAY_WATCHDOG_FAILED"
-    )
+    supervisor = FixtureRuntimeSupervisor(state="degraded", reason_code="GATEWAY_WATCHDOG_FAILED")
     app = create_app(settings, runtime_supervisor=supervisor)
     credential = settings.launch_credential or ""
-    readiness = app_request(
-        app, "GET", "/api/v1/readiness", authorization=f"Bearer {credential}"
-    )
+    readiness = app_request(app, "GET", "/api/v1/readiness", authorization=f"Bearer {credential}")
     assert readiness.status_code == 503
     assert readiness.json() == {
         "status": "degraded",
@@ -358,9 +359,7 @@ def test_storage_failure_latch_degrades_health_and_readiness(tmp_path: Path) -> 
     app.state.storage_safety.trip("STORAGE_FAILURE")
     credential = settings.launch_credential or ""
 
-    readiness = app_request(
-        app, "GET", "/api/v1/readiness", authorization=f"Bearer {credential}"
-    )
+    readiness = app_request(app, "GET", "/api/v1/readiness", authorization=f"Bearer {credential}")
     assert readiness.status_code == 503
     assert readiness.json() == {
         "status": "degraded",
@@ -400,9 +399,7 @@ def test_network_supervisor_degradation_blocks_readiness_and_shutdown_stops_it(
         network_safety_supervisor=network_supervisor,
     )
     credential = settings.launch_credential or ""
-    readiness = app_request(
-        app, "GET", "/api/v1/readiness", authorization=f"Bearer {credential}"
-    )
+    readiness = app_request(app, "GET", "/api/v1/readiness", authorization=f"Bearer {credential}")
     assert readiness.status_code == 503
     assert readiness.json() == {
         "status": "degraded",
@@ -416,9 +413,7 @@ def test_network_supervisor_degradation_blocks_readiness_and_shutdown_stops_it(
         authorization=f"Bearer {credential}",
     )
     assert status.json()["monitored_assessments"] == 1
-    shutdown = app_request(
-        app, "POST", "/api/v1/shutdown", authorization=f"Bearer {credential}"
-    )
+    shutdown = app_request(app, "POST", "/api/v1/shutdown", authorization=f"Bearer {credential}")
     assert shutdown.status_code == 200
     assert network_supervisor.starts == 1
     assert network_supervisor.stops == 1

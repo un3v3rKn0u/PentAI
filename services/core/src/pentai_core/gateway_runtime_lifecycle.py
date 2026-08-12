@@ -11,6 +11,7 @@ from pentai_policy import canonical_json, content_hash
 from pentai_policy.document import contract_issues
 
 from pentai_core.database import transaction
+from pentai_core.oci_runtime_command import oci_run_command
 from pentai_core.runtime_snapshot_collector import BoundedCommandExecutor
 from pentai_core.worker_containment import validate_containment_attestation
 
@@ -131,9 +132,8 @@ class OciGatewayFixtureController:
     def launch(self, runtime_id: str, network_id: str, image_digest: str) -> str:
         self._validate(runtime_id, network_id, image_digest)
         result = self._executor.execute(
-            (
+            oci_run_command(
                 self._executable,
-                "run",
                 "--detach",
                 "--network",
                 network_id,

@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from pentai_policy.document import contract_issues, parse_time
 
 from pentai_core.gateway_response import GatewayResponseMeasurement
+from pentai_core.oci_runtime_command import oci_run_command
 from pentai_core.runtime_snapshot_collector import BoundedCommandExecutor
 from pentai_core.worker_containment import validate_containment_attestation
 
@@ -73,9 +74,8 @@ class OciGatewayHttpFixtureTransport:
         if deadline_milliseconds <= int(now.timestamp() * 1_000):
             raise GatewayHttpFixtureError("HTTP_FIXTURE_DEADLINE", "fixture deadline expired")
         result = self._executor.execute(
-            (
+            oci_run_command(
                 self._executable,
-                "run",
                 "--rm",
                 "--network",
                 network_id,

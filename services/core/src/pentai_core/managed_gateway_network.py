@@ -2,15 +2,30 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from time import sleep
 from typing import cast
 
+from pentai_core.oci_runtime_command import oci_run_command
 from pentai_core.runtime_snapshot_collector import (
     BoundedCommandExecutor,
     NetworkConformanceResult,
     SnapshotCollectionError,
 )
+
+
+class NetworkProbeExecutionError(SnapshotCollectionError):
+    """Fail closed while retaining bounded subprocess diagnostics for CI."""
+
+    def __init__(
+        self, code: str, message: str, *, returncode: int, stderr: bytes
+    ) -> None:
+        super().__init__(code, message)
+        self.returncode = returncode
+        self.stderr = stderr
+
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
@@ -270,42 +285,76 @@ class OciNetworkConformanceProbe:
         executable: Path,
         probe_image_digest: str,
         executor: BoundedCommandExecutor,
+        startup_attempts: int = 3,
+        startup_retry_seconds: float = 0.25,
+        sleeper: Callable[[float], None] = sleep,
     ) -> None:
-        if not executable.is_absolute() or not _DIGEST.fullmatch(probe_image_digest):
+        if (
+            not executable.is_absolute()
+            or not _DIGEST.fullmatch(probe_image_digest)
+            or not 1 <= startup_attempts <= 5
+            or not 0 <= startup_retry_seconds <= 1
+        ):
             raise SnapshotCollectionError("NETWORK_PROBE_INVALID", "network probe is invalid")
         self._executable = str(executable)
         self._probe_image_digest = probe_image_digest
         self._executor = executor
+        self._startup_attempts = startup_attempts
+        self._startup_retry_seconds = startup_retry_seconds
+        self._sleeper = sleeper
 
     def verify(self, network_id: str) -> NetworkConformanceResult:
         if not _IDENTIFIER.fullmatch(network_id):
             raise SnapshotCollectionError("NETWORK_IDENTITY_INVALID", "network identity is invalid")
-        result = self._executor.execute(
-            (
-                self._executable,
-                "run",
-                "--rm",
-                "--network",
-                network_id,
-                "--read-only",
-                "--cap-drop=ALL",
-                "--security-opt=no-new-privileges",
-                "--pids-limit=16",
-                "--memory=32m",
-                "--cpus=0.25",
-                "--entrypoint=/pentai-network-probe",
-                self._probe_image_digest,
-                "--format=json",
-                f"--network-id={network_id}",
-                "--direct-ip=192.0.2.1",
-                "--dns-ip=192.0.2.53",
-                "--ipv6=2001:db8::1",
-            ),
-            timeout_seconds=10,
-            max_output_bytes=4096,
+        command = oci_run_command(
+            self._executable,
+            "--rm",
+            "--network",
+            network_id,
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=16",
+            "--memory=32m",
+            "--cpus=0.25",
+            "--entrypoint=/pentai-network-probe",
+            self._probe_image_digest,
+            "--format=json",
+            f"--network-id={network_id}",
+            "--direct-ip=192.0.2.1",
+            "--dns-ip=192.0.2.53",
+            "--ipv6=2001:db8::1",
         )
-        if result.returncode != 0 or len(result.stdout) > 4096:
-            raise SnapshotCollectionError("NETWORK_PROBE_FAILED", "network probe failed")
+        result = None
+        for attempt in range(1, self._startup_attempts + 1):
+            result = self._executor.execute(
+                command,
+                timeout_seconds=10,
+                max_output_bytes=4096,
+            )
+            if result.returncode != 125:
+                break
+            if attempt < self._startup_attempts:
+                self._sleeper(self._startup_retry_seconds)
+        assert result is not None
+        if result.returncode == 125:
+            raise NetworkProbeExecutionError(
+                "NETWORK_PROBE_STARTUP_FAILED",
+                f"network probe did not start after {self._startup_attempts} bounded attempts",
+                returncode=result.returncode,
+                stderr=result.stderr,
+            )
+        if result.returncode != 0:
+            raise NetworkProbeExecutionError(
+                "NETWORK_PROBE_FAILED",
+                "network probe failed",
+                returncode=result.returncode,
+                stderr=result.stderr,
+            )
+        if len(result.stdout) > 4096:
+            raise SnapshotCollectionError(
+                "NETWORK_PROBE_INVALID", "network probe output is invalid"
+            )
         try:
             document = json.loads(result.stdout)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:

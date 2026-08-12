@@ -9,6 +9,7 @@ import multiprocessing
 import os
 import shutil
 import sqlite3
+import sys
 import tempfile
 import uuid
 from dataclasses import dataclass, field
@@ -30,11 +31,13 @@ from pentai_core.gateway_runtime_lifecycle import (
 )
 from pentai_core.managed_gateway_network import (
     ManagedGatewayNetworkProvisioner,
+    NetworkProbeExecutionError,
     OciNetworkConformanceProbe,
     normalize_oci_image_digest,
     require_rootless_runtime,
 )
 from pentai_core.migrate import migrate
+from pentai_core.oci_runtime_command import oci_run_command
 from pentai_core.runtime_containment import RuntimeContainmentAttestor
 from pentai_core.runtime_snapshot_collector import (
     LocalBoundedCommandExecutor,
@@ -201,9 +204,8 @@ def _run_http_fixture(
     expected_retained: int,
 ) -> dict[str, Any]:
     launched = executor.execute(
-        (
+        oci_run_command(
             str(executable),
-            "run",
             "--detach",
             "--network",
             network_id,
@@ -580,4 +582,17 @@ def _insert_fixture_session(database: Path) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except NetworkProbeExecutionError as exc:
+        diagnostic = {
+            "code": exc.code,
+            "returncode": exc.returncode,
+            "stderr": exc.stderr.decode("utf-8", errors="replace"),
+        }
+        print(
+            "PentAI synthetic conformance diagnostic: "
+            + json.dumps(diagnostic, ensure_ascii=True),
+            file=sys.stderr,
+        )
+        raise

@@ -93,6 +93,35 @@ def collector(executor: FixtureExecutor) -> OciRuntimeSnapshotCollector:
 
 
 class RuntimeSnapshotCollectorTests(unittest.TestCase):
+    def test_local_executor_captures_bounded_stdout_and_stderr(self) -> None:
+        executable = Path("/bin/sh")
+        result = LocalBoundedCommandExecutor(executable).execute(
+            (str(executable), "-c", "printf output; printf diagnostic >&2; exit 7"),
+            timeout_seconds=1,
+            max_output_bytes=64,
+        )
+        self.assertEqual(result, CommandResult(7, b"output", b"diagnostic"))
+
+    def test_local_executor_applies_the_output_limit_to_stderr(self) -> None:
+        executable = Path("/bin/sh")
+        with self.assertRaises(SnapshotCollectionError) as raised:
+            LocalBoundedCommandExecutor(executable).execute(
+                (str(executable), "-c", "printf 12345 >&2"),
+                timeout_seconds=1,
+                max_output_bytes=4,
+            )
+        self.assertEqual(raised.exception.code, "RUNTIME_OUTPUT_TOO_LARGE")
+
+    def test_local_executor_kills_a_timed_out_process(self) -> None:
+        executable = Path("/bin/sh")
+        with self.assertRaises(SnapshotCollectionError) as raised:
+            LocalBoundedCommandExecutor(executable).execute(
+                (str(executable), "-c", "while :; do :; done"),
+                timeout_seconds=0.05,
+                max_output_bytes=64,
+            )
+        self.assertEqual(raised.exception.code, "RUNTIME_COMMAND_TIMEOUT")
+
     def test_fixed_commands_produce_safe_typed_snapshots(self) -> None:
         executor = FixtureExecutor([response(docker_info()), response(docker_network())])
         inspected = collector(executor)

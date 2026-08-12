@@ -383,7 +383,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   human-confirmed purge is crash-recoverable while protecting the last verified copy.
   Off-device-copy purge, full-device-loss tombstone custody, and per-object-key
   cryptographic erasure remain required before this combined item is complete.
-- [ ] Implement finding lifecycle, CVSS/CWE, affected assets, confidence, and validation status.
+- [x] Implement finding lifecycle, CVSS/CWE, affected assets, confidence, and validation status.
+  Human-created findings now bind exact policy allow rules and available evidence from
+  one supervised workflow, recompute CVSS 3.1 scores, fence ordered scope/duplicate/
+  validation/report-readiness transitions, and retain immutable full-version and audit
+  history. Finding UI, automatic duplicate proposals, and report rendering remain later
+  slices.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
 - [ ] Generate Markdown, HTML, JSON, and PDF report drafts.
 - [ ] Generate a coverage-aware “No Findings” report.
