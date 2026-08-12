@@ -8,6 +8,7 @@ import { auditPath, LogsWorkspace } from "./LogsWorkspace";
 import { DashboardWorkspace } from "./DashboardWorkspace";
 import { ProgramsWorkspace, programsPath } from "./ProgramsWorkspace";
 import { IntakeWorkspace, type IntakeState, type SourceImport } from "./IntakeWorkspace";
+import { AssessmentsWorkspace } from "./AssessmentsWorkspace";
 
 const emptyHash = "0".repeat(64);
 
@@ -761,6 +762,15 @@ export function App() {
           refresh={() => run(refreshPrograms)}
         />
         <IntakeWorkspace key={program?.id ?? "no-program"} connected={Boolean(connection)} program={program} sources={sources} selectedSource={source} state={intakeState} error={sourceError} submit={importSource} refresh={() => run(() => refreshSources())} />
+        <AssessmentsWorkspace
+          key={engagement?.id ?? "no-engagement"}
+          connected={Boolean(connection)}
+          engagement={engagement}
+          policy={policy}
+          policyState={state}
+          request={request}
+          auditRefresh={() => void run(refreshAudit)}
+        />
 
         <section className="panel wide">
           <h2><span>2</span> Manifest v2</h2>
