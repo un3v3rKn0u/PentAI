@@ -1,11 +1,12 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { ReportsWorkspace } from "./ReportsWorkspace";
 import { FindingsWorkspace } from "./FindingsWorkspace";
 import { EvidenceWorkspace } from "./EvidenceWorkspace";
 import { auditPath, LogsWorkspace } from "./LogsWorkspace";
 import { DashboardWorkspace } from "./DashboardWorkspace";
+import { ProgramsWorkspace, programsPath } from "./ProgramsWorkspace";
 
 const emptyHash = "0".repeat(64);
 
@@ -234,7 +235,7 @@ export function buildIntentTarget(url: string) {
 export function App() {
   const [connection, setConnection] = useState<CoreConnection | null>(null);
   const [bootstrapError, setBootstrapError] = useState("");
-  const [programName, setProgramName] = useState("Synthetic authorization program");
+  const [programs, setPrograms] = useState<Json[]>([]);
   const [sourceText, setSourceText] = useState(
     "Synthetic authorization for HTTPS GET requests to example.test/api."
   );
@@ -271,6 +272,7 @@ export function App() {
   const [resolverMode, setResolverMode] = useState("tunnel_resolver");
   const [routeConfirmed, setRouteConfirmed] = useState(false);
   const [error, setError] = useState("");
+  const selectedProgramId = useRef("");
 
   const canImport = Boolean(program);
   const canValidate = Boolean(engagement && source && manifestText);
@@ -350,6 +352,13 @@ export function App() {
       })
       .catch(() => {
         if (active) setAudit({ events: [], verification: { valid: false, event_count: 0 } });
+      });
+    coreRequest(connection, programsPath())
+      .then((result) => {
+        if (active) setPrograms(result.programs);
+      })
+      .catch(() => {
+        if (active) setPrograms([]);
       });
     return () => { active = false; };
   }, [connection]);
@@ -453,32 +462,45 @@ export function App() {
     });
   }
 
-  async function createProgram(event: FormEvent) {
-    event.preventDefault();
-    await run(async () => {
-      const created = await request("/programs", { name: programName, platform: "local" });
-      setProgram(created);
-      setSources([]);
-      setSource(null);
-      setEngagement(null);
-      setManifest(null);
-      setManifestHistory([]);
-      setManifestDiff(null);
-      setManifestText("");
-      setPolicy(null);
-      setPolicyHistory([]);
-      setCurrentIntent(null);
-      setDecision(null);
-      setGrant(null);
-      setGrantStatus("not issued");
-      setIntakeState("empty");
-      setState("draft");
-    });
+  function selectProgram(selected: Json | null) {
+    selectedProgramId.current = selected?.id ?? "";
+    setProgram(selected);
+    setSources([]);
+    setSource(null);
+    setEngagement(null);
+    setManifest(null);
+    setManifestHistory([]);
+    setManifestDiff(null);
+    setManifestText("");
+    setPolicy(null);
+    setPolicyHistory([]);
+    setCurrentIntent(null);
+    setDecision(null);
+    setGrant(null);
+    setGrantStatus("not issued");
+    setIntakeState("empty");
+    setState("draft");
+  }
+
+  async function refreshPrograms() {
+    const result = await request(programsPath());
+    setPrograms(result.programs);
+    if (program && !result.programs.some((item: Json) => item.id === program.id)) {
+      selectProgram(null);
+    }
+  }
+
+  async function createProgram(requested: Json) {
+    const created = await request(programsPath(), requested);
+    setPrograms((current) => [...current, created]);
+    selectProgram(created);
+    void run(refreshAudit);
   }
 
   async function refreshSources(programId = program?.id) {
     if (!programId) return;
     const result = await request(`/programs/${programId}/sources`);
+    if (selectedProgramId.current !== programId) return;
     setSources(result.sources);
     setIntakeState(result.sources.length ? "ready" : "empty");
   }
@@ -769,12 +791,16 @@ export function App() {
           networkProfiles={networkProfiles}
           audit={audit}
         />
+        <ProgramsWorkspace
+          connected={Boolean(connection)}
+          programs={programs}
+          selectedProgramId={program?.id ?? ""}
+          create={createProgram}
+          select={(selected) => { selectProgram(selected); void run(() => refreshSources(selected.id)); }}
+          refresh={() => run(refreshPrograms)}
+        />
         <section className="panel">
-          <h2><span>1</span> Program and source</h2>
-          <form onSubmit={createProgram}>
-            <label>Program name<input value={programName} onChange={(event) => setProgramName(event.target.value)} /></label>
-            <button type="submit" disabled={!connection}>Create program</button>
-          </form>
+          <h2><span>2</span> Source intake</h2>
           <form onSubmit={importSource} aria-busy={intakeState === "loading"}>
             <fieldset disabled={!connection || !canImport || intakeState === "loading"}>
               <legend>Supervised source import</legend>

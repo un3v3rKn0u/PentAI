@@ -74,6 +74,12 @@ button.danger { border-color: #9b4351; background: #491e26; }
 .dashboard-posture.ready { background: #153e32; color: #79e6bf; }
 .dashboard-posture.attention { background: #46351b; color: #ffd386; }
 .dashboard-posture.blocked { background: #401d24; color: #ff9ba9; }
+.programs-workspace { grid-column: 1 / -1; }
+.program-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+.program-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.program-list button { width: 100%; min-width: 0; display: grid; gap: 5px; text-align: left; background: #0c1016; border-color: #29323c; }
+.program-list button.selected { background: #15382f; border-color: #4c9b81; }
+.program-list span, .program-list code { overflow-wrap: anywhere; color: #7f8b99; font-size: 11px; }
 .panel { border: 1px solid #252c36; border-radius: 14px; background: rgba(17, 22, 29, .94); padding: 20px; min-width: 0; }
 .panel.wide { grid-column: 2; }
 .panel h2 { margin: 0 0 16px; font-size: 18px; }
@@ -173,9 +179,9 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
   .report-form-grid { grid-template-columns: 1fr; }
   .finding-form-grid, .findings-layout, .logs-layout { grid-template-columns: 1fr; }
   .evidence-form-grid { grid-template-columns: 1fr; }
-  .dashboard-grid { grid-template-columns: 1fr 1fr; }
+  .dashboard-grid, .program-list { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 520px) {
-  .dashboard-grid { grid-template-columns: 1fr; }
+  .dashboard-grid, .program-list, .program-create { grid-template-columns: 1fr; }
 }
