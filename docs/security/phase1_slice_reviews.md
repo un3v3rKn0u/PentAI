@@ -2173,3 +2173,35 @@ Source intake remains a separate adjacent UI flow. Rollback affects presentation
 **Residual risk accepted:** Program names and identifiers are displayed within the
 authenticated same-user desktop boundary. This review is self-authored and
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-12 — Dedicated Intake workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Extraction of explicit paste/file/URL modes, selected-program
+prerequisite, authority preservation, dual 2 MiB file checks, allowlisted basename media
+typing, path non-disclosure, browser-only byte encoding, guarded URL handoff, immutable
+history and digest presentation, errors, compatibility, privacy, and rollback.
+
+**Evidence examined:** UI typecheck; Vitest coverage for byte encoding, media allowlist,
+pasted and URL request preparation, and missing-file denial; existing App regression
+tests; production UI build; complete diff; source-intake endpoints and prior review.
+
+**Findings:** No import starts automatically or retries in the background. File handling
+cannot obtain or send a filesystem path. URL resolution remains wholly core-controlled.
+The application adds the currently selected immutable program ID only at the authenticated
+request boundary; the extracted workspace cannot invent program linkage.
+
+**Limitations and deferred work:** The UI does not compare sources, preview active
+content, parse terms, resolve conflicts visually, or edit immutable history. Engagement
+creation and manifest drafting remain adjacent application orchestration pending their
+own workspace slices. Rollback restores the inline presentation without data changes.
+
+**Residual risk accepted:** Selected bytes and pasted terms briefly exist in webview
+memory, and URLs can contain sensitive path/query values. The authenticated same-user
+desktop boundary remains trusted. This review is self-authored and non-independent and
+cannot satisfy an external independent-review requirement.

@@ -397,6 +397,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - The Programs workspace lists authenticated durable programs, creates local draft
     programs, and requires explicit selection. Changing identity clears all downstream
     source, manifest, policy, decision, and grant presentation state.
+  - The Intake workspace keeps pasted text, browser-mediated file bytes, and guarded URL
+    acquisition behind explicit submission for the selected program, then shows immutable
+    source history and exact digest provenance without exposing local filesystem paths.
   - The Evidence workspace captures bounded encrypted originals, displays custody
     metadata, creates exact server-derived text redactions, and renders only derivatives
     that explicitly assert inactive plain-text preview semantics. It also exposes a

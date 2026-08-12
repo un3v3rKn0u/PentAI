@@ -4,7 +4,8 @@
 
 ## Outcome
 
-After an operator creates a Program, the desktop UI offers three explicit source modes:
+After an operator explicitly selects a Program, the dedicated Intake workspace offers
+three explicit source modes:
 pasted text, a native webview file chooser, and guarded URL acquisition. It displays
 immutable source history and SHA-256 provenance, then uses the selected source to create
 a provenance-linked manifest draft. No import starts automatically or retries in the
@@ -23,6 +24,11 @@ all DNS, pinning, redirect, TLS, response, and media enforcement remains in the 
 The UI distinguishes empty, loading, denied, degraded, error, and recovered/ready
 states. Refresh is an explicit recovery action. An intake request is atomic, so a pause
 state is not applicable; there is no queue or background worker to pause.
+
+Input preparation is isolated from authenticated submission. It preserves the selected
+authority and exact text or URL, while file preparation returns only the basename,
+derived allowlisted media type, and bounded base64 bytes. The selected immutable program
+identity is added only by the application boundary immediately before the core request.
 
 ## Compatibility and rollback
 

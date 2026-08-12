@@ -1,21 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildIntentTarget, coreRequest, encodeBytesBase64, networkManifestSettings, networkSetupRequirement, parseSourceAddresses, sourceFileMediaType } from "./App";
+import { buildIntentTarget, coreRequest, networkManifestSettings, networkSetupRequirement, parseSourceAddresses } from "./App";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe("authorization workflow safety boundary", () => {
-  it("encodes selected bytes without exposing a filesystem path", () => {
-    expect(encodeBytesBase64(new Uint8Array([0, 1, 2, 253, 254, 255]))).toBe("AAEC/f7/");
-  });
-
-  it("derives only approved file media types from the selected basename", () => {
-    expect(sourceFileMediaType("Rules.JSON")).toBe("application/json");
-    expect(() => sourceFileMediaType("rules.exe")).toThrow("SOURCE_MEDIA_TYPE_INVALID");
-  });
-
   it("keeps every discovered network setting behind explicit human review", () => {
     expect(networkSetupRequirement("CONFIRM_ROUTE")).toContain("Confirm");
     expect(networkSetupRequirement("CONFIRM_RESOLVER_MODE")).toContain("confirm");

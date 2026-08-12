@@ -80,6 +80,7 @@ button.danger { border-color: #9b4351; background: #491e26; }
 .program-list button { width: 100%; min-width: 0; display: grid; gap: 5px; text-align: left; background: #0c1016; border-color: #29323c; }
 .program-list button.selected { background: #15382f; border-color: #4c9b81; }
 .program-list span, .program-list code { overflow-wrap: anywhere; color: #7f8b99; font-size: 11px; }
+.intake-workspace { grid-column: 1 / -1; }
 .panel { border: 1px solid #252c36; border-radius: 14px; background: rgba(17, 22, 29, .94); padding: 20px; min-width: 0; }
 .panel.wide { grid-column: 2; }
 .panel h2 { margin: 0 0 16px; font-size: 18px; }
