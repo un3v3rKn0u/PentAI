@@ -1,0 +1,11 @@
+import { describe, expect, it } from "vitest";
+import { buildIntentTarget, verifiedConsumption, verifiedDecision, verifiedGrant } from "./AuthorizationWorkspace";
+
+describe("supervised Authorization workspace", () => {
+  const intent = { intent_id: "intent-a", assessment_id: "assessment-a", policy_hash: "a".repeat(64), capability: "network.http.get", parameters_digest: "b".repeat(64) };
+  const decision = { decision_id: "decision-a", intent_id: "intent-a", assessment_id: "assessment-a", policy_hash: "a".repeat(64), outcome: "allow", reason_codes: ["EXPLICIT_ALLOW"] };
+  it("canonicalizes targets without permitting ambiguous authority", () => { expect(buildIntentTarget("https://Example.test/api?q=1").canonical_url).toBe("https://example.test/api?q=1"); expect(() => buildIntentTarget(" https://example.test")).toThrow("TARGET_AMBIGUOUS"); });
+  it("binds decisions to the exact intent, assessment, policy, and allow reason", () => { expect(verifiedDecision(decision, intent)).toBe(decision); expect(() => verifiedDecision({ ...decision, policy_hash: "c".repeat(64) }, intent)).toThrow("POLICY_DECISION_RESPONSE_INVALID"); expect(() => verifiedDecision({ ...decision, reason_codes: ["DEFAULT_DENY"] }, intent)).toThrow("POLICY_DECISION_RESPONSE_INVALID"); });
+  it("binds a single-use grant to the exact allowed chain", () => { const grant = { grant_id: "grant-a", intent_id: "intent-a", decision_id: "decision-a", assessment_id: "assessment-a", policy_hash: "a".repeat(64), audience: "pentai-execution-broker", capability: "network.http.get", parameters_digest: "b".repeat(64), single_use: true }; expect(verifiedGrant(grant, decision, intent)).toBe(grant); expect(() => verifiedGrant({ ...grant, audience: "pentai-egress-gateway" }, decision, intent)).toThrow("ACTION_GRANT_RESPONSE_INVALID"); });
+  it("accepts consumption only for the displayed grant and policy", () => { const grant = { grant_id: "grant-a", policy_hash: "a".repeat(64) }; expect(verifiedConsumption({ grant_id: "grant-a", status: "consumed", policy_hash: "a".repeat(64) }, grant).status).toBe("consumed"); expect(() => verifiedConsumption({ grant_id: "other", status: "consumed", policy_hash: "a".repeat(64) }, grant)).toThrow("ACTION_GRANT_CONSUMPTION_INVALID"); });
+});

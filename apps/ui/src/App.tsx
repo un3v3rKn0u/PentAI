@@ -11,8 +11,7 @@ import { IntakeWorkspace, type IntakeState, type SourceImport } from "./IntakeWo
 import { AssessmentsWorkspace } from "./AssessmentsWorkspace";
 import { PolicyWorkspace } from "./PolicyWorkspace";
 import { NetworkProfilesWorkspace, type NetworkSetupState } from "./NetworkProfilesWorkspace";
-
-const emptyHash = "0".repeat(64);
+import { AuthorizationWorkspace } from "./AuthorizationWorkspace";
 
 type Json = Record<string, any>;
 export type CoreConnection = {
@@ -168,33 +167,6 @@ function buildManifest(program: Json, engagement: Json, source: Json, networkPro
   };
 }
 
-export function buildIntentTarget(url: string) {
-  if (url !== url.trim() || url.includes("\\")) {
-    throw new Error("TARGET_AMBIGUOUS");
-  }
-  const parsed = new URL(url);
-  const scheme = parsed.protocol.slice(0, -1);
-  if (!["http", "https"].includes(scheme) || parsed.username || parsed.password || parsed.hash) {
-    throw new Error("TARGET_AMBIGUOUS");
-  }
-  const port = parsed.port ? Number(parsed.port) : scheme === "https" ? 443 : 80;
-  const canonicalUrl = `${scheme}://${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}${parsed.pathname}${parsed.search}`;
-  const hostname = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  const kind = hostname.includes(":")
-    ? "ipv6"
-    : /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)
-      ? "ipv4"
-      : "domain";
-  return {
-    scheme,
-    host: { kind, value: hostname },
-    port,
-    path: parsed.pathname || "/",
-    query: parsed.search.slice(1),
-    canonical_url: canonicalUrl
-  };
-}
-
 export function App() {
   const [connection, setConnection] = useState<CoreConnection | null>(null);
   const [bootstrapError, setBootstrapError] = useState("");
@@ -211,12 +183,7 @@ export function App() {
   const [manifestDiff, setManifestDiff] = useState<Json | null>(null);
   const [policy, setPolicy] = useState<Json | null>(null);
   const [policyHistory, setPolicyHistory] = useState<Json[]>([]);
-  const [currentIntent, setCurrentIntent] = useState<Json | null>(null);
-  const [decision, setDecision] = useState<Json | null>(null);
-  const [grant, setGrant] = useState<Json | null>(null);
-  const [grantStatus, setGrantStatus] = useState("not issued");
   const [audit, setAudit] = useState<Json>({ events: [], verification: { valid: true } });
-  const [intentUrl, setIntentUrl] = useState("https://example.test/api/items");
   const [state, setState] = useState<WorkflowState>("draft");
   const [safetyState, setSafetyState] = useState<SafetyState>("loading");
   const [safetyReason, setSafetyReason] = useState("Explicit supervised safety control");
@@ -315,8 +282,6 @@ export function App() {
       const result = await request("/safety-state", { status, reason: safetyReason });
       setSafetyState(result.status);
       if (status !== "active" && engagement) setState("paused");
-      setGrant(null);
-      setGrantStatus(status === "active" ? "not issued" : `revoked by global ${status}`);
       await refreshAudit();
     });
   }
@@ -392,8 +357,6 @@ export function App() {
         reason: safetyReason
       });
       setState(status === "active" ? "active" : "paused");
-      setGrant(null);
-      setGrantStatus(status === "active" ? "not issued" : "revoked by assessment pause");
       await refreshAudit();
     });
   }
@@ -410,10 +373,6 @@ export function App() {
     setManifestText("");
     setPolicy(null);
     setPolicyHistory([]);
-    setCurrentIntent(null);
-    setDecision(null);
-    setGrant(null);
-    setGrantStatus("not issued");
     setIntakeState("empty");
     setState("draft");
   }
@@ -537,64 +496,6 @@ export function App() {
     void run(async () => { const history = await request(`/engagements/${engagement.id}/policies`); setPolicyHistory(history.policies); await refreshAudit(); });
   }
 
-  async function simulate() {
-    if (!policy || !engagement) return;
-    await run(async () => {
-      const created = new Date().toISOString();
-      const intent = {
-        schema_version: "1.0.0",
-        intent_id: crypto.randomUUID(),
-        assessment_id: engagement.id,
-        policy_hash: policy.content_hash ?? emptyHash,
-        actor: { actor_type: "human", actor_id: "local-human-user" },
-        capability: "network.http.get",
-        target: buildIntentTarget(intentUrl),
-        http: {
-          method: "GET",
-          headers_digest: emptyHash,
-          body_digest: null,
-          follow_redirects: false
-        },
-        parameters_digest: "1".repeat(64),
-        impact: "benign",
-        created_at: created,
-        expires_at: new Date(Date.now() + 300_000).toISOString(),
-        idempotency_key: crypto.randomUUID()
-      };
-      setCurrentIntent(intent);
-      setGrant(null);
-      setGrantStatus("not issued");
-      setDecision(await request("/policy-decisions", { engagement_id: engagement.id, intent }));
-      await refreshAudit();
-    });
-  }
-
-  async function mintGrant() {
-    if (!decision || decision.outcome !== "allow") return;
-    await run(async () => {
-      const issued = await request("/action-grants", {
-        decision_id: decision.decision_id,
-        audience: "pentai-execution-broker"
-      });
-      setGrant(issued);
-      setGrantStatus("issued — no execution");
-      await refreshAudit();
-    });
-  }
-
-  async function consumeGrant() {
-    if (!grant || !currentIntent) return;
-    await run(async () => {
-      await request("/action-grants/consume", {
-        grant,
-        intent: currentIntent,
-        audience: "pentai-execution-broker"
-      });
-      setGrantStatus("consumed — no execution");
-      await refreshAudit();
-    });
-  }
-
   async function refreshAudit() {
     setAudit(await request(auditPath()));
   }
@@ -666,29 +567,7 @@ export function App() {
 
         <PolicyWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "draft"}`} connected={Boolean(connection)} manifestText={manifestText} setManifestText={(value) => { setManifestText(value); if (manifest?.valid) { setManifest(null); setPolicy(null); setState("draft"); } }} manifest={manifest} manifestHistory={manifestHistory} manifestDiff={manifestDiff} policy={policy} policyHistory={policyHistory} state={state} validate={validateManifest} compile={compilePolicy} approve={approvePolicy} activate={activatePolicy} revoke={revokeActivePolicy} />
 
-        <section className="panel">
-          <h2><span>4</span> ActionIntent simulator</h2>
-          <div className="button-row assessment-safety">
-            <button onClick={() => changeAssessmentSafety("active")} disabled={!connection || !engagement || safetyState !== "active"}>Resume assessment</button>
-            <button onClick={() => changeAssessmentSafety("paused")} disabled={!connection || !engagement}>Pause assessment</button>
-          </div>
-          <label>Canonical HTTPS URL<input value={intentUrl} onChange={(event) => setIntentUrl(event.target.value)} /></label>
-          <button onClick={simulate} disabled={!connection || state !== "active" || safetyState !== "active"}>Evaluate intent</button>
-          {decision && (
-            <div className={`decision ${decision.outcome}`}>
-              <strong>{decision.outcome}</strong>
-              <code>{decision.reason_codes.join(", ")}</code>
-            </div>
-          )}
-          <button onClick={mintGrant} disabled={!connection || decision?.outcome !== "allow" || Boolean(grant)}>
-            Issue single-use grant
-          </button>
-          <button onClick={consumeGrant} disabled={!connection || !grant || grantStatus.startsWith("consumed")}>
-            Verify and consume locally
-          </button>
-          <p className="hint">Grant status: {grantStatus}</p>
-          {grant && <code>{grant.grant_id} · expires {grant.expires_at}</code>}
-        </section>
+        <AuthorizationWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "none"}`} connected={Boolean(connection)} engagement={engagement} policy={policy} policyState={state} safetyState={safetyState} request={request} changeAssessmentSafety={changeAssessmentSafety} auditRefresh={() => void run(refreshAudit)} />
 
         <LogsWorkspace audit={audit} connected={Boolean(connection)} refresh={() => run(refreshAudit)} />
         <EvidenceWorkspace connection={connection} />

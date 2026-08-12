@@ -248,6 +248,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 ### 6.5 Actions: execution and safety
 
 - [ ] Implement `ActionIntent → PolicyDecision → ActionGrant → Execution` end to end.
+  - The Authorization workspace now demonstrates the complete non-executing intent,
+    exact deterministic decision, single-use grant issuance, and local consumption chain.
+    It validates every response binding, clears displayed authority on safety/policy
+    changes, and states that evaluation makes no connection. Gateway execution remains
+    separately gated and disabled.
 - [x] Build a single-use, audience-bound, short-lived grant verifier.
   - The non-executing `ActionIntent → PolicyDecision → ActionGrant` chain and atomic
     local verifier are implemented on `feature/action-grant-chain`; gateway execution
