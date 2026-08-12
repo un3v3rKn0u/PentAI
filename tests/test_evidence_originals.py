@@ -14,6 +14,7 @@ from pentai_core.migrate import migrate
 from pentai_policy.document import parse_time
 
 EVIDENCE_ASSET_RULE_ID = "10000000-0000-4000-8000-000000000001"
+EVIDENCE_CAPABILITY_RULE_ID = "20000000-0000-4000-8000-000000000001"
 
 
 def evidence_fixture(tmp_path: Path) -> tuple[Path, str, EvidenceService, EncryptedEvidenceStore]:
@@ -57,7 +58,10 @@ def evidence_fixture(tmp_path: Path) -> tuple[Path, str, EvidenceService, Encryp
                 engagement_id,
                 manifest_id,
                 '{"asset_rules":[{"asset_type":"domain","effect":"allow",'
-                f'"rule_id":"{EVIDENCE_ASSET_RULE_ID}"}}]}}',
+                f'"rule_id":"{EVIDENCE_ASSET_RULE_ID}"}}],'
+                '"capability_rules":[{"capability":"http.get","effect":"allow",'
+                f'"rule_id":"{EVIDENCE_CAPABILITY_RULE_ID}",'
+                f'"applicable_asset_rule_ids":["{EVIDENCE_ASSET_RULE_ID}"]}}]}}',
                 "b" * 64,
             ),
         )

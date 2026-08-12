@@ -1733,3 +1733,42 @@ and external submission remain separate slices. The minimal PDF is text-only.
 writer rather than an independently assessed rendering engine. Report content may be
 sensitive and depends on local access controls. This review is self-authored and
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-12 — Immutable supervised assessment coverage
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Assessment coverage v1 contract, additive migration 0026, human
+actor binding, exact workflow/policy and allowed asset/capability-rule linkage, ordered
+testing intervals, same-workflow available evidence, explicit gap outcomes and
+limitations, idempotency, immutable storage, audit linkage, authenticated API surface,
+compatibility, privacy, rollback, and absence of completeness or export authority.
+
+**Evidence examined:** Successful evidence-backed coverage recording and retrieval;
+contract validation; database mutation denial; audit content; idempotent replay and
+conflicting replay; denial of missing evidence for tested claims, unknown assets,
+mismatched capabilities, malformed policy collections, invalid intervals, deleted or
+foreign evidence paths, and unsupported outcomes; explicit `blocked` outcome behavior;
+189 unittest tests, 392 pytest tests plus 235 subtests, Ruff, mypy, and 39 contract files.
+
+**Findings:** A caller cannot assert coverage outside the immutable workflow policy.
+The service accepts only allowed asset rules and non-denied capability rules applicable
+to that asset. Tested outcomes require available evidence from the same workflow and
+policy. Every record is immutable, content-digested, audit-linked, and sets
+`coverage_complete` to false. Gap outcomes remain distinguishable from tested claims.
+
+**Limitations and deferred work:** This slice records observations; it does not derive
+the expected policy coverage matrix, calculate sufficiency, generate a “No Findings”
+report, approve/export a report, or submit externally. Notes and limitations can
+contain sensitive assessment context and remain protected by the local authenticated
+boundary. The additive migration can be rolled back only by reverting application code
+while leaving its unused immutable table in place; no data transformation is required.
+
+**Residual risk accepted:** Coverage truth still depends on human assertions and linked
+evidence quality. A later sufficiency slice must default-deny missing matrix cells,
+gaps, stale policy bindings, and ambiguous outcomes. This review is self-authored and
+non-independent and cannot satisfy an external independent-review requirement.

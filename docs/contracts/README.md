@@ -65,6 +65,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   version history.
 - `report-draft-v1.schema.json` — immutable human-requested report draft metadata with
   exact finding-version references and digested Markdown, HTML, JSON, and PDF artifacts.
+- `assessment-coverage-v1.schema.json` — immutable human-recorded testing coverage for
+  an exact policy asset/capability pair, with evidence and explicit limitations.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review

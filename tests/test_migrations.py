@@ -42,6 +42,7 @@ class MigrationTests(unittest.TestCase):
                     "0023",
                     "0024",
                     "0025",
+                    "0026",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -88,6 +89,7 @@ class MigrationTests(unittest.TestCase):
                     "network_profiles",
                     "report_drafts",
                     "report_draft_artifacts",
+                    "assessment_coverage",
                 }
                 <= tables
             )
