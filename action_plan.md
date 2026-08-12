@@ -392,7 +392,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
   - The Evidence workspace captures bounded encrypted originals, displays custody
     metadata, creates exact server-derived text redactions, and renders only derivatives
-    that explicitly assert inactive plain-text preview semantics.
+    that explicitly assert inactive plain-text preview semantics. It also exposes a
+    deliberate retention-deletion control bound to the exact displayed artifact identity
+    and digest, while the core remains authoritative for policy deadlines and deletion.
   - The Findings workspace creates policy/evidence-bound candidates, lists one exact
     workflow, and performs explicit version-fenced human lifecycle reviews.
   - The Reports workspace now creates exact findings or coverage-aware No Findings

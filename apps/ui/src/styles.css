@@ -131,6 +131,12 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
 .evidence-review { display: grid; gap: 10px; margin-top: 14px; padding: 14px; border: 1px solid #315447; border-radius: 10px; background: #0d1815; }
 .inactive-preview { padding: 12px; border: 1px solid #395247; border-radius: 8px; background: #080b0f; }
 .inactive-preview pre { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #a8d1c4; }
+.evidence-deletion { margin-top: 8px; padding: 14px; border: 1px solid #753943; border-radius: 10px; background: #211316; }
+.evidence-deletion summary { cursor: pointer; color: #ff9ba9; font-weight: 800; }
+.evidence-deletion[open] summary { margin-bottom: 12px; }
+.deletion-identity { display: grid; gap: 5px; padding: 10px 12px; border-radius: 8px; background: #0c1016; }
+.deletion-identity dt { color: #8d99a8; font-size: 11px; }
+.deletion-identity dd { margin: 0 0 7px; overflow-wrap: anywhere; color: #d3a4aa; font-family: monospace; font-size: 11px; }
 .state-key { max-width: 1400px; margin: 18px auto 0; display: flex; flex-wrap: wrap; gap: 7px; }
 .state-key span { padding: 5px 8px; border: 1px solid #29323c; border-radius: 999px; color: #667382; font-size: 10px; text-transform: uppercase; }
 .state-key .current { color: #c7d1dc; border-color: #596777; }
