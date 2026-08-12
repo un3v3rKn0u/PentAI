@@ -387,9 +387,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   Human-created findings now bind exact policy allow rules and available evidence from
   one supervised workflow, recompute CVSS 3.1 scores, fence ordered scope/duplicate/
   validation/report-readiness transitions, and retain immutable full-version and audit
-  history. Finding UI, automatic duplicate proposals, and report rendering remain later
-  slices.
+  history. The Findings workspace now supports exact candidate creation, workflow lists,
+  and version-fenced human transitions. Automatic duplicate proposals remain a later slice.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
+  - The Findings workspace creates policy/evidence-bound candidates, lists one exact
+    workflow, and performs explicit version-fenced human lifecycle reviews.
   - The Reports workspace now creates exact findings or coverage-aware No Findings
     drafts, displays immutable artifact integrity metadata, and requires explicit human
     confirmation before export-ready approval. The core can now publish one approved

@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ReportsWorkspace } from "./ReportsWorkspace";
+import { FindingsWorkspace } from "./FindingsWorkspace";
 
 const emptyHash = "0".repeat(64);
 
@@ -957,6 +958,7 @@ export function App() {
             ))}
           </ol>
         </section>
+        <FindingsWorkspace connection={connection} />
         <ReportsWorkspace connection={connection} />
       </div>
 

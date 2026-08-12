@@ -1966,3 +1966,40 @@ passed to the authenticated loopback core; it is not persisted in the receipt or
 ledger. Exported plaintext remains under operator and OS custody. This review is
 self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
+
+## 2026-08-12 — Supervised Findings workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Finding candidate presentation, exact workflow/asset/evidence UUID
+parsing, CVSS/CWE/confidence input, bounded narrative and reference fields, authenticated
+API reuse, workflow-scoped listing, contract-defined transition choices, expected-version
+fencing, explicit duplicate and validation outcomes, duplicate identity handling, error
+display, responsive layout, compatibility, privacy, rollback, and absence of execution,
+report-approval, or submission authority.
+
+**Evidence examined:** UI typecheck; Vitest coverage for exact UUID preservation,
+malformed/empty/duplicate denial, allowed next-state derivation, version-bound transition
+requests, and conditional duplicate identity; production UI build; complete diff;
+finding contract, service boundary, and security-invariant review.
+
+**Findings:** The UI invents no policy, evidence, score, severity, duplicate, validation,
+or lifecycle fact. Candidate creation passes exact operator inputs to the authenticated
+core, which remains authoritative for all semantic checks. Transitions are limited to
+contract edges and bind the displayed version plus explicit human reason and review
+outcomes. Changing workflow identity clears prior displayed findings.
+
+**Limitations and deferred work:** Operators still enter policy asset and evidence UUIDs
+manually. The UI does not calculate CVSS, retrieve finding history, edit immutable
+candidate content, propose duplicates, preview evidence, or search policies/evidence.
+Those remain separate slices. Rollback removes only presentation code and leaves all
+immutable finding records unchanged.
+
+**Residual risk accepted:** Manual identifiers and CVSS inputs can create safe core
+denials and operator friction. Sensitive finding narratives are displayed locally and
+remain protected by the authenticated desktop boundary. This review is self-authored
+and non-independent and cannot satisfy an external independent-review requirement.

@@ -133,7 +133,7 @@ export function ReportsWorkspace({ connection }: { connection: CoreConnection | 
   return (
     <section className="panel wide reports-workspace" aria-busy={busy}>
       <div className="panel-heading">
-        <h2><span>6</span> Reports</h2>
+        <h2><span>7</span> Reports</h2>
         <strong className={receipt ? "verified" : approval?.export_ready ? "verified" : "hint"}>
           {receipt ? "Export complete" : approval?.export_ready ? "Export-ready" : "Draft review required"}
         </strong>
