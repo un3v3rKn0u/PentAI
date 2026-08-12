@@ -5,6 +5,7 @@ import { coreRequest, encodeBytesBase64 } from "./App";
 
 type Json = Record<string, any>;
 type RedactionReason = "secret" | "personal_data" | "irrelevant" | "operator_selected";
+type DeletionArtifactType = "original" | "redaction";
 
 const maxEvidenceBytes = 2 * 1024 * 1024;
 const redactionReasons = new Set<RedactionReason>([
@@ -25,6 +26,26 @@ export function evidenceRedactionPath(evidenceId: string) {
 
 export function evidencePreviewPath(derivativeId: string) {
   return `/evidence/derivatives/${derivativeId}/preview`;
+}
+
+export function evidenceDeletionPath() {
+  return "/evidence/deletions";
+}
+
+export function evidenceDeletionRequest(
+  artifactType: DeletionArtifactType,
+  artifactId: string,
+  expectedSha256: string,
+  reason: string,
+  confirmed: boolean
+) {
+  return {
+    artifact_type: artifactType,
+    artifact_id: artifactId,
+    expected_sha256: expectedSha256,
+    reason: reason.trim(),
+    confirm_permanent_deletion: confirmed
+  };
 }
 
 export function parseRedactionSpans(value: string) {
@@ -63,6 +84,10 @@ export function EvidenceWorkspace({ connection }: { connection: CoreConnection |
   const [classificationConfirmed, setClassificationConfirmed] = useState(false);
   const [derivative, setDerivative] = useState<Json | null>(null);
   const [preview, setPreview] = useState<Json | null>(null);
+  const [deletionTarget, setDeletionTarget] = useState<DeletionArtifactType>("original");
+  const [deletionReason, setDeletionReason] = useState("");
+  const [deletionConfirmed, setDeletionConfirmed] = useState(false);
+  const [deletionResult, setDeletionResult] = useState<Json | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -102,6 +127,7 @@ export function EvidenceWorkspace({ connection }: { connection: CoreConnection |
       setMetadata({ evidence: captured });
       setDerivative(null);
       setPreview(null);
+      resetDeletion();
       setNote("");
       setFile(null);
     } catch (cause) {
@@ -119,6 +145,7 @@ export function EvidenceWorkspace({ connection }: { connection: CoreConnection |
       setMetadata(await coreRequest(connection, evidenceMetadataPath(evidenceId.trim())));
       setDerivative(null);
       setPreview(null);
+      resetDeletion();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "EVIDENCE_METADATA_FAILED");
     } finally {
@@ -143,6 +170,7 @@ export function EvidenceWorkspace({ connection }: { connection: CoreConnection |
       );
       setDerivative(created);
       setPreview(null);
+      resetDeletion("redaction");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "EVIDENCE_REDACTION_FAILED");
     } finally {
@@ -165,6 +193,44 @@ export function EvidenceWorkspace({ connection }: { connection: CoreConnection |
       setPreview(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "EVIDENCE_PREVIEW_FAILED");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function resetDeletion(target: DeletionArtifactType = "original") {
+    setDeletionTarget(target);
+    setDeletionReason("");
+    setDeletionConfirmed(false);
+    setDeletionResult(null);
+  }
+
+  async function requestDeletion() {
+    if (!connection || !metadata?.evidence) return;
+    const artifact = deletionTarget === "original" ? {
+      id: metadata.evidence.evidence_id,
+      sha256: metadata.evidence.sha256
+    } : {
+      id: derivative?.derivative_id,
+      sha256: derivative?.sha256
+    };
+    if (!artifact.id || !artifact.sha256) return;
+    setBusy(true);
+    setError("");
+    try {
+      setDeletionResult(await coreRequest(
+        connection,
+        evidenceDeletionPath(),
+        evidenceDeletionRequest(
+          deletionTarget,
+          artifact.id,
+          artifact.sha256,
+          deletionReason,
+          deletionConfirmed
+        )
+      ));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "EVIDENCE_DELETION_FAILED");
     } finally {
       setBusy(false);
     }
@@ -200,7 +266,7 @@ export function EvidenceWorkspace({ connection }: { connection: CoreConnection |
       <button onClick={captureOriginal} disabled={!connection || busy || !workflowId.trim() || (kind === "note" ? !note : !file)}>Capture encrypted original</button>
       {error && <p className="result bad" role="alert">Denied safely: {error}</p>}
       <div className="evidence-lookup">
-        <label>Evidence UUID<input value={evidenceId} onChange={(event) => { setEvidenceId(event.target.value); setMetadata(null); setDerivative(null); setPreview(null); }} /></label>
+        <label>Evidence UUID<input value={evidenceId} onChange={(event) => { setEvidenceId(event.target.value); setMetadata(null); setDerivative(null); setPreview(null); resetDeletion(); }} /></label>
         <button onClick={loadMetadata} disabled={!connection || busy || !evidenceId.trim()}>Load custody metadata</button>
       </div>
       {metadata?.evidence && (
@@ -226,6 +292,28 @@ export function EvidenceWorkspace({ connection }: { connection: CoreConnection |
               <p className="hint">Active content disabled · {preview.truncated ? "preview truncated" : "complete bounded preview"}</p>
             </div>
           )}
+          <details className="evidence-deletion">
+            <summary>Retention deletion</summary>
+            <p className="hint">This permanently removes encrypted content only after the policy retention deadline. Custody metadata and audit history remain. This is not forensic secure erase.</p>
+            <label>Artifact to delete<select value={deletionTarget} onChange={(event) => resetDeletion(event.target.value as DeletionArtifactType)}>
+              <option value="original">Original</option>
+              {derivative && <option value="redaction">Current redaction</option>}
+            </select></label>
+            <dl className="deletion-identity">
+              <dt>Exact artifact ID</dt><dd>{deletionTarget === "original" ? metadata.evidence.evidence_id : derivative?.derivative_id}</dd>
+              <dt>Exact SHA-256</dt><dd>{deletionTarget === "original" ? metadata.evidence.sha256 : derivative?.sha256}</dd>
+            </dl>
+            <label>Deletion reason (maximum 500 characters)<textarea rows={3} maxLength={500} value={deletionReason} onChange={(event) => { setDeletionReason(event.target.value); setDeletionResult(null); }} /></label>
+            <label className="confirmation-check"><input type="checkbox" checked={deletionConfirmed} onChange={(event) => { setDeletionConfirmed(event.target.checked); setDeletionResult(null); }} />I confirm permanent encrypted-content deletion after the policy retention deadline. This is not forensic secure erase.</label>
+            <button className="danger" onClick={requestDeletion} disabled={busy || !deletionReason.trim() || !deletionConfirmed || Boolean(deletionResult)}>Request permanent content deletion</button>
+            {deletionResult && (
+              <div className="result good">
+                <strong>Deletion {deletionResult.status}</strong>
+                <p>Encrypted blob disposition: {deletionResult.blob_disposition}</p>
+                <p>Forensic secure erase guaranteed: no</p>
+              </div>
+            )}
+          </details>
         </div>
       )}
     </section>

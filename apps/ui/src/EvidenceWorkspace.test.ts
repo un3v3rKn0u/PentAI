@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  evidenceDeletionPath,
+  evidenceDeletionRequest,
   evidenceMetadataPath,
   evidenceOriginalPath,
   evidencePreviewPath,
@@ -18,7 +20,24 @@ describe("supervised evidence workspace", () => {
     expect(evidenceMetadataPath(evidence)).toBe(`/evidence/${evidence}/metadata`);
     expect(evidenceRedactionPath(evidence)).toBe(`/evidence/${evidence}/redactions`);
     expect(evidencePreviewPath(derivative)).toBe(`/evidence/derivatives/${derivative}/preview`);
+    expect(evidenceDeletionPath()).toBe("/evidence/deletions");
     expect(`${evidenceOriginalPath(workflow)}${evidencePreviewPath(derivative)}`).not.toMatch(/execute|grant|submit/);
+  });
+
+  it("binds retention deletion to the exact artifact, full digest, reason, and confirmation", () => {
+    const digest = "a".repeat(64);
+    expect(evidenceDeletionRequest("redaction", derivative, digest, "  expired case data  ", true)).toEqual({
+      artifact_type: "redaction",
+      artifact_id: derivative,
+      expected_sha256: digest,
+      reason: "expired case data",
+      confirm_permanent_deletion: true
+    });
+  });
+
+  it("does not manufacture permanent-deletion confirmation", () => {
+    expect(evidenceDeletionRequest("original", evidence, "b".repeat(64), "retention expired", false))
+      .toMatchObject({ confirm_permanent_deletion: false });
   });
 
   it("parses exact ordered Unicode-codepoint redaction selections", () => {

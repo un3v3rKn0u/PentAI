@@ -2041,3 +2041,39 @@ base64 transport, and derivative text displayed locally may remain sensitive des
 redaction. The authenticated local session and OS boundary remain trusted. This review
 is self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
+
+## 2026-08-12 — Evidence retention deletion control
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Exact original/redaction identity and full-digest presentation,
+bounded human reason, explicit permanent-deletion confirmation, authenticated API reuse,
+policy retention enforcement, shared-blob handling, durable tombstones and audit history,
+crash recovery, result wording, privacy, rollback, and absence of deadline override,
+automatic scheduling, execution, or submission authority.
+
+**Evidence examined:** UI typecheck; Vitest coverage for custody endpoint routing, exact
+request identity/digest/reason binding, and denial of manufactured confirmation;
+production UI build; complete diff; evidence deletion contract, service implementation,
+retention tests, and security-invariant review.
+
+**Findings:** The UI can request deletion only for an artifact whose immutable identity
+and full digest came from the authenticated core response. It supplies no deadline or
+storage instruction. The core remains authoritative for retention, digest equality,
+shared references, durable state transitions, and audit events. The control and result
+both state that deletion is not forensic secure erase.
+
+**Limitations and deferred work:** The UI does not list deletion history, schedule future
+deletion, retry requests, implement legal holds, manage per-object encryption keys, purge
+off-device copies, or claim physical-media erasure. Rollback removes only presentation
+code; existing deletion records, tombstones, metadata, and audit events remain immutable.
+
+**Residual risk accepted:** Encrypted content unlinking cannot guarantee recovery-resistant
+physical erasure, and custody metadata intentionally remains. A malicious principal inside
+the authenticated same-user desktop boundary remains outside this UI control's threat
+model. This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.
