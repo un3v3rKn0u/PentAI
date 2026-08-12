@@ -43,6 +43,7 @@ class MigrationTests(unittest.TestCase):
                     "0024",
                     "0025",
                     "0026",
+                    "0027",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -90,6 +91,8 @@ class MigrationTests(unittest.TestCase):
                     "report_drafts",
                     "report_draft_artifacts",
                     "assessment_coverage",
+                    "no_findings_report_drafts",
+                    "no_findings_report_artifacts",
                 }
                 <= tables
             )

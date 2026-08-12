@@ -383,6 +383,13 @@ available evidence from the same workflow and policy. Blocked and untested outco
 remain explicit gaps, every record disclaims completeness, and no coverage entry can
 authorize execution or make a report export-ready.
 
+“No Findings” drafts require a completed workflow, no unresolved finding, and exact
+coverage of every allowed policy asset/capability pair by one unambiguous latest
+evidence-backed `tested_no_findings` record. Missing, blocked, untested, finding-bearing,
+stale, or ambiguous coverage denies generation. The immutable draft carries the exact
+coverage hashes, evidence references, testing intervals, and limitations and cannot
+approve export or claim exhaustive security.
+
 Encrypted backups use a key domain separated from evidence storage, an online SQLite
 snapshot, an exact authenticated member manifest, and authenticated evidence reads.
 Restore verification occurs only in a newly created isolated directory and never

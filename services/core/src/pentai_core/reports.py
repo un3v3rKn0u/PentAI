@@ -17,7 +17,7 @@ from pentai_core.audit import append_audit_event
 from pentai_core.database import transaction
 
 _TEMPLATES = {"generic", "hackerone", "bugcrowd", "intigriti"}
-_FORMATS = {
+REPORT_FORMATS = {
     "markdown": "text/markdown; charset=utf-8",
     "html": "text/html; charset=utf-8",
     "json": "application/json",
@@ -105,11 +105,11 @@ class ReportService:
             payload = _report_payload(
                 title, template, workflow, findings, str(workflow["policy_bundle_id"])
             )
-            rendered = _render(payload)
+            rendered = render_report_artifacts(payload)
             artifacts: list[dict[str, Any]] = [
                 {
                     "format": format_name,
-                    "media_type": _FORMATS[format_name],
+                    "media_type": REPORT_FORMATS[format_name],
                     "sha256": sha256(content).hexdigest(),
                     "size_bytes": len(content),
                 }
@@ -193,7 +193,7 @@ class ReportService:
 
     def artifact(self, report_id: str, format_name: str) -> tuple[str, bytes, str]:
         _identity(report_id, "REPORT_ID_INVALID")
-        if format_name not in _FORMATS:
+        if format_name not in REPORT_FORMATS:
             raise ReportError("REPORT_FORMAT_INVALID", "report format is invalid")
         with transaction(self.database_path) as connection:
             row = connection.execute(
@@ -230,7 +230,7 @@ def _report_payload(
     }
 
 
-def _render(payload: dict[str, Any]) -> dict[str, bytes]:
+def render_report_artifacts(payload: dict[str, Any]) -> dict[str, bytes]:
     markdown = _markdown(payload)
     escaped = html.escape(markdown)
     html_body = (
@@ -258,8 +258,22 @@ def _markdown(payload: dict[str, Any]) -> str:
         f"Testing period: {payload['testing_period']['started_at'] or 'not recorded'} to "
         f"{payload['testing_period']['ended_at'] or 'not recorded'}",
         "",
-        "## Findings",
     ]
+    if payload.get("report_kind") == "no_findings":
+        lines.extend(["## Result", "", str(payload["statement"]), "", "## Coverage"])
+        for item in payload["coverage"]:
+            lines.extend(
+                [
+                    "",
+                    f"- Asset rule: {item['asset_rule_id']}",
+                    f"  Capability: {item['capability']} ({item['capability_rule_id']})",
+                    f"  Testing period: {item['testing_period']['started_at']} to "
+                    f"{item['testing_period']['ended_at']}",
+                    f"  Evidence: {', '.join(item['evidence_ids'])}",
+                ]
+            )
+    else:
+        lines.append("## Findings")
     for finding in payload["findings"]:
         lines.extend(
             [

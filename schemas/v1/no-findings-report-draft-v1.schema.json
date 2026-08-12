@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/no-findings-report-draft-v1.schema.json",
+  "title": "PentAI No Findings Report Draft v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "report_id", "report_kind", "workflow_id", "engagement_id", "policy_bundle_id", "status", "classification", "template", "title", "coverage_refs", "limitations", "artifacts", "created_by", "created_at"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "report_id": {"type": "string", "format": "uuid"},
+    "report_kind": {"const": "no_findings"},
+    "workflow_id": {"type": "string", "format": "uuid"},
+    "engagement_id": {"type": "string", "format": "uuid"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "status": {"const": "draft"},
+    "classification": {"const": "restricted"},
+    "template": {"enum": ["generic", "hackerone", "bugcrowd", "intigriti"]},
+    "title": {"type": "string", "minLength": 1, "maxLength": 200},
+    "coverage_refs": {
+      "type": "array", "minItems": 1, "maxItems": 500, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["coverage_id", "content_hash", "asset_rule_id", "capability_rule_id", "capability", "evidence_ids", "started_at", "ended_at"],
+        "properties": {
+          "coverage_id": {"type": "string", "format": "uuid"},
+          "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "asset_rule_id": {"type": "string", "format": "uuid"},
+          "capability_rule_id": {"type": "string", "format": "uuid"},
+          "capability": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$", "maxLength": 128},
+          "evidence_ids": {"type": "array", "minItems": 1, "maxItems": 128, "uniqueItems": true, "items": {"type": "string", "format": "uuid"}},
+          "started_at": {"type": "string", "format": "date-time"},
+          "ended_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "limitations": {"type": "array", "minItems": 1, "maxItems": 500, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+    "artifacts": {
+      "type": "array", "minItems": 4, "maxItems": 4,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["format", "media_type", "sha256", "size_bytes"],
+        "properties": {
+          "format": {"enum": ["markdown", "html", "json", "pdf"]},
+          "media_type": {"type": "string", "minLength": 1, "maxLength": 100},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "size_bytes": {"type": "integer", "minimum": 1, "maximum": 2097152}
+        }
+      }
+    },
+    "created_by": {"type": "string", "minLength": 1, "maxLength": 128},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}
