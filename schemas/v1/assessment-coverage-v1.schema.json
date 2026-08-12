@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/assessment-coverage-v1.schema.json",
+  "title": "PentAI Assessment Coverage v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "coverage_id", "workflow_id", "engagement_id", "policy_bundle_id", "asset_rule_id", "capability_rule_id", "capability", "outcome", "started_at", "ended_at", "evidence_ids", "limitations", "notes", "recorded_by", "recorded_at", "coverage_complete"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "coverage_id": {"type": "string", "format": "uuid"},
+    "workflow_id": {"type": "string", "format": "uuid"},
+    "engagement_id": {"type": "string", "format": "uuid"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "asset_rule_id": {"type": "string", "format": "uuid"},
+    "capability_rule_id": {"type": "string", "format": "uuid"},
+    "capability": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$", "maxLength": 128},
+    "outcome": {"enum": ["tested_no_findings", "finding_identified", "blocked", "not_tested"]},
+    "started_at": {"type": "string", "format": "date-time"},
+    "ended_at": {"type": "string", "format": "date-time"},
+    "evidence_ids": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"type": "string", "format": "uuid"}},
+    "limitations": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+    "notes": {"type": "string", "minLength": 1, "maxLength": 5000},
+    "recorded_by": {"type": "string", "minLength": 1, "maxLength": 128},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "coverage_complete": {"const": false}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"outcome": {"enum": ["tested_no_findings", "finding_identified"]}}},
+      "then": {"properties": {"evidence_ids": {"minItems": 1}}}
+    }
+  ]
+}

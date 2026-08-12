@@ -7,6 +7,7 @@ from base64 import b64decode
 from binascii import Error as Base64Error
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -20,6 +21,7 @@ from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.backup import BackupError, BackupService
 from pentai_core.config import Settings, allowed_origins
 from pentai_core.controlled_dns_composition import compose_controlled_resolver_provider
+from pentai_core.coverage import AssessmentCoverageService, CoverageError
 from pentai_core.database import register_storage_failure_handler
 from pentai_core.evidence import EvidenceError, EvidenceService
 from pentai_core.evidence_store import EncryptedEvidenceStore
@@ -276,6 +278,19 @@ class ReportDraftRequest(StrictRequest):
     finding_ids: list[str] = Field(min_length=1, max_length=100)
 
 
+class CoverageRecordRequest(StrictRequest):
+    idempotency_key: str = Field(min_length=16, max_length=128)
+    asset_rule_id: str
+    capability_rule_id: str
+    capability: str = Field(min_length=2, max_length=128)
+    outcome: str
+    started_at: datetime
+    ended_at: datetime
+    evidence_ids: list[str] = Field(default_factory=list, max_length=128)
+    limitations: list[str] = Field(min_length=1, max_length=32)
+    notes: str = Field(min_length=1, max_length=5000)
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -330,6 +345,16 @@ def report_call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
     except ReportError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
+def coverage_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except CoverageError as exc:
         raise HTTPException(
             status_code=409,
             detail={"code": exc.code, "message": str(exc)},
@@ -421,6 +446,7 @@ def create_app(
     )
     findings = FindingService(runtime.database_path)
     reports = ReportService(runtime.database_path)
+    coverage = AssessmentCoverageService(runtime.database_path)
     backups = BackupService(
         runtime.database_path,
         evidence_store,
@@ -931,6 +957,32 @@ def create_app(
                 actor_id=actor.principal_id,
             )
         )
+
+    @app.post("/api/v1/workflows/{workflow_id}/coverage")
+    def record_assessment_coverage(
+        workflow_id: str, requested: CoverageRecordRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return coverage_call(
+            lambda: coverage.record(
+                workflow_id,
+                idempotency_key=requested.idempotency_key,
+                asset_rule_id=requested.asset_rule_id,
+                capability_rule_id=requested.capability_rule_id,
+                capability=requested.capability,
+                outcome=requested.outcome,
+                started_at=requested.started_at,
+                ended_at=requested.ended_at,
+                evidence_ids=requested.evidence_ids,
+                limitations=requested.limitations,
+                notes=requested.notes,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.get("/api/v1/workflows/{workflow_id}/coverage")
+    def list_assessment_coverage(workflow_id: str) -> dict[str, Any]:
+        return {"coverage": coverage_call(lambda: coverage.list_for_workflow(workflow_id))}
 
     @app.get("/api/v1/report-drafts/{report_id}")
     def get_report_draft(report_id: str) -> dict[str, Any]:

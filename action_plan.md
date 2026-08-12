@@ -395,6 +395,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   bind the workflow policy, render four bounded digested formats, escape inactive HTML,
   and append audit linkage. Drafts confer no approval, export-ready, or submission authority.
 - [ ] Generate a coverage-aware “No Findings” report.
+  - Immutable human-recorded coverage now binds exact allowed policy asset/capability
+    rules, testing intervals, available evidence, outcomes, and explicit limitations.
+    Coverage sufficiency and “No Findings” rendering remain a separate dependent slice.
 - [ ] Require explicit human report approval before export-ready status.
 
 ### 6.8 Phase 1 vertical demonstrations

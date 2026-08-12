@@ -377,6 +377,12 @@ HTML, canonical JSON, and text-only PDF artifacts are bounded, content-digested,
 immutable, and audit-linked. Draft status cannot approve export or create a submission
 transport.
 
+Assessment coverage records are human-authored, immutable, audit-linked assertions for
+one allowed policy asset/capability pair. Claims that testing occurred require
+available evidence from the same workflow and policy. Blocked and untested outcomes
+remain explicit gaps, every record disclaims completeness, and no coverage entry can
+authorize execution or make a report export-ready.
+
 Encrypted backups use a key domain separated from evidence storage, an online SQLite
 snapshot, an exact authenticated member manifest, and authenticated evidence reads.
 Restore verification occurs only in a newly created isolated directory and never
