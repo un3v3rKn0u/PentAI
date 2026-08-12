@@ -40,6 +40,7 @@ from pentai_core.network_safety_supervisor import (
 )
 from pentai_core.no_findings_reports import NoFindingsReportError, NoFindingsReportService
 from pentai_core.policy_signing import PolicySigner
+from pentai_core.report_approvals import ReportApprovalError, ReportApprovalService
 from pentai_core.reports import ReportError, ReportService
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_core.storage_safety import StorageSafetyLatch
@@ -299,6 +300,13 @@ class NoFindingsReportDraftRequest(StrictRequest):
     coverage_ids: list[str] = Field(min_length=1, max_length=500)
 
 
+class ReportExportApprovalRequest(StrictRequest):
+    report_kind: str
+    expected_status: str
+    reason: str = Field(min_length=1, max_length=1000)
+    confirm_export_ready: bool
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -373,6 +381,16 @@ def no_findings_report_call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
     except NoFindingsReportError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
+def report_approval_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except ReportApprovalError as exc:
         raise HTTPException(
             status_code=409,
             detail={"code": exc.code, "message": str(exc)},
@@ -466,6 +484,7 @@ def create_app(
     reports = ReportService(runtime.database_path)
     coverage = AssessmentCoverageService(runtime.database_path)
     no_findings_reports = NoFindingsReportService(runtime.database_path)
+    report_approvals = ReportApprovalService(runtime.database_path)
     backups = BackupService(
         runtime.database_path,
         evidence_store,
@@ -1037,6 +1056,28 @@ def create_app(
                 "X-Content-Type-Options": "nosniff",
                 "Content-Security-Policy": "default-src 'none'; sandbox",
             },
+        )
+
+    @app.post("/api/v1/report-drafts/{report_id}/export-approval")
+    def approve_report_export(
+        report_id: str, requested: ReportExportApprovalRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return report_approval_call(
+            lambda: report_approvals.approve(
+                report_id,
+                report_kind=requested.report_kind,
+                expected_status=requested.expected_status,
+                reason=requested.reason,
+                confirm_export_ready=requested.confirm_export_ready,
+                actor_id=actor.principal_id,
+            )
+        )
+
+    @app.get("/api/v1/report-drafts/{report_id}/export-approval")
+    def get_report_export_approval(report_id: str, report_kind: str) -> dict[str, Any]:
+        return report_approval_call(
+            lambda: report_approvals.get(report_id, report_kind=report_kind)
         )
 
     @app.get("/api/v1/report-drafts/{report_id}")

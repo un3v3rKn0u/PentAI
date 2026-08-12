@@ -14,6 +14,6 @@ content.
 
 Migration `0025_report_drafts.sql` is additive and makes draft metadata and artifacts
 immutable. Rollback requires a verified pre-migration backup because older binaries do
-not protect these rows. Human report approval/export, rich styling, screenshots,
-coverage-aware “No Findings” reports, and automatic platform submission remain separate
-slices.
+not protect these rows. A later approval record may bind an exact draft as export-ready;
+rich styling, screenshots, file export, and automatic platform submission remain
+separate slices.

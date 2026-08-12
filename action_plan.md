@@ -400,7 +400,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Completed workflows can now produce immutable four-format drafts only when the
     latest evidence-backed `tested_no_findings` records exactly cover every allowed
     policy asset/capability pair and no unresolved finding exists.
-- [ ] Require explicit human report approval before export-ready status.
+- [x] Require explicit human report approval before export-ready status.
+  - Authenticated human approval now binds the exact immutable findings or No Findings
+    draft hash and all four reverified artifact digests. Approval is version-fenced to
+    draft status, audit-linked, and does not enable file export or submission.
 
 ### 6.8 Phase 1 vertical demonstrations
 

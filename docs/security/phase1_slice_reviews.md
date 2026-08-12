@@ -1811,3 +1811,43 @@ no existing data is transformed.
 human-authored, and policy matrix completeness reflects the policy's declared rules
 rather than an independent methodology catalog. This review is self-authored and
 non-independent and cannot satisfy an external independent-review requirement.
+
+## 2026-08-12 — Explicit report export approval
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Report export approval v1 contract, additive migration 0028,
+authenticated-human identity, explicit confirmation, exact findings and No Findings
+draft selection, expected-status fencing, report metadata hash verification, all four
+artifact byte/digest checks, immutable one-decision persistence, audit linkage,
+authenticated API surface, compatibility, privacy, rollback, and absence of file
+export or submission capability.
+
+**Evidence examined:** Successful approval for both report kinds; exact report and
+artifact digest binding; contract validation; approval retrieval; immutable database
+record; audit content; denial of missing confirmation, wrong expected status, unknown
+report kind, empty reason, duplicate decision, and changed artifact bytes; 189 unittest
+tests, 407 pytest tests plus 235 subtests, Ruff, mypy, and 41 contract files.
+
+**Findings:** Only the authenticated server-side human principal can approve. The
+service accepts exactly `draft` as the expected state, requires explicit boolean
+confirmation, recomputes the immutable report document hash and all four artifact
+digests in one immediate transaction, then stores one non-replayable approval per
+report. Export-ready status is derived only from that exact binding and always records
+`submission_enabled: false`.
+
+**Limitations and deferred work:** This slice records authorization to export; it does
+not write a file, choose a destination, create a signed export manifest, expose a
+platform transport, or submit a report. Local session possession remains the human
+identity boundary. Migration rollback leaves the unused immutable approval table in
+place and requires no transformation of existing report data.
+
+**Residual risk accepted:** A sole local user performs both report review and approval,
+so this does not provide dual control. Artifact confidentiality still depends on the
+local authenticated boundary and any future export implementation must preserve safe
+destination and filesystem semantics. This review is self-authored and non-independent
+and cannot satisfy an external independent-review requirement.
