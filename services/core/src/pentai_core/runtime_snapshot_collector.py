@@ -22,6 +22,7 @@ class SnapshotCollectionError(ValueError):
 class CommandResult:
     returncode: int
     stdout: bytes
+    stderr: bytes = b""
 
 
 class BoundedCommandExecutor(Protocol):
@@ -75,7 +76,7 @@ class LocalBoundedCommandExecutor:
                 argv,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 cwd="/",
                 env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"},
             )
@@ -87,32 +88,52 @@ class LocalBoundedCommandExecutor:
             process.kill()
             raise SnapshotCollectionError("RUNTIME_COMMAND_FAILED", "runtime output is unavailable")
 
-        output: list[bytes] = []
+        if process.stderr is None:
+            process.kill()
+            process.wait()
+            process.stdout.close()
+            raise SnapshotCollectionError("RUNTIME_COMMAND_FAILED", "runtime error is unavailable")
 
-        def read_output(stream: BinaryIO) -> None:
+        stdout: list[bytes] = []
+        stderr: list[bytes] = []
+
+        def read_output(stream: BinaryIO, output: list[bytes]) -> None:
             output.append(stream.read(max_output_bytes + 1))
             stream.close()
 
-        reader = Thread(target=read_output, args=(process.stdout,), daemon=True)
-        reader.start()
+        stdout_reader = Thread(
+            target=read_output, args=(process.stdout, stdout), daemon=True
+        )
+        stderr_reader = Thread(
+            target=read_output, args=(process.stderr, stderr), daemon=True
+        )
+        stdout_reader.start()
+        stderr_reader.start()
         try:
             returncode = process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired as exc:
             process.kill()
             process.wait()
-            reader.join(timeout=1)
+            stdout_reader.join(timeout=1)
+            stderr_reader.join(timeout=1)
             raise SnapshotCollectionError(
                 "RUNTIME_COMMAND_TIMEOUT", "runtime inspection timed out"
             ) from exc
-        reader.join(timeout=1)
-        if reader.is_alive() or not output:
+        stdout_reader.join(timeout=1)
+        stderr_reader.join(timeout=1)
+        if (
+            stdout_reader.is_alive()
+            or stderr_reader.is_alive()
+            or not stdout
+            or not stderr
+        ):
             process.kill()
             raise SnapshotCollectionError("RUNTIME_COMMAND_FAILED", "runtime output read failed")
-        if len(output[0]) > max_output_bytes:
+        if len(stdout[0]) > max_output_bytes or len(stderr[0]) > max_output_bytes:
             raise SnapshotCollectionError(
                 "RUNTIME_OUTPUT_TOO_LARGE", "runtime output exceeded limit"
             )
-        return CommandResult(returncode, output[0])
+        return CommandResult(returncode, stdout[0], stderr[0])
 
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")

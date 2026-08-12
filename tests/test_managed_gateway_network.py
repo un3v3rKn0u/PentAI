@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pentai_core.managed_gateway_network import (
     ManagedGatewayNetworkProvisioner,
+    NetworkProbeExecutionError,
     OciNetworkConformanceProbe,
     normalize_oci_image_digest,
     require_rootless_runtime,
@@ -306,8 +307,8 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "NETWORK_PROBE_INVALID")
         self.assertEqual(len(executor.calls), 1)
 
-        probe_failure = FixtureExecutor([CommandResult(2, b"")])
-        with self.assertRaises(SnapshotCollectionError) as raised:
+        probe_failure = FixtureExecutor([CommandResult(2, b"", b"probe rejected input")])
+        with self.assertRaises(NetworkProbeExecutionError) as raised:
             OciNetworkConformanceProbe(
                 executable=DOCKER,
                 probe_image_digest=IMAGE,
@@ -315,6 +316,8 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
                 sleeper=lambda _: self.fail("probe failures must not be retried"),
             ).verify(NETWORK_ID)
         self.assertEqual(raised.exception.code, "NETWORK_PROBE_FAILED")
+        self.assertEqual(raised.exception.returncode, 2)
+        self.assertEqual(raised.exception.stderr, b"probe rejected input")
         self.assertEqual(len(probe_failure.calls), 1)
 
     def test_probe_identity_types_and_failures_deny(self) -> None:

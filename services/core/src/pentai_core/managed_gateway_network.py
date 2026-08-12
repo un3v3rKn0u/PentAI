@@ -14,6 +14,18 @@ from pentai_core.runtime_snapshot_collector import (
     SnapshotCollectionError,
 )
 
+
+class NetworkProbeExecutionError(SnapshotCollectionError):
+    """Fail closed while retaining bounded subprocess diagnostics for CI."""
+
+    def __init__(
+        self, code: str, message: str, *, returncode: int, stderr: bytes
+    ) -> None:
+        super().__init__(code, message)
+        self.returncode = returncode
+        self.stderr = stderr
+
+
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
 _RAW_SHA256 = re.compile(r"^[a-f0-9]{64}$")
@@ -326,12 +338,19 @@ class OciNetworkConformanceProbe:
                 self._sleeper(self._startup_retry_seconds)
         assert result is not None
         if result.returncode == 125:
-            raise SnapshotCollectionError(
+            raise NetworkProbeExecutionError(
                 "NETWORK_PROBE_STARTUP_FAILED",
                 f"network probe did not start after {self._startup_attempts} bounded attempts",
+                returncode=result.returncode,
+                stderr=result.stderr,
             )
         if result.returncode != 0:
-            raise SnapshotCollectionError("NETWORK_PROBE_FAILED", "network probe failed")
+            raise NetworkProbeExecutionError(
+                "NETWORK_PROBE_FAILED",
+                "network probe failed",
+                returncode=result.returncode,
+                stderr=result.stderr,
+            )
         if len(result.stdout) > 4096:
             raise SnapshotCollectionError(
                 "NETWORK_PROBE_INVALID", "network probe output is invalid"
