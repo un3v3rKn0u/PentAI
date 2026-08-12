@@ -410,8 +410,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - The Assessments workspace creates active-policy-bound planned workflows, loads one
     exact workflow identity, and permits only version-fenced contract lifecycle edges.
     It rejects unexpected execution authority and can queue/cancel coordination-only
-    tasks that assert dispatch and external effects are disabled. Lease claiming, worker
-    dispatch, and gateway paths remain absent.
+    tasks that assert dispatch and external effects are disabled. Exact workflow lookup
+    now reconstructs durable task lifecycle, attempts, and bounded failure status from a
+    fail-closed core snapshot after restart. Lease credentials, worker dispatch, and
+    gateway paths remain absent.
   - The Evidence workspace captures bounded encrypted originals, displays custody
     metadata, creates exact server-derived text redactions, and renders only derivatives
     that explicitly assert inactive plain-text preview semantics. It also exposes a

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedWorkflowTransitions, parseTaskInputRefs, workflowCreateRequest, workflowPath, workflowTaskCancelPath, workflowTaskRequest, workflowTasksPath, workflowTransitionRequest } from "./AssessmentsWorkspace";
+import { allowedWorkflowTransitions, parseTaskInputRefs, workflowCreateRequest, workflowPath, workflowSnapshot, workflowTaskCancelPath, workflowTaskRequest, workflowTasksPath, workflowTransitionRequest } from "./AssessmentsWorkspace";
 
 describe("supervised Assessments workspace", () => {
   it("routes through exact workflow coordination endpoints", () => {
@@ -32,5 +32,16 @@ describe("supervised Assessments workspace", () => {
   });
   it("binds a task request to kind, retry key, refs, and parent", () => {
     expect(workflowTaskRequest("evidence_capture", "workflow-task-ui-stable", ["ref-a"], " parent-a ")).toEqual({ task_kind: "evidence_capture", idempotency_key: "workflow-task-ui-stable", input_refs: ["ref-a"], parent_task_id: "parent-a" });
+  });
+  it("reconstructs durable task state only from an exact non-executing snapshot", () => {
+    const task = { task_id: "task-a", workflow_id: "workflow-a", dispatch_enabled: false, external_effect_enabled: false };
+    const lifecycle = { task_id: "task-a", state: "retry_wait", attempt_count: 2, max_attempts: 3, dispatch_enabled: false, external_effect_enabled: false };
+    expect(workflowSnapshot({ workflow: { workflow_id: "workflow-a", execution_enabled: false }, tasks: [task], task_lifecycles: [lifecycle], checkpoints: [{ task_id: "task-a" }] }, "workflow-a").tasks[0]).toMatchObject({ lifecycle, checkpoint_count: 1 });
+  });
+  it("denies mismatched or authority-bearing task history", () => {
+    const baseline = { workflow: { workflow_id: "workflow-a", execution_enabled: false }, tasks: [], task_lifecycles: [], checkpoints: [] };
+    expect(() => workflowSnapshot(baseline, "workflow-b")).toThrow("WORKFLOW_SNAPSHOT_INVALID");
+    expect(() => workflowSnapshot({ ...baseline, tasks: [{ task_id: "task-a", workflow_id: "workflow-a", dispatch_enabled: true, external_effect_enabled: false }] }, "workflow-a")).toThrow("WORKFLOW_SNAPSHOT_INVALID");
+    expect(() => workflowSnapshot({ ...baseline, checkpoints: [{ task_id: "unknown" }] }, "workflow-a")).toThrow("WORKFLOW_SNAPSHOT_INVALID");
   });
 });
