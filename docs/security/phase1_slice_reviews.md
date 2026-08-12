@@ -1682,3 +1682,15 @@ this v1 contract. Local custody is not externally timestamped.
 **Residual risk accepted:** CVSS 3.1 computation is locally implemented and requires
 independent corpus comparison before release assurance. This review is self-authored and
 non-independent and cannot satisfy an external independent-review requirement.
+
+### Hosted containment follow-up — bounded Podman startup readiness
+
+PR #100 exposed the recurring rootless Podman race where a freshly created internal
+network was inspectable but the first isolated probe process failed to start. The
+conformance verifier now permits exactly three process-start attempts separated by a
+fixed 250 ms delay. It retries only OCI runtime exit 125 (container startup failure);
+probe exit failures, malformed output, identity mismatch, and every unsafe containment
+measurement still deny on the first observation. Persistent startup failure denies with
+an explicit bounded-attempt reason. Unit tests prove eventual readiness, exact
+exhaustion, and no retry of invalid or unsafe successful output. Hosted Linux remains
+the required live evidence.

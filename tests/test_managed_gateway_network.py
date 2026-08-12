@@ -252,9 +252,7 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
             self.assertEqual(raised.exception.code, expected)
 
     def test_probe_uses_pinned_locked_down_fixture_and_parses_result(self) -> None:
-        executor = FixtureExecutor(
-            [encoded(conformance())]
-        )
+        executor = FixtureExecutor([encoded(conformance())])
         result = OciNetworkConformanceProbe(
             executable=DOCKER, probe_image_digest=IMAGE, executor=executor
         ).verify(NETWORK_ID)
@@ -267,6 +265,57 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
         self.assertIn(IMAGE, command)
         self.assertIn("--network-id=" + NETWORK_ID, command)
         self.assertEqual((timeout, output_limit), (10, 4096))
+
+    def test_probe_retries_only_bounded_startup_failures(self) -> None:
+        pauses: list[float] = []
+        executor = FixtureExecutor(
+            [CommandResult(125, b""), CommandResult(125, b""), encoded(conformance())]
+        )
+        result = OciNetworkConformanceProbe(
+            executable=DOCKER,
+            probe_image_digest=IMAGE,
+            executor=executor,
+            sleeper=pauses.append,
+        ).verify(NETWORK_ID)
+        self.assertTrue(result.direct_egress_blocked)
+        self.assertEqual(len(executor.calls), 3)
+        self.assertEqual(pauses, [0.25, 0.25])
+
+    def test_probe_persistent_startup_failure_denies_after_exact_bound(self) -> None:
+        executor = FixtureExecutor([CommandResult(125, b"") for _ in range(3)])
+        with self.assertRaises(SnapshotCollectionError) as raised:
+            OciNetworkConformanceProbe(
+                executable=DOCKER,
+                probe_image_digest=IMAGE,
+                executor=executor,
+                sleeper=lambda _: None,
+            ).verify(NETWORK_ID)
+        self.assertEqual(raised.exception.code, "NETWORK_PROBE_STARTUP_FAILED")
+        self.assertIn("3 bounded attempts", str(raised.exception))
+        self.assertEqual(len(executor.calls), 3)
+
+    def test_probe_does_not_retry_invalid_or_unsafe_success_output(self) -> None:
+        executor = FixtureExecutor([encoded({"network_id": NETWORK_ID})])
+        with self.assertRaises(SnapshotCollectionError) as raised:
+            OciNetworkConformanceProbe(
+                executable=DOCKER,
+                probe_image_digest=IMAGE,
+                executor=executor,
+                sleeper=lambda _: self.fail("invalid output must not be retried"),
+            ).verify(NETWORK_ID)
+        self.assertEqual(raised.exception.code, "NETWORK_PROBE_INVALID")
+        self.assertEqual(len(executor.calls), 1)
+
+        probe_failure = FixtureExecutor([CommandResult(2, b"")])
+        with self.assertRaises(SnapshotCollectionError) as raised:
+            OciNetworkConformanceProbe(
+                executable=DOCKER,
+                probe_image_digest=IMAGE,
+                executor=probe_failure,
+                sleeper=lambda _: self.fail("probe failures must not be retried"),
+            ).verify(NETWORK_ID)
+        self.assertEqual(raised.exception.code, "NETWORK_PROBE_FAILED")
+        self.assertEqual(len(probe_failure.calls), 1)
 
     def test_probe_identity_types_and_failures_deny(self) -> None:
         documents = (
