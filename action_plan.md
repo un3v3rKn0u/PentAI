@@ -403,6 +403,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     artifact to a desktop-selected local directory. The UI requires explicit restricted
     plaintext acknowledgement and displays the immutable export receipt; submission
     remains absent and the broader multi-page workspace is still incomplete.
+  - The Logs workspace presents the authenticated tamper-evident ledger as a read-only,
+    locally filtered history with explicit chain validity and exact event identity/hash
+    inspection. It does not expose event-data search, mutation, export, or replay.
 - [x] Generate Markdown, HTML, JSON, and PDF report drafts.
   Human-requested immutable drafts now snapshot exact `report_ready` finding versions,
   bind the workflow policy, render four bounded digested formats, escape inactive HTML,
