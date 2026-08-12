@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ReportsWorkspace } from "./ReportsWorkspace";
 import { FindingsWorkspace } from "./FindingsWorkspace";
 import { EvidenceWorkspace } from "./EvidenceWorkspace";
+import { auditPath, LogsWorkspace } from "./LogsWorkspace";
 
 const emptyHash = "0".repeat(64);
 
@@ -660,7 +661,7 @@ export function App() {
   }
 
   async function refreshAudit() {
-    setAudit(await request("/audit"));
+    setAudit(await request(auditPath()));
   }
 
   return (
@@ -941,24 +942,7 @@ export function App() {
           {grant && <code>{grant.grant_id} · expires {grant.expires_at}</code>}
         </section>
 
-        <section className="panel wide audit-panel">
-          <div className="panel-heading">
-            <h2><span>5</span> Tamper-evident audit</h2>
-            <button onClick={() => run(refreshAudit)} disabled={!connection}>Refresh and verify</button>
-          </div>
-          <p className={audit.verification.valid ? "verified" : "error"}>
-            Chain {audit.verification.valid ? "verified" : "invalid"} · {audit.verification.event_count ?? 0} events
-          </p>
-          <ol className="audit-list">
-            {audit.events.map((event: Json) => (
-              <li key={event.event_id}>
-                <strong>{event.action}</strong>
-                <span>{event.data.outcome ?? event.data.decision ?? event.subject_type}</span>
-                <code>{event.event_hash.slice(0, 16)}…</code>
-              </li>
-            ))}
-          </ol>
-        </section>
+        <LogsWorkspace audit={audit} connected={Boolean(connection)} refresh={() => run(refreshAudit)} />
         <EvidenceWorkspace connection={connection} />
         <FindingsWorkspace connection={connection} />
         <ReportsWorkspace connection={connection} />

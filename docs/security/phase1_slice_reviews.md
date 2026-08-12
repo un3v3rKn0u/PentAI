@@ -2077,3 +2077,36 @@ physical erasure, and custody metadata intentionally remains. A malicious princi
 the authenticated same-user desktop boundary remains outside this UI control's threat
 model. This review is self-authored and non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-12 — Supervised Logs workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Authenticated audit endpoint reuse, complete-chain verification
+status, read-only ordered history, bounded local filtering, exact identity/hash detail,
+invalid-chain warning, sensitive event-data exclusion, responsive layout, compatibility,
+privacy, rollback, and absence of mutation, deletion, replay, export, or execution.
+
+**Evidence examined:** UI typecheck; Vitest coverage for read-only routing, identity-field
+filtering, stable empty-filter ordering, and exclusion of arbitrary event data; production
+UI build; complete diff; audit event contract, chain verification implementation, and
+security-invariant review.
+
+**Findings:** The workspace obtains all events and verification state from the existing
+authenticated core and invents no integrity result. Filters do not leave the webview and
+cannot search or display the unconstrained event data object. An invalid chain is an
+explicit alert that directs the operator not to trust the displayed history.
+
+**Limitations and deferred work:** The endpoint returns the complete ledger without
+pagination, so very large local histories will require a separate bounded-query contract.
+The UI does not provide date ranges, structured data inspection, export, correlation, or
+alerting. Rollback affects presentation only and leaves the append-only ledger unchanged.
+
+**Residual risk accepted:** Actor and subject identifiers can themselves be sensitive and
+are displayed within the authenticated same-user desktop boundary. This review is
+self-authored and non-independent and cannot satisfy an external independent-review
+requirement.
