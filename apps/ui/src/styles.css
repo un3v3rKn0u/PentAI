@@ -125,6 +125,12 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
 .finding-list button.selected { background: #15382f; border-color: #4c9b81; }
 .finding-list span, .finding-list code { color: #7f8b99; font-size: 11px; overflow-wrap: anywhere; }
 .finding-review { padding: 14px; border: 1px solid #315447; border-radius: 10px; background: #0d1815; }
+.evidence-workspace { grid-column: 1 / -1; }
+.evidence-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.evidence-lookup { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin-top: 18px; }
+.evidence-review { display: grid; gap: 10px; margin-top: 14px; padding: 14px; border: 1px solid #315447; border-radius: 10px; background: #0d1815; }
+.inactive-preview { padding: 12px; border: 1px solid #395247; border-radius: 8px; background: #080b0f; }
+.inactive-preview pre { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #a8d1c4; }
 .state-key { max-width: 1400px; margin: 18px auto 0; display: flex; flex-wrap: wrap; gap: 7px; }
 .state-key span { padding: 5px 8px; border: 1px solid #29323c; border-radius: 999px; color: #667382; font-size: 10px; text-transform: uppercase; }
 .state-key .current { color: #c7d1dc; border-color: #596777; }
@@ -138,4 +144,5 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
   .setup-proposal dl { grid-template-columns: 1fr 1fr; }
   .report-form-grid { grid-template-columns: 1fr; }
   .finding-form-grid, .findings-layout { grid-template-columns: 1fr; }
+  .evidence-form-grid { grid-template-columns: 1fr; }
 }

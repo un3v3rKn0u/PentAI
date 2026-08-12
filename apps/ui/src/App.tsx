@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ReportsWorkspace } from "./ReportsWorkspace";
 import { FindingsWorkspace } from "./FindingsWorkspace";
+import { EvidenceWorkspace } from "./EvidenceWorkspace";
 
 const emptyHash = "0".repeat(64);
 
@@ -958,6 +959,7 @@ export function App() {
             ))}
           </ol>
         </section>
+        <EvidenceWorkspace connection={connection} />
         <FindingsWorkspace connection={connection} />
         <ReportsWorkspace connection={connection} />
       </div>

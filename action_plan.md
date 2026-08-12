@@ -390,6 +390,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   history. The Findings workspace now supports exact candidate creation, workflow lists,
   and version-fenced human transitions. Automatic duplicate proposals remain a later slice.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
+  - The Evidence workspace captures bounded encrypted originals, displays custody
+    metadata, creates exact server-derived text redactions, and renders only derivatives
+    that explicitly assert inactive plain-text preview semantics.
   - The Findings workspace creates policy/evidence-bound candidates, lists one exact
     workflow, and performs explicit version-fenced human lifecycle reviews.
   - The Reports workspace now creates exact findings or coverage-aware No Findings

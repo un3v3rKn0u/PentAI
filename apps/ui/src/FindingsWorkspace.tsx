@@ -157,7 +157,7 @@ export function FindingsWorkspace({ connection }: { connection: CoreConnection |
   return (
     <section className="panel wide findings-workspace" aria-busy={busy}>
       <div className="panel-heading">
-        <h2><span>6</span> Findings</h2>
+        <h2><span>7</span> Findings</h2>
         <strong className="hint">Human-supervised lifecycle</strong>
       </div>
       <p className="hint">Create a candidate from exact policy asset and evidence UUIDs. The core recomputes CVSS and denies invalid scope, provenance, or lifecycle changes.</p>
