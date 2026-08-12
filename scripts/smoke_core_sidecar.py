@@ -9,10 +9,65 @@ import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_DIAGNOSTIC_BYTES = 4_000
+
+
+@dataclass(frozen=True)
+class BoundedProcessResult:
+    returncode: int
+    stdout: bytes
+    stderr: bytes
+    timed_out: bool
+    forced_kill: bool
+
+
+class BoundedBinaryProcess(Protocol):
+    returncode: int | None
+
+    def communicate(
+        self, input: bytes | None = None, timeout: float | None = None
+    ) -> tuple[bytes, bytes]: ...
+
+    def terminate(self) -> None: ...
+
+    def kill(self) -> None: ...
+
+
+def communicate_bounded(
+    process: BoundedBinaryProcess,
+    *,
+    process_input: bytes,
+    timeout: float,
+    shutdown_timeout: float = 5,
+) -> BoundedProcessResult:
+    """Collect a child process without leaving it running after a timeout."""
+    timed_out = False
+    forced_kill = False
+    try:
+        stdout, stderr = process.communicate(input=process_input, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        process.terminate()
+        try:
+            stdout, stderr = process.communicate(timeout=shutdown_timeout)
+        except subprocess.TimeoutExpired:
+            forced_kill = True
+            process.kill()
+            stdout, stderr = process.communicate()
+    if process.returncode is None:
+        raise RuntimeError("bounded child process cleanup did not finish")
+    return BoundedProcessResult(
+        returncode=process.returncode,
+        stdout=stdout,
+        stderr=stderr,
+        timed_out=timed_out,
+        forced_kill=forced_kill,
+    )
 
 
 def host_triple() -> str:
@@ -131,7 +186,7 @@ def main() -> None:
             collision.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             collision.bind(("127.0.0.1", collision_port))
             collision.listen()
-            blocked = subprocess.run(  # noqa: S603 - executable is the locally built sidecar
+            blocked_process = subprocess.Popen(  # noqa: S603 - locally built sidecar
                 [str(executable)],
                 env=environment(
                     collision_port,
@@ -139,10 +194,14 @@ def main() -> None:
                     collision_credential,
                     Path(temporary) / "collision-sources",
                 ),
-                input=f"{collision_source_key}\n".encode(),
-                capture_output=True,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            blocked = communicate_bounded(
+                blocked_process,
+                process_input=f"{collision_source_key}\n".encode(),
                 timeout=10,
-                check=False,
             )
         if blocked.returncode == 0:
             raise RuntimeError("core sidecar accepted an occupied port")
