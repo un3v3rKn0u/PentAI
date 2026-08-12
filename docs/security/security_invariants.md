@@ -390,6 +390,12 @@ stale, or ambiguous coverage denies generation. The immutable draft carries the 
 coverage hashes, evidence references, testing intervals, and limitations and cannot
 approve export or claim exhaustive security.
 
+Export-ready status exists only as an immutable human approval bound to one exact
+findings or No Findings draft content hash and all four artifact digests. Approval
+requires explicit confirmation and revalidates stored metadata and artifact bytes in
+one transaction. Missing, changed, incomplete, already-decided, or ambiguous input
+denies; approval never enables submission.
+
 Encrypted backups use a key domain separated from evidence storage, an online SQLite
 snapshot, an exact authenticated member manifest, and authenticated evidence reads.
 Restore verification occurs only in a newly created isolated directory and never

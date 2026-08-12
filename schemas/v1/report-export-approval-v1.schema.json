@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/report-export-approval-v1.schema.json",
+  "title": "PentAI Report Export Approval v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "approval_id", "approval_type", "report_id", "report_kind", "workflow_id", "policy_bundle_id", "report_content_hash", "artifact_digests", "expected_status", "decision", "reason", "approver", "approved_at", "export_ready", "submission_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "approval_id": {"type": "string", "format": "uuid"},
+    "approval_type": {"const": "report_export"},
+    "report_id": {"type": "string", "format": "uuid"},
+    "report_kind": {"enum": ["findings", "no_findings"]},
+    "workflow_id": {"type": "string", "format": "uuid"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "report_content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "artifact_digests": {
+      "type": "object", "additionalProperties": false,
+      "required": ["markdown", "html", "json", "pdf"],
+      "properties": {
+        "markdown": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "html": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "json": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "pdf": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "expected_status": {"const": "draft"},
+    "decision": {"const": "approved"},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "approver": {
+      "type": "object", "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {"const": "human"},
+        "actor_id": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "approved_at": {"type": "string", "format": "date-time"},
+    "export_ready": {"const": true},
+    "submission_enabled": {"const": false}
+  }
+}

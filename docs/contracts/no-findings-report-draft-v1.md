@@ -11,5 +11,6 @@ blocked, untested, finding-bearing, stale, ambiguous, foreign, or evidence-unava
 coverage denies the entire request. Any unresolved non-rejected finding also denies.
 
 Migration `0027_no_findings_report_drafts.sql` is additive and makes draft metadata and
-four bounded artifacts immutable. Drafts do not assert exhaustive security, approve an
-export, or provide external submission capability.
+four bounded artifacts immutable. Drafts do not assert exhaustive security. A later
+approval record may bind an exact draft as export-ready, but no file-export or external
+submission capability exists.

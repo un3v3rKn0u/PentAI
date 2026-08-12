@@ -478,6 +478,7 @@ def test_report_draft_api_exposes_no_submission_capability(
     assert "/api/v1/workflows/{workflow_id}/coverage" in paths
     assert "/api/v1/workflows/{workflow_id}/no-findings-report-drafts" in paths
     assert "/api/v1/no-findings-report-drafts/{report_id}/artifacts/{format_name}" in paths
+    assert "/api/v1/report-drafts/{report_id}/export-approval" in paths
 
 
 @pytest.mark.parametrize(

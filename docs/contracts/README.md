@@ -69,6 +69,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   an exact policy asset/capability pair, with evidence and explicit limitations.
 - `no-findings-report-draft-v1.schema.json` — coverage-complete immutable report draft
   that snapshots exact coverage and evidence references without granting export authority.
+- `report-export-approval-v1.schema.json` — explicit immutable human approval binding
+  one exact draft hash and all artifact digests to export-ready status.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review
