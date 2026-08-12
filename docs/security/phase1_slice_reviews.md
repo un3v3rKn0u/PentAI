@@ -2237,3 +2237,37 @@ navigation. Those remain separate slices. Rollback leaves durable workflow recor
 authenticated same-user desktop boundary. A stale presentation may cause a safe fenced
 denial. This review is self-authored and non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-12 — Supervised assessment task queue
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Four allowlisted task kinds, ready/running workflow restriction,
+retry-stable idempotency, exact unique UUID input references, optional parent identity,
+workflow response binding, explicit no-dispatch/no-effect assertions, session-only list,
+queued cancellation, API method behavior, compatibility, rollback, and absent lease or
+worker controls.
+
+**Evidence examined:** UI typecheck; Vitest coverage for enqueue/cancel-only routing,
+absence of claim/lease/dispatch/execution paths, UUID parsing and duplicate denial, and
+exact request binding; production UI build; complete diff; workflow task contract,
+enqueue/cancel implementation, lifecycle extension, and authorization boundary.
+
+**Findings:** Task creation is available only for a displayed ready/running workflow with
+matching engagement/policy authority and `execution_enabled: false`. Responses enter the
+UI list only when bound to that workflow and both authority flags are false. Cancellation
+uses an explicit POST body. No lease token or worker operation is exposed.
+
+**Limitations and deferred work:** Without a task-list endpoint, restart or workflow load
+cannot reconstruct task history; the UI says so explicitly. Parent availability and task
+completion remain core-authoritative. Claim, heartbeat, checkpoint, retry, dead-letter,
+dispatch, worker, and gateway UI remain absent. Rollback leaves durable tasks unchanged.
+
+**Residual risk accepted:** Input/task UUIDs are displayed within the authenticated
+same-user desktop boundary. A lost success response may require idempotent retry before
+the task appears locally. This review is self-authored and non-independent and cannot
+satisfy an external independent-review requirement.

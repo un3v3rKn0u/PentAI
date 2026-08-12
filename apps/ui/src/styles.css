@@ -87,6 +87,13 @@ button.danger { border-color: #9b4351; background: #491e26; }
 .assessment-identity { display: grid; grid-template-columns: minmax(120px, .4fr) minmax(0, 1fr); gap: 7px 12px; margin: 0; }
 .assessment-identity dt { color: #758393; font-size: 10px; text-transform: uppercase; }
 .assessment-identity dd { margin: 0; overflow-wrap: anywhere; color: #a8d1c4; font-family: monospace; font-size: 11px; }
+.assessment-tasks { padding-top: 12px; border-top: 1px solid #315447; }
+.assessment-tasks h3 { margin: 0; font-size: 15px; }
+.task-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.workflow-task-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.workflow-task-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; background: #0c1016; }
+.workflow-task-list li div { min-width: 0; display: grid; gap: 4px; }
+.workflow-task-list span, .workflow-task-list code { overflow-wrap: anywhere; color: #7f8b99; font-size: 11px; }
 .panel { border: 1px solid #252c36; border-radius: 14px; background: rgba(17, 22, 29, .94); padding: 20px; min-width: 0; }
 .panel.wide { grid-column: 2; }
 .panel h2 { margin: 0 0 16px; font-size: 18px; }
@@ -186,7 +193,7 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
   .report-form-grid { grid-template-columns: 1fr; }
   .finding-form-grid, .findings-layout, .logs-layout { grid-template-columns: 1fr; }
   .evidence-form-grid { grid-template-columns: 1fr; }
-  .assessment-lookup { grid-template-columns: 1fr; }
+  .assessment-lookup, .task-form-grid { grid-template-columns: 1fr; }
   .dashboard-grid, .program-list { grid-template-columns: 1fr 1fr; }
 }
 
