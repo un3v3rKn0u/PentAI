@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/report-file-export-v1.schema.json",
+  "title": "PentAI Report File Export v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "export_id", "report_id", "report_kind", "approval_id", "format", "artifact_sha256", "size_bytes", "filename", "classification", "exported_by", "exported_at", "submission_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "export_id": {"type": "string", "format": "uuid"},
+    "report_id": {"type": "string", "format": "uuid"},
+    "report_kind": {"enum": ["findings", "no_findings"]},
+    "approval_id": {"type": "string", "format": "uuid"},
+    "format": {"enum": ["markdown", "html", "json", "pdf"]},
+    "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "size_bytes": {"type": "integer", "minimum": 0, "maximum": 2097152},
+    "filename": {"type": "string", "pattern": "^[a-f0-9-]{36}\\.(md|html|json|pdf)$"},
+    "classification": {"const": "restricted"},
+    "exported_by": {"type": "string", "minLength": 1, "maxLength": 128},
+    "exported_at": {"type": "string", "format": "date-time"},
+    "submission_enabled": {"const": false}
+  }
+}

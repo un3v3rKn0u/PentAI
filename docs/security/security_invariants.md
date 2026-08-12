@@ -396,6 +396,12 @@ requires explicit confirmation and revalidates stored metadata and artifact byte
 one transaction. Missing, changed, incomplete, already-decided, or ambiguous input
 denies; approval never enables submission.
 
+Local report export requires that exact approval, revalidates the selected artifact
+bytes and digest, derives the filename from the report identifier, refuses an existing
+destination, publishes through an exclusive same-directory temporary file, and records
+an immutable receipt plus audit event. Export paths and artifact content are excluded
+from audit data, and no network or submission transport exists.
+
 Encrypted backups use a key domain separated from evidence storage, an online SQLite
 snapshot, an exact authenticated member manifest, and authenticated evidence reads.
 Restore verification occurs only in a newly created isolated directory and never

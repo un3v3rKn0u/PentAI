@@ -8,6 +8,7 @@ from binascii import Error as Base64Error
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -41,6 +42,7 @@ from pentai_core.network_safety_supervisor import (
 from pentai_core.no_findings_reports import NoFindingsReportError, NoFindingsReportService
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.report_approvals import ReportApprovalError, ReportApprovalService
+from pentai_core.report_exports import ReportExportError, ReportExportService
 from pentai_core.reports import ReportError, ReportService
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_core.storage_safety import StorageSafetyLatch
@@ -307,6 +309,13 @@ class ReportExportApprovalRequest(StrictRequest):
     confirm_export_ready: bool
 
 
+class ReportFileExportRequest(StrictRequest):
+    report_kind: str
+    format: str
+    destination_directory: str = Field(min_length=1, max_length=4096)
+    confirm_restricted_export: bool
+
+
 def call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -391,6 +400,16 @@ def report_approval_call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
     except ReportApprovalError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
+def report_export_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except ReportExportError as exc:
         raise HTTPException(
             status_code=409,
             detail={"code": exc.code, "message": str(exc)},
@@ -485,6 +504,7 @@ def create_app(
     coverage = AssessmentCoverageService(runtime.database_path)
     no_findings_reports = NoFindingsReportService(runtime.database_path)
     report_approvals = ReportApprovalService(runtime.database_path)
+    report_exports = ReportExportService(runtime.database_path)
     backups = BackupService(
         runtime.database_path,
         evidence_store,
@@ -1078,6 +1098,22 @@ def create_app(
     def get_report_export_approval(report_id: str, report_kind: str) -> dict[str, Any]:
         return report_approval_call(
             lambda: report_approvals.get(report_id, report_kind=report_kind)
+        )
+
+    @app.post("/api/v1/report-drafts/{report_id}/file-exports")
+    def export_report_file(
+        report_id: str, requested: ReportFileExportRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return report_export_call(
+            lambda: report_exports.export(
+                report_id,
+                report_kind=requested.report_kind,
+                format_name=requested.format,
+                destination_directory=Path(requested.destination_directory),
+                confirm_restricted_export=requested.confirm_restricted_export,
+                actor_id=actor.principal_id,
+            )
         )
 
     @app.get("/api/v1/report-drafts/{report_id}")
