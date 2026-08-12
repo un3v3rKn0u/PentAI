@@ -10,6 +10,7 @@ import { ProgramsWorkspace, programsPath } from "./ProgramsWorkspace";
 import { IntakeWorkspace, type IntakeState, type SourceImport } from "./IntakeWorkspace";
 import { AssessmentsWorkspace } from "./AssessmentsWorkspace";
 import { PolicyWorkspace } from "./PolicyWorkspace";
+import { NetworkProfilesWorkspace, type NetworkSetupState } from "./NetworkProfilesWorkspace";
 
 const emptyHash = "0".repeat(64);
 
@@ -30,9 +31,6 @@ type WorkflowState =
   | "expired";
 
 type SafetyState = "loading" | "active" | "paused" | "stopped" | "error";
-type NetworkSetupState = "empty" | "loading" | "needs_confirmation" | "active" | "revoked" | "degraded" | "error";
-
-
 export async function bootstrapCore(): Promise<CoreConnection> {
   if (isTauri()) {
     return invoke<CoreConnection>("core_bootstrap");
@@ -67,19 +65,6 @@ export async function coreRequest(connection: CoreConnection, path: string, body
   return result;
 }
 
-
-export function networkSetupRequirement(code: string) {
-  const messages: Record<string, string> = {
-    CONFIRM_ROUTE: "Confirm the detected interface and gateway.",
-    CONFIRM_RESOLVER_MODE: "Choose and confirm the controlled resolver mode.",
-    ENTER_REGISTERED_SOURCE_IP: "Enter the public source IP registered for the assessment."
-  };
-  return messages[code] ?? "Resolve an unknown setup requirement before activation.";
-}
-
-export function parseSourceAddresses(value: string) {
-  return value.split(",").map((item) => item.trim()).filter(Boolean);
-}
 
 export function networkManifestSettings(networkProfile?: Json) {
   return {
@@ -239,9 +224,6 @@ export function App() {
   const [networkProposal, setNetworkProposal] = useState<Json | null>(null);
   const [networkSetupError, setNetworkSetupError] = useState("");
   const [networkProfiles, setNetworkProfiles] = useState<Json[]>([]);
-  const [registeredSourceIpv4, setRegisteredSourceIpv4] = useState("");
-  const [resolverMode, setResolverMode] = useState("tunnel_resolver");
-  const [routeConfirmed, setRouteConfirmed] = useState(false);
   const [error, setError] = useState("");
   const selectedProgramId = useRef("");
 
@@ -345,7 +327,6 @@ export function App() {
     try {
       const proposal = await request("/network-profile-proposal");
       setNetworkProposal(proposal);
-      setRouteConfirmed(false);
       setNetworkSetupState("needs_confirmation");
     } catch (reason) {
       const code = reason instanceof Error ? reason.message : "REQUEST_FAILED";
@@ -366,19 +347,11 @@ export function App() {
     if (activeProfile) setNetworkSetupState("active");
   }
 
-  async function activateNetworkProfile() {
-    if (!networkProposal) return;
+  async function activateNetworkProfile(activationRequest: Json) {
     setNetworkSetupState("loading");
     setNetworkSetupError("");
     try {
-      const activated = await request("/network-profiles/activate", {
-        proposal_id: networkProposal.proposal_id,
-        confirm_route: routeConfirmed,
-        resolver_mode: resolverMode,
-        registered_source_ipv4: parseSourceAddresses(registeredSourceIpv4),
-        registered_source_ipv6: [],
-        ipv6_mode: "disabled"
-      });
+      const activated = await request("/network-profiles/activate", activationRequest);
       await refreshNetworkProfiles();
       setNetworkProposal(null);
       if (program && engagement && source) {
@@ -398,12 +371,10 @@ export function App() {
     }
   }
 
-  async function revokeNetworkProfile(profileId: string) {
+  async function revokeNetworkProfile(profileId: string, revocationRequest: Json) {
     setNetworkSetupState("loading");
     try {
-      await request(`/network-profiles/${profileId}/revoke`, {
-        reason: "Explicit supervised network profile revocation"
-      });
+      await request(`/network-profiles/${profileId}/revoke`, revocationRequest);
       await refreshNetworkProfiles();
       setNetworkSetupState("revoked");
       await refreshAudit();
@@ -664,58 +635,7 @@ export function App() {
 
       {error && <p className="error" role="alert">{error}</p>}
 
-      <section className="network-setup" aria-busy={networkSetupState === "loading"}>
-        <div>
-          <p className="eyebrow">Guided network setup</p>
-          <h2>Discover local settings for review</h2>
-          <p>Discovery saves a short-lived proposal only. Human confirmation is required before a non-executing profile becomes active.</p>
-        </div>
-        <button onClick={discoverNetworkProfile} disabled={!connection || networkSetupState === "loading"}>
-          {networkSetupState === "loading" ? "Discovering…" : "Discover network settings"}
-        </button>
-        {networkSetupState === "empty" && <p className="setup-status">No network proposal has been created.</p>}
-        {networkSetupState === "loading" && <p className="setup-status">Reading the local route and resolver. No external observer is contacted.</p>}
-        {networkSetupState === "degraded" && <p className="setup-status bad" role="alert">Discovery unavailable: {networkSetupError}. Nothing was activated.</p>}
-        {networkSetupState === "error" && <p className="setup-status bad" role="alert">Network setup failed safely: {networkSetupError}</p>}
-        {networkSetupState === "revoked" && <p className="setup-status">The profile was revoked. Networking remains disabled.</p>}
-        {networkProfiles.filter((item) => item.status === "active").map((item) => (
-          <div className="setup-proposal active-profile" role="status" key={item.profile_id}>
-            <strong>Confirmed profile — execution still disabled</strong>
-            <p>{item.route_interface} · {item.resolver_mode} · {item.registered_source_ipv4.join(", ")}</p>
-            <button className="danger" onClick={() => revokeNetworkProfile(item.profile_id)}>Revoke profile</button>
-          </div>
-        ))}
-        {networkProposal && networkSetupState === "needs_confirmation" && (
-          <div className="setup-proposal" role="status">
-            <dl>
-              <div><dt>Interface</dt><dd>{networkProposal.route_interface}</dd></div>
-              <div><dt>Gateway</dt><dd>{networkProposal.route_gateway ?? "None detected"}</dd></div>
-              <div><dt>Resolvers</dt><dd>{networkProposal.resolver_addresses.join(", ")}</dd></div>
-              <div><dt>Expires</dt><dd>{new Date(networkProposal.expires_at).toLocaleTimeString()}</dd></div>
-            </dl>
-            <strong>Human confirmation still required</strong>
-            <ul>{networkProposal.requirements.map((item: string) => <li key={item}>{networkSetupRequirement(item)}</li>)}</ul>
-            <label>
-              Registered public IPv4 address
-              <input value={registeredSourceIpv4} onChange={(event) => setRegisteredSourceIpv4(event.target.value)} placeholder="Public IP registered for this assessment" />
-            </label>
-            <label>
-              Controlled resolver mode
-              <select value={resolverMode} onChange={(event) => setResolverMode(event.target.value)}>
-                <option value="tunnel_resolver">Resolver supplied by the approved route</option>
-                <option value="approved_resolver">Explicit approved resolver</option>
-              </select>
-            </label>
-            <label className="confirmation-check">
-              <input type="checkbox" checked={routeConfirmed} onChange={(event) => setRouteConfirmed(event.target.checked)} />
-              I confirm the detected interface, gateway, and resolver addresses.
-            </label>
-            <button onClick={activateNetworkProfile} disabled={!routeConfirmed || parseSourceAddresses(registeredSourceIpv4).length === 0}>
-              Confirm and activate profile
-            </button>
-          </div>
-        )}
-      </section>
+      <NetworkProfilesWorkspace connected={Boolean(connection)} state={networkSetupState} proposal={networkProposal} profiles={networkProfiles} error={networkSetupError} discover={discoverNetworkProfile} activate={activateNetworkProfile} revoke={revokeNetworkProfile} />
 
       <div className="workflow-grid">
         <DashboardWorkspace

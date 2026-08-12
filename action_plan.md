@@ -397,6 +397,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     policy lifecycle, active network-profile cardinality, and complete audit verification.
     Missing or ambiguous inputs are never presented as ready, and the summary grants no
     authority because every protected action remains independently core-validated.
+  - The Network Profiles workspace separates non-authoritative route discovery from
+    exact human confirmation, displays immutable active configuration, requires a bounded
+    reason for exact-profile revocation, and visibly blocks ambiguous active-profile state.
+    Profiles remain configuration only and cannot attest a route or enable execution.
   - The Programs workspace lists authenticated durable programs, creates local draft
     programs, and requires explicit selection. Changing identity clears all downstream
     source, manifest, policy, decision, and grant presentation state.
