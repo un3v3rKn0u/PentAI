@@ -371,6 +371,12 @@ human may perform ordered, version-fenced scope, duplicate, validation, report-r
 retest, rejection, and closure transitions. Full finding versions and audit events are
 append-only; findings cannot grant execution authority or approve report export.
 
+Report drafts are human-requested and snapshot only exact current `report_ready`
+finding versions from one workflow and policy. Rendered Markdown, inactive escaped
+HTML, canonical JSON, and text-only PDF artifacts are bounded, content-digested,
+immutable, and audit-linked. Draft status cannot approve export or create a submission
+transport.
+
 Encrypted backups use a key domain separated from evidence storage, an online SQLite
 snapshot, an exact authenticated member manifest, and authenticated evidence reads.
 Restore verification occurs only in a newly created isolated directory and never

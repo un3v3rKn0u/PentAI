@@ -1694,3 +1694,42 @@ measurement still deny on the first observation. Persistent startup failure deni
 an explicit bounded-attempt reason. Unit tests prove eventual readiness, exact
 exhaustion, and no retry of invalid or unsafe successful output. Hosted Linux remains
 the required live evidence.
+
+## 2026-08-12 — Immutable supervised report drafts
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Report draft v1 contract, additive migration 0025, human request
+binding, exact workflow/policy and finding-version snapshots, deterministic Markdown,
+escaped inactive HTML, canonical JSON, minimal text-only PDF, output bounds and
+digests, restricted classification, immutable storage, audit linkage, authenticated
+API surface, compatibility, privacy, rollback, and the absence of submission authority.
+
+**Evidence examined:** Contract validation; exact `report_ready` finding version/hash
+capture; four artifact formats and digest/size verification; HTML injection escaping;
+PDF framing; conflicting idempotency, duplicate IDs, missing/closed findings, and
+unknown formats denying the entire request; database mutation denial; authenticated
+route coverage; explicit absence of submission routes; 189 unittest tests, 384 pytest
+tests plus 235 subtests, Ruff, mypy, 38 contract files, 15 UI tests, UI typecheck/build,
+and desktop Cargo check.
+
+**Findings:** Callers supply only a bounded template choice, title, and finding IDs;
+they cannot supply rendered bodies or assert arbitrary finding versions. Generation
+reloads current findings in one immediate transaction and accepts only exact
+`report_ready` rows from the same workflow. Every artifact is immutable and digested,
+HTML is fully escaped and served with deny-all sandbox headers, and all metadata remains
+explicitly `draft` and `restricted`. No network or platform-submission capability exists.
+
+**Limitations and deferred work:** Draft retrieval is not human approval or an
+export-ready transition. Rich layout, images, redaction-aware display choices,
+coverage-aware “No Findings” reports, signed export manifests, explicit approval,
+and external submission remain separate slices. The minimal PDF is text-only.
+
+**Residual risk accepted:** PDF rendering uses a deliberately narrow repository-owned
+writer rather than an independently assessed rendering engine. Report content may be
+sensitive and depends on local access controls. This review is self-authored and
+non-independent and cannot satisfy an external independent-review requirement.

@@ -63,6 +63,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `finding-v1.schema.json` — policy/evidence-bound supervised finding with deterministic
   CVSS validation, affected assets, duplicate review, validation state, and immutable
   version history.
+- `report-draft-v1.schema.json` — immutable human-requested report draft metadata with
+  exact finding-version references and digested Markdown, HTML, JSON, and PDF artifacts.
 - `canonical-types-v1.schema.json` — reusable canonical target value objects.
 
 ## Ownership and review

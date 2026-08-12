@@ -192,6 +192,9 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("GET", "/api/v1/findings/unknown"),
         ("GET", "/api/v1/findings/unknown/history"),
         ("POST", "/api/v1/findings/unknown/transition"),
+        ("POST", "/api/v1/workflows/unknown/report-drafts"),
+        ("GET", "/api/v1/report-drafts/unknown"),
+        ("GET", "/api/v1/report-drafts/unknown/artifacts/json"),
     ],
 )
 def test_every_api_route_rejects_missing_credentials(
@@ -462,6 +465,16 @@ def test_caller_actor_identity_is_not_accepted_as_authority(
         json_body={"decision": "approved", "approver_id": "forged-human"},
     )
     assert response.status_code == 422
+
+
+def test_report_draft_api_exposes_no_submission_capability(
+    authenticated_client: tuple[FastAPI, str],
+) -> None:
+    app, _ = authenticated_client
+    paths = {route.path for route in app.routes}
+    assert not any("submit" in path or "submission" in path for path in paths)
+    assert "/api/v1/workflows/{workflow_id}/report-drafts" in paths
+    assert "/api/v1/report-drafts/{report_id}/artifacts/{format_name}" in paths
 
 
 @pytest.mark.parametrize(
