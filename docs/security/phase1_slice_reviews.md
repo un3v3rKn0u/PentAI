@@ -2110,3 +2110,36 @@ alerting. Rollback affects presentation only and leaves the append-only ledger u
 are displayed within the authenticated same-user desktop boundary. This review is
 self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
+
+## 2026-08-12 — Operational Dashboard workspace
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Read-only aggregation of authenticated connectivity, global safety,
+local policy lifecycle, active network-profile cardinality, and audit verification;
+default-away-from-ready behavior; automatic authenticated audit refresh; responsive
+layout; compatibility, privacy, rollback, and absence of mutation or authority.
+
+**Evidence examined:** UI typecheck; Vitest coverage for exact ready presentation,
+missing/incomplete state, ambiguous active profiles, and invalid audit verification;
+production UI build; complete diff; existing safety, network-profile, audit contracts,
+and authorization-boundary review.
+
+**Findings:** The dashboard invents no policy, safety, network, connectivity, or audit
+fact. Missing and ambiguous state is attention or blocked, never ready. Multiple active
+profiles fail presentation closed, and audit readiness requires a complete verified
+response. The cards do not feed action requests or bypass core revalidation.
+
+**Limitations and deferred work:** Policy lifecycle is the current workspace's local
+presentation state rather than an independently refreshed durable policy inventory.
+The dashboard has no program/workflow rollups, navigation, history, notifications, or
+operator actions. Those remain separate slices. Rollback removes presentation only.
+
+**Residual risk accepted:** A stale displayed state can briefly lag a core transition;
+this cannot authorize an operation because action boundaries revalidate authoritative
+state. This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.

@@ -390,6 +390,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   history. The Findings workspace now supports exact candidate creation, workflow lists,
   and version-fenced human transitions. Automatic duplicate proposals remain a later slice.
 - [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
+  - The Dashboard now summarizes authenticated core connectivity, global safety, local
+    policy lifecycle, active network-profile cardinality, and complete audit verification.
+    Missing or ambiguous inputs are never presented as ready, and the summary grants no
+    authority because every protected action remains independently core-validated.
   - The Evidence workspace captures bounded encrypted originals, displays custody
     metadata, creates exact server-derived text redactions, and renders only derivatives
     that explicitly assert inactive plain-text preview semantics. It also exposes a
