@@ -165,15 +165,15 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       allowed_http_methods: normalization.techniques?.allowedHttpMethods ?? ["GET"]
     },
     operational_limits: {
-      requests_per_second: normalization.requestsPerSecond,
-      per_host_requests_per_second: normalization.requestsPerSecond,
-      burst_limit: 1,
-      concurrent_connections: 1,
-      maximum_runtime_minutes: 30,
-      maximum_total_requests: normalization.maximumTotalRequests,
-      maximum_request_body_bytes: 0,
-      maximum_response_bytes: normalization.maximumResponseBytes,
-      stop_conditions: ["authorization changes"]
+      requests_per_second: normalization.operationalLimits?.requestsPerSecond ?? normalization.requestsPerSecond,
+      per_host_requests_per_second: normalization.operationalLimits?.perHostRequestsPerSecond ?? normalization.requestsPerSecond,
+      burst_limit: normalization.operationalLimits?.burstLimit ?? 1,
+      concurrent_connections: normalization.operationalLimits?.concurrentConnections ?? 1,
+      maximum_runtime_minutes: normalization.operationalLimits?.maximumRuntimeMinutes ?? 30,
+      maximum_total_requests: normalization.operationalLimits?.maximumTotalRequests ?? normalization.maximumTotalRequests,
+      maximum_request_body_bytes: normalization.operationalLimits?.maximumRequestBodyBytes ?? 0,
+      maximum_response_bytes: normalization.operationalLimits?.maximumResponseBytes ?? normalization.maximumResponseBytes,
+      stop_conditions: normalization.operationalLimits?.stopConditions ?? ["authorization changes"]
     },
     network: networkManifestSettings(networkProfile),
     data_handling: {

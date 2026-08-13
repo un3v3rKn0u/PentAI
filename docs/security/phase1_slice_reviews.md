@@ -987,6 +987,38 @@ dependencies; process isolation and gateway binary enforcement remain future con
 This self-authored review is non-independent and cannot satisfy an external
 independent-review requirement.
 
+## 2026-08-13 — Operational-limit review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Global/per-host rates, burst and concurrency ceilings, runtime,
+request totals, request/response byte bounds, stop conditions, internal consistency,
+manifest mapping, compatibility, rollback, and absence of enforcement or execution.
+
+**Evidence examined:** UI typecheck; 117 Vitest checks including complete limit mapping,
+per-host-over-global denial, fractional-ceiling denial, blank/negative-body denial,
+missing-stop denial, and legacy builder compatibility; production UI build; desktop Cargo check;
+complete diff; manifest v2 operational-limit contract and core limit validation.
+
+**Findings:** Intake no longer relies on fixed burst, concurrency, runtime, body, and stop
+values. Every operational ceiling is explicitly reviewed, and inconsistent inputs fail
+before draft construction. The core and gateway remain the only enforcement authorities.
+
+**Limitations and deferred work:** Testing windows and blackout periods remain unmodeled
+because their contract objects are not yet structurally defined. Live rate, budget, and
+stop enforcement are unchanged. Account, data-handling, reporting, and source-statement
+review remain. Rollback affects draft presentation only.
+
+**Residual risk accepted:** UI numeric checks cannot establish runtime enforcement or
+clock health; core policy validation, gateway reservations, accounting, and safety stops
+remain mandatory. Synthetic limits remain visible inside the authenticated same-user
+desktop boundary. This review is self-authored and non-independent and cannot satisfy an
+external independent-review requirement.
+
 ## 2026-08-13 — Structured technique review
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local
