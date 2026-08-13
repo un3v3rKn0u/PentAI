@@ -22,10 +22,15 @@ from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_policy import canonicalize_url, content_hash, evaluate
 from pentai_policy.document import contract_issues, parse_time
+from pentai_policy.evaluator import _testing_schedule_allows
 
 
 def timestamp(offset: timedelta) -> str:
     return (datetime.now(UTC) + offset).isoformat().replace("+00:00", "Z")
+
+
+def _timestamp_for_test(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
 
 
 def fixture_resolver(
@@ -228,12 +233,12 @@ class AuthorizationSliceTests(unittest.TestCase):
         version = self.service.save_manifest(self.engagement["id"], self.manifest)
         self.assertTrue(version["valid"], version["issues"])
         bundle = self.service.compile_policy(version["id"])
-        self.assertEqual(bundle["policy"]["compiler"]["version"], "1.1.0")
+        self.assertEqual(bundle["policy"]["compiler"]["version"], "1.2.0")
         with closing(sqlite3.connect(self.database)) as connection, connection:
             stored_version = connection.execute(
                 "SELECT compiler_version FROM policy_bundles WHERE id = ?", (bundle["id"],)
             ).fetchone()[0]
-        self.assertEqual(stored_version, "1.1.0")
+        self.assertEqual(stored_version, "1.2.0")
         self.service.approve_policy(bundle["id"], approver_id="human-reviewer")
         self.service.activate_policy(bundle["id"], actor_id="human-reviewer")
         return version, bundle
@@ -1813,6 +1818,56 @@ class AuthorizationSliceTests(unittest.TestCase):
             self.service.evaluate_intent(self.engagement["id"], malformed)["reason_codes"],
             ["DEFAULT_DENY"],
         )
+
+    def test_compiled_testing_schedule_allows_only_reviewed_local_time(self) -> None:
+        instant = datetime.now(UTC).replace(second=0, microsecond=0)
+        offset = 12 - instant.hour
+        sign = "-" if offset > 0 else "+"
+        timezone_name = "UTC" if offset == 0 else f"Etc/GMT{sign}{abs(offset)}"
+        local = instant.astimezone(timezone(timedelta(hours=offset)))
+        window = {
+            "days": [local.strftime("%A").lower()],
+            "start_time": "11:00",
+            "end_time": "13:00",
+            "timezone": timezone_name,
+        }
+        self.manifest["operational_limits"]["allowed_testing_windows"] = [window]
+        self.manifest["operational_limits"]["blackout_periods"] = []
+        _, bundle = self.activate()
+        self.assertEqual(
+            bundle["policy"]["testing_schedule"],
+            {"allowed_windows": [window], "blackout_periods": []},
+        )
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        intent["created_at"] = _timestamp_for_test(instant - timedelta(minutes=1))
+        intent["expires_at"] = _timestamp_for_test(instant + timedelta(minutes=1))
+        decision = evaluate(intent, bundle["policy"], active=True, now=instant)
+        self.assertEqual(decision["reason_codes"], ["EXPLICIT_ALLOW"])
+
+    def test_testing_schedule_denies_closed_blackout_and_malformed(self) -> None:
+        instant = datetime(2030, 1, 7, 12, 0, tzinfo=UTC)
+        monday_window = {
+            "days": ["monday"], "start_time": "11:00",
+            "end_time": "13:00", "timezone": "UTC",
+        }
+        closed = {
+            "allowed_windows": [{**monday_window, "days": ["tuesday"]}],
+            "blackout_periods": [],
+        }
+        blackout = {
+            "allowed_windows": [monday_window],
+            "blackout_periods": [{
+                "starts_at": "2030-01-07T11:30:00Z",
+                "ends_at": "2030-01-07T12:30:00Z", "reason": "Maintenance",
+            }],
+        }
+        malformed = {
+            "allowed_windows": [{**monday_window, "timezone": "Unknown/Zone"}],
+            "blackout_periods": [],
+        }
+        self.assertFalse(_testing_schedule_allows(closed, instant))
+        self.assertFalse(_testing_schedule_allows(blackout, instant))
+        self.assertFalse(_testing_schedule_allows(malformed, instant))
 
     def test_reviewed_account_references_are_compiled_and_enforced(self) -> None:
         self.manifest["account_controls"] = {

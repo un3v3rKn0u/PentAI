@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from ipaddress import ip_address, ip_network
 from typing import Any
 from uuid import UUID, uuid5
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pentai_policy.canonicalize import CanonicalizationError, canonicalize_url
 from pentai_policy.document import content_hash, contract_issues, parse_time
@@ -56,6 +57,24 @@ def _asset_matches(rule: dict[str, Any], target: dict[str, Any]) -> bool:
         return bool(host == {"kind": kind, "value": matcher["value"]})
     if kind == "cidr" and host["kind"] in {"ipv4", "ipv6"}:
         return ip_address(host["value"]) in ip_network(matcher["value"])
+    return False
+
+
+def _testing_schedule_allows(schedule: dict[str, Any], instant: datetime) -> bool:
+    try:
+        for period in schedule["blackout_periods"]:
+            if parse_time(period["starts_at"]) <= instant < parse_time(period["ends_at"]):
+                return False
+        for window in schedule["allowed_windows"]:
+            local = instant.astimezone(ZoneInfo(window["timezone"]))
+            current_time = local.strftime("%H:%M")
+            if (
+                local.strftime("%A").lower() in window["days"]
+                and window["start_time"] <= current_time < window["end_time"]
+            ):
+                return True
+    except (KeyError, TypeError, ValueError, ZoneInfoNotFoundError):
+        return False
     return False
 
 
@@ -123,6 +142,11 @@ def evaluate(
     if instant >= parse_time(policy["validity"]["not_after"]):
         return _decision(intent, stored_hash, "deny", ["POLICY_EXPIRED"], [])
     if instant < parse_time(intent["created_at"]) or instant >= parse_time(intent["expires_at"]):
+        return _decision(intent, stored_hash, "deny", ["TESTING_WINDOW_CLOSED"], [])
+    testing_schedule = policy.get("testing_schedule")
+    if isinstance(testing_schedule, dict) and not _testing_schedule_allows(
+        testing_schedule, instant
+    ):
         return _decision(intent, stored_hash, "deny", ["TESTING_WINDOW_CLOSED"], [])
     try:
         canonical = canonicalize_url(intent["target"]["canonical_url"])

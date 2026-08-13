@@ -93,6 +93,12 @@ and CIDR rules deterministically, with CIDR prefix length contributing specifici
 Previously compiled Policy IR remains readable, but manifests relying on implicit
 authority must be corrected and compiled with `1.1.0` before later activation.
 
+Policy compiler `1.2.0` additionally preserves reviewed testing windows and blackout
+periods in signed Policy IR. The evaluator converts the current UTC instant through each
+window's IANA timezone, requires an allowed weekday and half-open local time interval,
+and gives active blackout intervals precedence. Missing schedules remain readable for
+legacy compatibility; malformed schedules deny closed.
+
 Phase 1 migration `0004_source_provenance.sql` strengthens the persisted source side
 of this binding with normalized source kind, media type, optional source version,
 immutable rows, idempotent repeated imports, and audit linkage. Migration
