@@ -21,7 +21,9 @@ restart. Changing engagement clears the same derived state.
 Selecting an engagement reloads its immutable canonical manifest versions and signed-policy
 summaries. A manifest version can be restored only when its outer record, embedded
 engagement identity, schema, digest, validation status, and provenance document agree.
-Policy summaries remain read-only and cannot restore or activate signed policy content.
+Policy summaries require a separate exact core read before signed content is displayed.
+The core recomputes stored hash bindings and verifies the Ed25519 signature; restoration
+uses the persisted lifecycle status and creates no approval or activation.
 
 ## Safety and failure states
 

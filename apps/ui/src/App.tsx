@@ -9,7 +9,7 @@ import { DashboardWorkspace } from "./DashboardWorkspace";
 import { ProgramsWorkspace, programsPath } from "./ProgramsWorkspace";
 import { IntakeWorkspace, type IntakeState, type SourceImport } from "./IntakeWorkspace";
 import { AssessmentsWorkspace } from "./AssessmentsWorkspace";
-import { PolicyWorkspace } from "./PolicyWorkspace";
+import { PolicyWorkspace, reviewedPolicy } from "./PolicyWorkspace";
 import { NetworkProfilesWorkspace, type NetworkSetupState } from "./NetworkProfilesWorkspace";
 import { AuthorizationWorkspace } from "./AuthorizationWorkspace";
 
@@ -521,6 +521,20 @@ export function App() {
     setManifest(selected); setManifestText(JSON.stringify(selected.document, null, 2)); setManifestDiff(null); setPolicy(null); setState(selected.valid ? "awaiting approval" : "invalid");
   }
 
+  async function selectPolicyForReview(summary: Json) {
+    if (!engagement || !policyHistory.some((item) => item.id === summary.id)) return;
+    const recovered = reviewedPolicy(
+      await request(`/engagements/${engagement.id}/policies/${summary.id}`),
+      summary,
+      engagement.id,
+      engagement.active_policy_id ?? null
+    );
+    setPolicy(recovered);
+    const matchingManifest = manifestHistory.find((item) => item.id === recovered.manifest_version_id);
+    if (matchingManifest) { setManifest(matchingManifest); setManifestText(JSON.stringify(matchingManifest.document, null, 2)); }
+    setState(recovered.status === "approved" || recovered.status === "awaiting_approval" ? "awaiting approval" : recovered.status);
+  }
+
   async function validateManifest() {
     if (!engagement) return;
     let document: Json;
@@ -631,7 +645,7 @@ export function App() {
         <div className="workspace-pane" hidden={activeWorkspace !== "assessments"}>
           <NetworkProfilesWorkspace connected={Boolean(connection)} state={networkSetupState} proposal={networkProposal} profiles={networkProfiles} error={networkSetupError} discover={discoverNetworkProfile} activate={activateNetworkProfile} revoke={revokeNetworkProfile} />
           <AssessmentsWorkspace key={engagement?.id ?? "no-engagement"} connected={Boolean(connection)} engagement={engagement} policy={policy} policyState={state} request={request} auditRefresh={() => void run(refreshAudit)} />
-          <PolicyWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "draft"}`} connected={Boolean(connection)} manifestText={manifestText} setManifestText={(value) => { setManifestText(value); if (manifest?.valid) { setManifest(null); setPolicy(null); setState("draft"); } }} manifest={manifest} manifestHistory={manifestHistory} manifestDiff={manifestDiff} policy={policy} policyHistory={policyHistory} state={state} engagementId={engagement?.id ?? ""} selectManifest={selectManifestForReview} validate={validateManifest} compile={compilePolicy} approve={approvePolicy} activate={activatePolicy} revoke={revokeActivePolicy} />
+          <PolicyWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "draft"}`} connected={Boolean(connection)} manifestText={manifestText} setManifestText={(value) => { setManifestText(value); if (manifest?.valid) { setManifest(null); setPolicy(null); setState("draft"); } }} manifest={manifest} manifestHistory={manifestHistory} manifestDiff={manifestDiff} policy={policy} policyHistory={policyHistory} state={state} engagementId={engagement?.id ?? ""} activePolicyId={engagement?.active_policy_id ?? null} selectManifest={selectManifestForReview} selectPolicy={selectPolicyForReview} validate={validateManifest} compile={compilePolicy} approve={approvePolicy} activate={activatePolicy} revoke={revokeActivePolicy} />
           <AuthorizationWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "none"}`} connected={Boolean(connection)} engagement={engagement} policy={policy} policyState={state} safetyState={safetyState} request={request} changeAssessmentSafety={changeAssessmentSafety} auditRefresh={() => void run(refreshAudit)} />
         </div>
         <div className="workspace-pane" hidden={activeWorkspace !== "evidence"}><EvidenceWorkspace connection={connection} /></div>

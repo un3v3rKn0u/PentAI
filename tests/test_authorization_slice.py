@@ -1907,6 +1907,9 @@ class AuthorizationSliceTests(unittest.TestCase):
         with self.assertRaises(DomainError) as raised:
             rotated_service.activate_policy(bundle["id"], actor_id="human-reviewer")
         self.assertEqual(raised.exception.code, "POLICY_HASH_MISMATCH")
+        with self.assertRaises(DomainError) as recovery:
+            rotated_service.get_policy(self.engagement["id"], bundle["id"])
+        self.assertEqual(recovery.exception.code, "POLICY_SIGNATURE_INVALID")
 
         self.service.activate_policy(bundle["id"], actor_id="human-reviewer")
         intent = intent_for(self.engagement["id"], bundle["content_hash"])
@@ -1918,6 +1921,18 @@ class AuthorizationSliceTests(unittest.TestCase):
         _, bundle = self.activate()
         history = self.service.list_policies(self.engagement["id"])
         self.assertEqual(history[0]["status"], "active")
+        recovered = self.service.get_policy(self.engagement["id"], bundle["id"])
+        self.assertEqual(recovered["policy"], bundle["policy"])
+        self.assertEqual(recovered["engagement_id"], self.engagement["id"])
+        other = self.service.create_engagement(
+            self.program["id"],
+            effective_from=timestamp(timedelta(hours=-1)),
+            expires_at=timestamp(timedelta(hours=2)),
+            timezone="UTC",
+        )
+        with self.assertRaises(DomainError) as wrong_engagement:
+            self.service.get_policy(other["id"], bundle["id"])
+        self.assertEqual(wrong_engagement.exception.code, "POLICY_NOT_FOUND")
         with self.assertRaises(DomainError) as raised:
             self.service.revoke_policy(bundle["id"], actor_id="human-reviewer", reason=" ")
         self.assertEqual(raised.exception.code, "REVOCATION_REASON_REQUIRED")

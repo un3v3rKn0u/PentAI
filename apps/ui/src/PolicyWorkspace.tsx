@@ -10,6 +10,13 @@ export function reviewedManifest(manifests: Json[], manifestId: string, engageme
   return manifest;
 }
 
+export function reviewedPolicy(response: Json, summary: Json, engagementId: string, activePolicyId: string | null) {
+  const document = response.policy;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuid.test(response.id) || response.id !== summary.id || response.engagement_id !== engagementId || response.content_hash !== summary.content_hash || response.manifest_version_id !== summary.manifest_version_id || response.status !== summary.status || !["awaiting_approval", "approved", "active", "expired", "revoked"].includes(response.status) || (response.status === "active" && activePolicyId !== response.id) || (activePolicyId === response.id && !["active", "revoked"].includes(response.status)) || !document || document.schema_version !== "1.0.0" || document.engagement_id !== engagementId || document.content_hash !== response.content_hash || document.compiler?.version !== response.compiler_version || document.signature?.algorithm !== "Ed25519" || document.signature?.key_id !== response.signer_key_id || typeof document.signature?.value !== "string" || !document.signature.value) throw new Error("POLICY_REVIEW_INVALID");
+  return response;
+}
+
 export function policyApprovalRequest(decision: "approved" | "rejected", expiresAt: string, reason: string) {
   const normalizedReason = reason.trim();
   if (!normalizedReason || normalizedReason.length > 500) throw new Error("POLICY_APPROVAL_REASON_INVALID");
@@ -25,12 +32,13 @@ export function policyRevocationRequest(reason: string) {
 
 export function PolicyWorkspace({
   connected, manifestText, setManifestText, manifest, manifestHistory, manifestDiff,
-  policy, policyHistory, state, engagementId, selectManifest, validate, compile, approve, activate, revoke
+  policy, policyHistory, state, engagementId, activePolicyId, selectManifest, selectPolicy, validate, compile, approve, activate, revoke
 }: {
   connected: boolean; manifestText: string; setManifestText: (value: string) => void;
   manifest: Json | null; manifestHistory: Json[]; manifestDiff: Json | null;
   policy: Json | null; policyHistory: Json[]; state: string;
-  engagementId: string; selectManifest: (manifest: Json) => void;
+  engagementId: string; activePolicyId: string | null; selectManifest: (manifest: Json) => void;
+  selectPolicy: (policy: Json) => Promise<void>;
   validate: () => Promise<void>; compile: () => Promise<void>;
   approve: (request: Json) => Promise<void>; activate: () => Promise<void>;
   revoke: (request: Json) => Promise<void>;
@@ -76,7 +84,7 @@ export function PolicyWorkspace({
       {manifest && <div className={manifest.valid ? "result good" : "result bad"}><strong>{manifest.valid ? "Fully resolved" : "Activation blocked"}</strong><ul>{manifest.issues.length === 0 ? <li>Schema, semantics, provenance, validity, and scope passed.</li> : manifest.issues.map((issue: Json) => <li key={`${issue.path}:${issue.code}`}>{issue.code} — {issue.path}</li>)}</ul></div>}
       <div className="policy-history-grid">
         <div><strong>Immutable manifests · {manifestHistory.length}</strong>{manifestHistory.length === 0 ? <p className="hint">No versions saved.</p> : <ol className="source-list">{manifestHistory.map((item) => <li key={item.id} className={manifest?.id === item.id ? "selected" : ""}><div><strong>Version {item.version_number}</strong><span>{item.validation_status}</span><code>{item.content_hash.slice(0, 16)}…</code></div><button type="button" onClick={() => selectManifest(reviewedManifest(manifestHistory, item.id, engagementId))} aria-pressed={manifest?.id === item.id}>{manifest?.id === item.id ? "Selected" : "Review version"}</button></li>)}</ol>}</div>
-        <div><strong>Signed policies · {policyHistory.length}</strong>{policyHistory.length === 0 ? <p className="hint">No policies compiled.</p> : <ol className="source-list">{policyHistory.map((item) => <li key={item.id}><strong>{item.status}</strong><span>Compiler {item.compiler_version}</span><code>{item.content_hash.slice(0, 16)}…</code></li>)}</ol>}</div>
+        <div><strong>Signed policies · {policyHistory.length}</strong>{policyHistory.length === 0 ? <p className="hint">No policies compiled.</p> : <ol className="source-list">{policyHistory.map((item) => <li key={item.id} className={policy?.id === item.id ? "selected" : ""}><div><strong>{item.status}</strong><span>Compiler {item.compiler_version}</span><code>{item.content_hash.slice(0, 16)}…</code></div><button type="button" onClick={() => void perform(() => selectPolicy(item))} aria-pressed={policy?.id === item.id}>{policy?.id === item.id ? "Selected" : "Verify and review"}</button></li>)}</ol>}</div>
       </div>
       {manifestDiff && <div className="result"><strong>Changes from version {manifestDiff.from.version_number}</strong><p>{manifestDiff.changed_sections.length ? manifestDiff.changed_sections.join(", ") : "No authorization-bearing sections changed."}</p></div>}
       {policy && <><pre className="preview">{JSON.stringify(policy.policy, null, 2)}</pre><dl className="hash"><dt>Exact compiled policy SHA-256</dt><dd>{policy.content_hash}</dd></dl>
