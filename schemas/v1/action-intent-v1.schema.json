@@ -54,7 +54,7 @@
         "maximum_redirects": {"type": "integer", "minimum": 0, "maximum": 10}
       }
     },
-    "account_reference": {"type": "string"},
+    "account_reference": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{2,63}$"},
     "parameters_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "impact": {"enum": ["passive", "benign", "minimal_validation", "sensitive"]},
     "requested_limits": {

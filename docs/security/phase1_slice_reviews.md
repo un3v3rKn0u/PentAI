@@ -3039,3 +3039,35 @@ source-statement extraction remain. Rollback affects draft construction only.
 authoritative and may safely over-deny. Reviewed timing terms do not authorize execution.
 This review is self-authored and non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-14 — Account-use review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Unauthenticated-only and approved-test-account modes, bounded account
+identifiers, shared-account denial, external secret-store declaration, manifest
+provenance, Policy IR compilation, deterministic intent denial, compatibility, rollback,
+and absence of credential storage or execution.
+
+**Evidence examined:** UI review and manifest-builder tests; policy compilation and
+allow/deny tests; contract validation; TypeScript typecheck and production build; Python
+tests, Ruff, mypy, desktop Cargo check; complete diff; authorization invariants and MVP
+request-account binding requirements.
+
+**Findings:** New supervised drafts cannot silently treat an arbitrary intent account as
+authorized. The exact identifier set is signed into Policy IR, and missing, unexpected,
+or prohibited references deny before an allow decision. No credential value enters the
+manifest, policy, decision, or UI state.
+
+**Limitations and deferred work:** Secret resolution/injection, per-account capability or
+asset restrictions, credential rotation, login/session lifecycle, and runtime execution
+remain gated. Source-statement extraction also remains in Intake.
+
+**Residual risk accepted:** Identifier syntax reduces accidental secret entry but cannot
+prove that a human did not paste opaque secret material. The external secret boundary
+must independently prevent disclosure. This review is self-authored and non-independent
+and cannot satisfy an external independent-review requirement.

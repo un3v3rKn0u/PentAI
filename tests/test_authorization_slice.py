@@ -1814,6 +1814,44 @@ class AuthorizationSliceTests(unittest.TestCase):
             ["DEFAULT_DENY"],
         )
 
+    def test_reviewed_account_references_are_compiled_and_enforced(self) -> None:
+        self.manifest["account_controls"] = {
+            "mode": "approved_test_accounts",
+            "approved_account_references": ["synthetic-user-1"],
+            "shared_accounts": "deny",
+            "credential_handling": "external_secret_store_only",
+        }
+        _, bundle = self.activate()
+        policy = bundle["policy"]
+        self.assertEqual(
+            policy["account_constraints"],
+            {
+                "mode": "approved_test_accounts",
+                "approved_account_references": ["synthetic-user-1"],
+            },
+        )
+        missing = intent_for(self.engagement["id"], bundle["content_hash"])
+        denied = {**missing, "account_reference": "synthetic-user-2"}
+        allowed = {**missing, "account_reference": "synthetic-user-1"}
+        self.assertEqual(evaluate(missing, policy, active=True)["reason_codes"], ["ACCOUNT_DENIED"])
+        self.assertEqual(evaluate(denied, policy, active=True)["reason_codes"], ["ACCOUNT_DENIED"])
+        self.assertEqual(evaluate(allowed, policy, active=True)["reason_codes"], ["EXPLICIT_ALLOW"])
+
+    def test_unauthenticated_mode_rejects_account_reference(self) -> None:
+        self.manifest["account_controls"] = {
+            "mode": "unauthenticated_only",
+            "approved_account_references": [],
+            "shared_accounts": "deny",
+            "credential_handling": "external_secret_store_only",
+        }
+        _, bundle = self.activate()
+        intent = intent_for(self.engagement["id"], bundle["content_hash"])
+        intent["account_reference"] = "synthetic-user-1"
+        self.assertEqual(
+            evaluate(intent, bundle["policy"], active=True)["reason_codes"],
+            ["ACCOUNT_DENIED"],
+        )
+
     def test_deny_precedence_and_path_boundaries(self) -> None:
         _, bundle = self.activate()
         denied = intent_for(

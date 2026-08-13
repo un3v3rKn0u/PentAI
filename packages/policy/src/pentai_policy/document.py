@@ -600,6 +600,21 @@ def validate_and_canonicalize_manifest(
                         "blackout end must follow its timezone-aware start",
                     )
                 )
+
+    account_controls = document.get("account_controls")
+    if isinstance(account_controls, dict):
+        references = account_controls.get("approved_account_references", [])
+        mode = account_controls.get("mode")
+        if (mode == "unauthenticated_only" and references) or (
+            mode == "approved_test_accounts" and not references
+        ):
+            issues.append(
+                ValidationIssue(
+                    "ACCOUNT_CONTROLS_INVALID",
+                    "/account_controls/approved_account_references",
+                    "account references must match the reviewed authentication mode",
+                )
+            )
     engagement = document.get("engagement")
     if isinstance(engagement, dict):
         try:

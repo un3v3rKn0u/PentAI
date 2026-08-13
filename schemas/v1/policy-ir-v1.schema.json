@@ -106,6 +106,15 @@
         }
       }
     },
+    "account_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "approved_account_references"],
+      "properties": {
+        "mode": {"enum": ["unauthenticated_only", "approved_test_accounts"]},
+        "approved_account_references": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{2,63}$"}}
+      }
+    },
     "default_effect": {"const": "deny"},
     "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "signature": {

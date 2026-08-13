@@ -130,7 +130,8 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
     })),
     field_provenance: Object.fromEntries([
       "/scope", "/techniques", "/operational_limits", "/network",
-      "/data_handling", "/reporting", "/agent_controls"
+      "/data_handling", "/reporting", "/agent_controls",
+      ...(normalization.accountUse ? ["/account_controls"] : [])
     ].map((field) => [field, provenance])),
     scope: {
       assets: reviewedAssets ?? [{
@@ -177,6 +178,12 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       ...(normalization.operationalLimits?.blackoutPeriods ? { blackout_periods: normalization.operationalLimits.blackoutPeriods.map((period) => ({ starts_at: period.startsAt, ends_at: period.endsAt, reason: period.reason })) } : {}),
       stop_conditions: normalization.operationalLimits?.stopConditions ?? ["authorization changes"]
     },
+    ...(normalization.accountUse ? { account_controls: {
+      mode: normalization.accountUse.mode,
+      approved_account_references: normalization.accountUse.approvedAccountReferences,
+      shared_accounts: normalization.accountUse.sharedAccounts,
+      credential_handling: normalization.accountUse.credentialHandling
+    } } : {}),
     network: networkManifestSettings(networkProfile),
     data_handling: {
       real_user_data: normalization.dataHandling?.realUserData ?? "avoid_and_stop",

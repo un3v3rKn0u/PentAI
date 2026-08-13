@@ -161,5 +161,13 @@ def compile_manifest(manifest: dict[str, Any], manifest_hash: str) -> dict[str, 
         "approval_requirements": [],
         "default_effect": "deny",
     }
+    account_controls = manifest.get("account_controls")
+    if isinstance(account_controls, dict):
+        policy["account_constraints"] = {
+            "mode": account_controls["mode"],
+            "approved_account_references": sorted(
+                account_controls["approved_account_references"]
+            ),
+        }
     policy["content_hash"] = content_hash(policy)
     return policy

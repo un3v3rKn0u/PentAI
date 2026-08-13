@@ -69,6 +69,12 @@ export type OperationalLimitReview = {
 };
 export type TestingWindowReview = { days: string[]; startTime: string; endTime: string; timezone: string };
 export type BlackoutPeriodReview = { startsAt: string; endsAt: string; reason: string };
+export type AccountUseReview = {
+  mode: "unauthenticated_only" | "approved_test_accounts";
+  approvedAccountReferences: string[];
+  sharedAccounts: "deny";
+  credentialHandling: "external_secret_store_only";
+};
 export type DataHandlingReview = {
   realUserData: "avoid_and_stop" | "minimal_if_explicit";
   maximumRecordsToView?: number;
@@ -91,6 +97,7 @@ export type NormalizationReview = {
   operationalLimits?: OperationalLimitReview;
   dataHandling?: DataHandlingReview;
   reporting?: ReportingReview;
+  accountUse?: AccountUseReview;
   allowedPaths: string[];
   deniedPaths: string[];
   allowedPorts: number[];
@@ -260,6 +267,16 @@ export function reviewedTestingSchedule(input: Record<string, string>): Pick<Ope
     blackoutPeriods = [{ startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), reason: blackoutReason }];
   }
   return { allowedTestingWindows: [{ days, startTime, endTime, timezone }], blackoutPeriods };
+}
+
+export function reviewedAccountUse(input: Record<string, string>): AccountUseReview {
+  const mode = input.accountMode === "unauthenticated_only" || input.accountMode === "approved_test_accounts" ? input.accountMode : null;
+  const approvedAccountReferences = [...new Set((input.approvedAccountReferences ?? "").split(",").map((item) => item.trim()).filter(Boolean))];
+  const referencePattern = /^[a-z][a-z0-9._-]{2,63}$/;
+  if (!mode || approvedAccountReferences.some((item) => !referencePattern.test(item))) throw new Error("ACCOUNT_USE_REVIEW_INVALID");
+  if (mode === "unauthenticated_only" && approvedAccountReferences.length > 0) throw new Error("ACCOUNT_REFERENCE_CONFLICT");
+  if (mode === "approved_test_accounts" && approvedAccountReferences.length === 0) throw new Error("ACCOUNT_REFERENCE_REQUIRED");
+  return { mode, approvedAccountReferences, sharedAccounts: "deny", credentialHandling: "external_secret_store_only" };
 }
 
 export function reviewedDataHandling(input: Record<string, string>): DataHandlingReview {
@@ -464,6 +481,8 @@ export function IntakeWorkspace({
   const [blackoutStartsAt, setBlackoutStartsAt] = useState("");
   const [blackoutEndsAt, setBlackoutEndsAt] = useState("");
   const [blackoutReason, setBlackoutReason] = useState("");
+  const [accountMode, setAccountMode] = useState<AccountUseReview["mode"]>("unauthenticated_only");
+  const [approvedAccountReferences, setApprovedAccountReferences] = useState("");
   const [realUserData, setRealUserData] = useState<DataHandlingReview["realUserData"]>("avoid_and_stop");
   const [maximumRecordsToView, setMaximumRecordsToView] = useState("");
   const [retentionDays, setRetentionDays] = useState("7");
@@ -510,7 +529,7 @@ export function IntakeWorkspace({
       const primaryAllow = reviewedRules.find((rule) => rule.effect === "allow")!;
       const normalization = reviewedNormalization({ assetType: primaryAllow.assetType, target: primaryAllow.target, includeApex: String(primaryAllow.includeApex ?? false), allowedPaths: primaryAllow.allowedPaths!.join(","), deniedPaths: primaryAllow.deniedPaths!.join(","), allowedPorts: primaryAllow.allowedPorts!.join(","), allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale });
       const schedule = reviewedTestingSchedule({ testingDays, testingStartTime, testingEndTime, testingTimezone, blackoutStartsAt, blackoutEndsAt, blackoutReason });
-      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: { ...reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }), ...schedule }, dataHandling: reviewedDataHandling({ realUserData, maximumRecordsToView, retentionDays, remoteAiMaxClassification, redactionRules }), reporting: reviewedReporting({ submissionChannel, requiredFields, evidenceRules, disclosureTimeline }) });
+      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: { ...reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }), ...schedule }, dataHandling: reviewedDataHandling({ realUserData, maximumRecordsToView, retentionDays, remoteAiMaxClassification, redactionRules }), reporting: reviewedReporting({ submissionChannel, requiredFields, evidenceRules, disclosureTimeline }), accountUse: reviewedAccountUse({ accountMode, approvedAccountReferences }) });
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
@@ -601,6 +620,11 @@ export function IntakeWorkspace({
           <label>Blackout starts (optional, include timezone)<input value={blackoutStartsAt} onChange={(event) => setBlackoutStartsAt(event.target.value)} placeholder="2030-01-01T12:00:00Z" /></label>
           <label>Blackout ends (optional, include timezone)<input value={blackoutEndsAt} onChange={(event) => setBlackoutEndsAt(event.target.value)} placeholder="2030-01-01T13:00:00Z" /></label>
           <label>Blackout reason (required with blackout)<input maxLength={200} value={blackoutReason} onChange={(event) => setBlackoutReason(event.target.value)} /></label>
+        </div>
+        <div className="boundary-review"><strong>Account use</strong>
+          <label>Authentication mode<select value={accountMode} onChange={(event) => { setAccountMode(event.target.value as AccountUseReview["mode"]); setApprovedAccountReferences(""); }}><option value="unauthenticated_only">Unauthenticated only</option><option value="approved_test_accounts">Approved test accounts only</option></select></label>
+          {accountMode === "approved_test_accounts" && <label>Approved account references (comma-separated)<input value={approvedAccountReferences} onChange={(event) => setApprovedAccountReferences(event.target.value)} placeholder="synthetic-user-1" /></label>}
+          <p className="hint">References are identifiers only. Shared accounts are denied, and credentials must remain in an external secret store.</p>
         </div>
         <div className="boundary-review"><strong>Data handling</strong>
           <label>Real-user data<select value={realUserData} onChange={(event) => { setRealUserData(event.target.value as DataHandlingReview["realUserData"]); setMaximumRecordsToView(""); }}><option value="avoid_and_stop">Avoid and stop if encountered</option><option value="minimal_if_explicit">Minimal only when explicit</option></select></label>
