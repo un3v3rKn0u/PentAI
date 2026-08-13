@@ -2680,3 +2680,37 @@ Rollback affects presentation only.
 the authenticated same-user desktop boundary. Host-local datetime conversion may lead to
 a safe core denial if unsuitable. This review is self-authored and non-independent and
 cannot satisfy an external independent-review requirement.
+
+## 2026-08-13 — Supervised source-bundle review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Exact source identity and digest validation, unique bundle selection,
+authority precedence, deterministic ordering, divergent-version detection, bounded human
+review notes, manifest source/provenance construction, unresolved-conflict blocking,
+state invalidation, compatibility, rollback, and absence of extraction or execution.
+
+**Evidence examined:** UI typecheck; Vitest coverage for precedence, ambiguous identity,
+divergent-version denial, bounded conflict review, complete manifest provenance, and
+pending unresolved conflicts; production UI build; complete diff; manifest v2 schema,
+intake and normalization procedure, source history contract, and core manifest validation.
+
+**Findings:** A multi-source draft cannot omit the selected immutable provenance links.
+Conflicting versions cannot be silently preferred or presented as resolved: both remain
+visible, the review note is retained as a warning, and an unresolved question keeps core
+activation eligibility fail-closed. The UI adds no authority or external effect.
+
+**Limitations and deferred work:** This slice detects divergent hashes for one exact
+reference; it does not semantically extract statements, compare differently located
+sources, edit normalized fields, or verify human clarification. Full structured
+normalization review remains. Rollback affects presentation and draft construction only.
+
+**Residual risk accepted:** Source references, hashes, and bounded human review notes are
+visible inside the authenticated same-user desktop boundary. UI precedence is defense in
+depth; canonical manifest validation and activation remain core-authoritative. This
+review is self-authored and non-independent and cannot satisfy an external independent-
+review requirement.

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { App, coreRequest, networkManifestSettings, phaseOneWorkspaces } from "./App";
+import { App, buildManifest, coreRequest, networkManifestSettings, phaseOneWorkspaces } from "./App";
 import { buildIntentTarget } from "./AuthorizationWorkspace";
 import { networkSetupRequirement, parseSourceAddresses } from "./NetworkProfilesWorkspace";
 
@@ -57,6 +57,23 @@ describe("authorization workflow safety boundary", () => {
       pause_on_identity_change: true
     });
     expect(networkManifestSettings().route_profile_id).toBe("network-profile-required");
+  });
+
+  it("preserves every reviewed source and blocks unresolved version conflicts", () => {
+    const contract = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const page = { ...contract, id: "10000000-0000-4000-8000-000000000002", authority: "program_page", content_hash: "b".repeat(64) };
+    const document = buildManifest(
+      { name: "Synthetic program" },
+      { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" },
+      { sources: [contract, page], primary: contract, conflicts: [contract.reference], normalizationWarnings: ["Conflicting immutable versions require restrictive review: deny until clarified"] }
+    );
+    expect(document.sources.map((item: Record<string, string>) => item.source_id)).toEqual([contract.id, page.id]);
+    expect(document.field_provenance["/scope"]).toEqual([
+      { source_id: contract.id, content_hash: contract.content_hash },
+      { source_id: page.id, content_hash: page.content_hash }
+    ]);
+    expect(document.unresolved_questions).toContain(`Resolve conflicting immutable source versions for ${contract.reference}.`);
+    expect(document.approvals.status).toBe("pending");
   });
 
   it("does not expose execution or grant issuance", () => {

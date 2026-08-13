@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 type Json = Record<string, any>;
 export type SourceMode = "pasted_text" | "file" | "url";
@@ -9,12 +9,69 @@ export type SourceImport =
   | { mode: "url"; authority: string; effectiveAt: string | null; sourceVersion: string | null; url: string };
 
 const maxSourceBytes = 2 * 1024 * 1024;
+const authorityPrecedence: Record<string, number> = {
+  contract: 0,
+  program_staff: 1,
+  program_page: 2,
+  platform_rule: 3,
+  internal_note: 4
+};
 
 export function reviewedSource(sources: Json[], sourceId: string) {
   const matches = sources.filter((source) => source.id === sourceId);
   const source = matches[0];
   if (matches.length !== 1 || !source || typeof source.content_hash !== "string" || !source.content_hash.match(/^[a-f0-9]{64}$/) || typeof source.authority !== "string" || typeof source.retrieved_at !== "string" || !Number.isFinite(Date.parse(source.retrieved_at))) throw new Error("SOURCE_REVIEW_INVALID");
   return source;
+}
+
+export type SourceBundleReview = {
+  sources: Json[];
+  primary: Json;
+  conflicts: string[];
+  normalizationWarnings: string[];
+};
+
+export function reviewedSourceBundle(
+  sources: Json[],
+  sourceIds: string[],
+  conflictNote: string
+): SourceBundleReview {
+  if (sourceIds.length === 0 || new Set(sourceIds).size !== sourceIds.length) {
+    throw new Error("SOURCE_BUNDLE_INVALID");
+  }
+  const reviewed = sourceIds.map((sourceId) => reviewedSource(sources, sourceId));
+  if (reviewed.some((source) =>
+    !(source.authority in authorityPrecedence)
+    || typeof source.reference !== "string"
+    || !source.reference.trim()
+    || (source.effective_at != null && !Number.isFinite(Date.parse(source.effective_at)))
+  )) throw new Error("SOURCE_BUNDLE_INVALID");
+  const ordered = [...reviewed].sort((left, right) => {
+    const authority = (authorityPrecedence[left.authority] ?? 99) - (authorityPrecedence[right.authority] ?? 99);
+    return authority || Date.parse(right.effective_at ?? right.retrieved_at) - Date.parse(left.effective_at ?? left.retrieved_at) || left.id.localeCompare(right.id);
+  });
+  const references = new Map<string, Set<string>>();
+  for (const source of ordered) {
+    const hashes = references.get(source.reference) ?? new Set<string>();
+    hashes.add(source.content_hash);
+    references.set(source.reference, hashes);
+  }
+  const conflicts = [...references.entries()]
+    .filter(([, hashes]) => hashes.size > 1)
+    .map(([reference]) => reference)
+    .sort();
+  const note = conflictNote.trim();
+  if (conflicts.length > 0 && (!note || note.length > 500)) {
+    throw new Error("SOURCE_CONFLICT_REVIEW_REQUIRED");
+  }
+  return {
+    sources: ordered,
+    primary: ordered[0],
+    conflicts,
+    normalizationWarnings: conflicts.length > 0
+      ? [`Conflicting immutable versions require restrictive review: ${note}`]
+      : []
+  };
 }
 
 export function reviewedEngagement(engagements: Json[], engagementId: string, programId: string) {
@@ -71,12 +128,12 @@ export async function prepareSourceImport(
 }
 
 export function IntakeWorkspace({
-  connected, program, engagements, selectedEngagement, sources, selectedSource, state, error, submit, selectEngagement, select, refresh
+  connected, program, engagements, selectedEngagement, sources, selectedSources, state, error, submit, selectEngagement, selectBundle, refresh
 }: {
-  connected: boolean; program: Json | null; engagements: Json[]; selectedEngagement: Json | null; sources: Json[]; selectedSource: Json | null;
+  connected: boolean; program: Json | null; engagements: Json[]; selectedEngagement: Json | null; sources: Json[]; selectedSources: Json[];
   state: IntakeState; error: string; submit: (source: SourceImport) => Promise<void>;
   selectEngagement: (engagement: Json) => void;
-  select: (source: Json) => void;
+  selectBundle: (review: SourceBundleReview) => void;
   refresh: () => Promise<void>;
 }) {
   const [mode, setMode] = useState<SourceMode>("pasted_text");
@@ -87,6 +144,14 @@ export function IntakeWorkspace({
   const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preparationError, setPreparationError] = useState("");
+  const [reviewIds, setReviewIds] = useState<string[]>(selectedSources.map((item) => item.id));
+  const [conflictNote, setConflictNote] = useState("");
+  const [reviewError, setReviewError] = useState("");
+  const selectedSourceIds = selectedSources.map((item) => item.id).join("|");
+
+  useEffect(() => {
+    setReviewIds(selectedSourceIds ? selectedSourceIds.split("|") : []);
+  }, [selectedSourceIds]);
 
   async function importSource(event: FormEvent) {
     event.preventDefault();
@@ -95,6 +160,15 @@ export function IntakeWorkspace({
       await submit(await prepareSourceImport(mode, authority, effectiveAt, sourceVersion, text, url, file));
     } catch (cause) {
       setPreparationError(cause instanceof Error ? cause.message : "SOURCE_PREPARATION_FAILED");
+    }
+  }
+
+  function reviewBundle() {
+    setReviewError("");
+    try {
+      selectBundle(reviewedSourceBundle(sources, reviewIds, conflictNote));
+    } catch (cause) {
+      setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
   }
 
@@ -134,8 +208,12 @@ export function IntakeWorkspace({
       <div className="panel-heading"><strong>Engagement history</strong><span className="hint">Select the exact validity window for source review.</span></div>
       {engagements.length === 0 ? <p className="hint">No durable engagement is available yet.</p> : <ol className="source-list">{engagements.map((item) => <li key={item.id} className={selectedEngagement?.id === item.id ? "selected" : ""}><div><strong>{item.status}</strong><span>{item.effective_from} → {item.expires_at}</span><code>{item.id}</code></div><button type="button" onClick={() => selectEngagement(reviewedEngagement(engagements, item.id, program?.id ?? ""))} aria-pressed={selectedEngagement?.id === item.id}>{selectedEngagement?.id === item.id ? "Selected" : "Review engagement"}</button></li>)}</ol>}
       <div className="panel-heading"><strong>Source history</strong><button type="button" onClick={() => void refresh()} disabled={!connected || !program || state === "loading"}>Refresh</button></div>
-      {sources.length === 0 ? <p className="hint">The history is empty.</p> : <ol className="source-list">{sources.map((item) => <li key={item.id} className={selectedSource?.id === item.id ? "selected" : ""}><div><strong>{item.source_kind} · {item.authority}</strong><span>{item.reference}</span><span>Retrieved {item.retrieved_at}{item.effective_at ? ` · effective ${item.effective_at}` : " · no separate effective date"}</span><code>{item.content_hash.slice(0, 16)}…</code></div><button type="button" onClick={() => select(reviewedSource(sources, item.id))} aria-pressed={selectedSource?.id === item.id}>{selectedSource?.id === item.id ? "Selected" : "Review source"}</button></li>)}</ol>}
-      {selectedSource && <dl className="hash"><dt>Selected source ID</dt><dd>{selectedSource.id}</dd><dt>Authority</dt><dd>{selectedSource.authority}</dd><dt>Source version</dt><dd>{selectedSource.source_version ?? "Not specified"}</dd><dt>SHA-256 provenance</dt><dd>{selectedSource.content_hash}</dd></dl>}
+      <p className="hint">Choose every immutable source used by the draft. Contract and authorized clarification take precedence; conflicting versions remain blocked for restrictive review.</p>
+      {sources.length === 0 ? <p className="hint">The history is empty.</p> : <ol className="source-list">{sources.map((item) => <li key={item.id} className={reviewIds.includes(item.id) ? "selected" : ""}><div><strong>{item.source_kind} · {item.authority}</strong><span>{item.reference}</span><span>Retrieved {item.retrieved_at}{item.effective_at ? ` · effective ${item.effective_at}` : " · no separate effective date"}</span><code>{item.content_hash.slice(0, 16)}…</code></div><label className="source-choice"><input type="checkbox" checked={reviewIds.includes(item.id)} onChange={(event) => setReviewIds((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} /> Include</label></li>)}</ol>}
+      {reviewIds.length > 1 && <label>Conflict review note (required only when one reference has different hashes)<textarea maxLength={500} value={conflictNote} onChange={(event) => setConflictNote(event.target.value)} placeholder="Record the restrictive interpretation and clarification still required." /></label>}
+      <button type="button" onClick={reviewBundle} disabled={reviewIds.length === 0}>Use reviewed source bundle</button>
+      {reviewError && <p className="result bad" role="alert">Review denied: {reviewError}</p>}
+      {selectedSources.length > 0 && <dl className="hash"><dt>Reviewed immutable sources</dt><dd>{selectedSources.map((item) => item.id).join(", ")}</dd><dt>Primary authority</dt><dd>{selectedSources[0].authority}</dd><dt>SHA-256 provenance</dt><dd>{selectedSources.map((item) => item.content_hash).join(", ")}</dd></dl>}
     </section>
   );
 }
