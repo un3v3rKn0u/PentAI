@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { policyApprovalRequest, policyRevocationRequest, reviewedManifest } from "./PolicyWorkspace";
+import { policyApprovalRequest, policyRevocationRequest, reviewedManifest, reviewedPolicy } from "./PolicyWorkspace";
 
 const manifest = { id: "10000000-0000-4000-8000-000000000001", engagement_id: "engagement-a", schema_version: "2.0.0", version_number: 1, content_hash: "a".repeat(64), document: { schema_version: "2.0.0", engagement: { id: "engagement-a" }, sources: [{ source_id: "source-a" }] }, valid: true, validation_status: "valid", issues: [] };
+const policySummary = { id: manifest.id, manifest_version_id: manifest.id, content_hash: "b".repeat(64), compiler_version: "1.1.0", signer_key_id: "local-key", status: "active" };
+const policyResponse = { ...policySummary, engagement_id: "engagement-a", policy: { schema_version: "1.0.0", engagement_id: "engagement-a", content_hash: "b".repeat(64), compiler: { version: "1.1.0" }, signature: { algorithm: "Ed25519", key_id: "local-key", value: "synthetic-signature" } } };
 
 describe("supervised Policy lifecycle workspace", () => {
   it("recovers one exact canonical manifest for the selected engagement", () => {
@@ -10,6 +12,12 @@ describe("supervised Policy lifecycle workspace", () => {
     expect(() => reviewedManifest([manifest, { ...manifest }], manifest.id, "engagement-a")).toThrow("MANIFEST_REVIEW_INVALID");
     expect(() => reviewedManifest([{ ...manifest, valid: false }], manifest.id, "engagement-a")).toThrow("MANIFEST_REVIEW_INVALID");
     expect(() => reviewedManifest([{ ...manifest, document: { ...manifest.document, engagement: { id: "engagement-b" } } }], manifest.id, "engagement-a")).toThrow("MANIFEST_REVIEW_INVALID");
+  });
+  it("accepts only an exact core-verified policy with matching active identity", () => {
+    expect(reviewedPolicy(policyResponse, policySummary, "engagement-a", manifest.id)).toBe(policyResponse);
+    expect(() => reviewedPolicy(policyResponse, policySummary, "engagement-b", manifest.id)).toThrow("POLICY_REVIEW_INVALID");
+    expect(() => reviewedPolicy(policyResponse, policySummary, "engagement-a", null)).toThrow("POLICY_REVIEW_INVALID");
+    expect(() => reviewedPolicy({ ...policyResponse, content_hash: "c".repeat(64) }, policySummary, "engagement-a", manifest.id)).toThrow("POLICY_REVIEW_INVALID");
   });
   it("binds a typed approval to exact decision, expiry, and bounded reason", () => {
     expect(policyApprovalRequest("approved", "2030-01-01T10:00", "  reviewed exact hashes  ")).toEqual({ decision: "approved", expires_at: new Date("2030-01-01T10:00").toISOString(), reason: "reviewed exact hashes" });

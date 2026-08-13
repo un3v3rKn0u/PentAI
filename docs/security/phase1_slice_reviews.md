@@ -1240,6 +1240,42 @@ can be explicitly recompiled, but no approval or activation is inferred. This re
 self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
 
+## 2026-08-13 — Exact signed-policy recovery
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Engagement-scoped exact-policy reads, current-signer availability,
+stored content/manifest hash recomputation, row/document signature consistency, Ed25519
+verification, lifecycle status recovery, active-policy identity binding, summary/response
+agreement, matching manifest restoration, compatibility, rollback, privacy, and absence
+of new approval or activation authority.
+
+**Evidence examined:** Focused authorization pytest suite; UI typecheck; 93 Vitest checks
+including wrong-engagement, wrong-active-identity, and digest mismatch denial; full Python
+tests; contract validation; Ruff; mypy; production UI build; desktop Cargo check; complete
+diff; Policy IR v1 contract; compilation, activation, and signature verification paths.
+
+**Findings:** Policy content is no longer reconstructed or trusted from summary metadata.
+The core returns it only after revalidating its stored manifest/content bindings and
+signature with the current local signer. The UI binds that response back to the exact
+selected summary and engagement. Recovery displays the persisted lifecycle state and
+does not record a human decision, activate a policy, or mint a grant.
+
+**Limitations and deferred work:** A rotated or unavailable local signing key denies old
+policy recovery; no key migration is inferred. An approved-but-not-active policy is shown
+as awaiting approval in the UI and must receive a fresh explicit decision before
+activation. Rollback removes the read endpoint and selector without changing policies.
+
+**Residual risk accepted:** Exact signed policy rules and signer identifiers are visible
+inside the authenticated same-user desktop boundary. Signature verification depends on
+the local development key custody already accepted under the non-independent exception.
+This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.
+
 ## 2026-08-13 — Policy-derived coverage selection
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local

@@ -854,6 +854,10 @@ def create_app(
     def list_policies(engagement_id: str) -> dict[str, Any]:
         return {"policies": call(lambda: authorization.list_policies(engagement_id))}
 
+    @app.get("/api/v1/engagements/{engagement_id}/policies/{policy_id}")
+    def get_policy(engagement_id: str, policy_id: str) -> dict[str, Any]:
+        return call(lambda: authorization.get_policy(engagement_id, policy_id))
+
     @app.post("/api/v1/policy-decisions")
     def evaluate_policy(evaluation: EvaluationRequest) -> dict[str, Any]:
         return call(

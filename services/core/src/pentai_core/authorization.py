@@ -1485,6 +1485,53 @@ class AuthorizationService:
             )
         return history
 
+    def get_policy(self, engagement_id: str, policy_bundle_id: str) -> dict[str, Any]:
+        summary = next(
+            (
+                item
+                for item in self.list_policies(engagement_id)
+                if item["id"] == policy_bundle_id
+            ),
+            None,
+        )
+        if summary is None:
+            raise DomainError("POLICY_NOT_FOUND", "policy does not exist in this engagement")
+        with transaction(self.database_path) as connection:
+            row = connection.execute(
+                """SELECT p.*, m.content_hash AS manifest_hash
+                   FROM policy_bundles p
+                   JOIN manifest_versions m ON m.id = p.manifest_version_id
+                   WHERE p.id = ? AND p.engagement_id = ?""",
+                (policy_bundle_id, engagement_id),
+            ).fetchone()
+        if row is None:
+            raise DomainError("POLICY_NOT_FOUND", "policy does not exist in this engagement")
+        if self.policy_signer is None:
+            raise DomainError("POLICY_SIGNER_UNAVAILABLE", "policy signer is unavailable")
+        document = json.loads(row["policy_json"])
+        signature = document.get("signature", {})
+        unsigned = {
+            key: value
+            for key, value in document.items()
+            if key not in {"content_hash", "signature"}
+        }
+        if (
+            document.get("content_hash") != row["content_hash"]
+            or document.get("manifest_hash") != row["manifest_hash"]
+            or content_hash({"policy": unsigned, "signer_key_id": signature.get("key_id")})
+            != row["content_hash"]
+            or signature.get("algorithm") != "Ed25519"
+            or signature.get("value") != row["signature"]
+            or signature.get("key_id") != row["signer_key_id"]
+            or not self.policy_signer.verify(
+                f"pentai-policy-v1:{row['content_hash']}".encode("ascii"),
+                str(signature.get("value", "")),
+                str(signature.get("key_id", "")),
+            )
+        ):
+            raise DomainError("POLICY_SIGNATURE_INVALID", "stored policy signature is invalid")
+        return {**summary, "engagement_id": engagement_id, "policy": document}
+
     def evaluate_intent(
         self, engagement_id: str, intent: dict[str, Any], *, now: datetime | None = None
     ) -> dict[str, Any]:

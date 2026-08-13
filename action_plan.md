@@ -236,15 +236,18 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Changing the reviewed source clears downstream manifest/policy state before deriving
     a new draft. Durable program engagement history now restores the exact validity
     window needed to resume that review after restart, then reloads canonical manifest
-    history for explicit exact-version review. Multi-source conflict resolution, active
-    signed-policy restoration, and full normalization review remain.
+    history for explicit exact-version review. Exact signed-policy restoration now
+    revalidates stored hash/signature integrity and lifecycle identity without creating
+    authority. Multi-source conflict resolution and full normalization review remain.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
 - [ ] Build policy compilation, deterministic decision evaluation, signing, activation, revocation, and version history.
   The Policy workspace now separates manifest validation, signed compilation, typed
   expiring human decisions, activation, and reasoned revocation while showing immutable
-  manifest/policy history and semantic diffs. Target execution remains disabled.
+  manifest/policy history and semantic diffs. It can restore an exact core-verified signed
+  policy after restart without inferring a new approval or activation. Target execution
+  remains disabled.
 - [ ] Build typed, expiring approvals and activation workflow.
   - Signed lifecycle implementation was merged in PR #26 and accepted under the
     explicitly non-independent local-development governance scope. This does not grant
