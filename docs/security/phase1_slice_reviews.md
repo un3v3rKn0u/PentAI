@@ -2748,3 +2748,39 @@ depth and may safely over-deny; they cannot replace core canonicalization. Revie
 synthetic scope and rationale remain visible inside the authenticated same-user desktop
 boundary. This review is self-authored and non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-13 — Typed asset normalization review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Domain, wildcard-domain, URL, IPv4, IPv6, and CIDR selection;
+type-specific syntax normalization; explicit wildcard apex semantics; manifest mapping;
+type-switch invalidation; ambiguous and credential-bearing input denial; compatibility;
+rollback; and absence of discovery or execution.
+
+**Evidence examined:** UI typecheck; 102 Vitest checks covering every asset type,
+wildcard apex false preservation, ambiguous IPv4, credential-bearing URL, invalid CIDR,
+wildcard-as-domain denial, and existing structured-review paths; production UI build;
+desktop Cargo check; complete diff; manifest v2 asset contract, policy canonicalizers,
+typed matcher tests, and intake normalization procedure.
+
+**Findings:** Asset type is now deliberate rather than an implicit exact-domain default.
+Wildcard apex authority cannot be inferred, and a value cannot survive a type switch.
+The draft preserves the selected matcher semantics while the core still performs the
+complete canonical and contradiction decision before compilation or activation.
+
+**Limitations and deferred work:** This slice supports one allow asset. Multiple allow
+and deny rows, per-asset provenance, internationalized-domain preview, URL component
+inspection, and structured third-party/shared-hosting rules remain. UI CIDR checking
+does not prove zero host bits; the core rejects that ambiguity. Rollback affects draft
+presentation only.
+
+**Residual risk accepted:** Browser URL normalization is defense in depth and may differ
+from the security canonicalizer; only the core result can become policy. Synthetic asset
+values remain visible inside the authenticated same-user desktop boundary. This review
+is self-authored and non-independent and cannot satisfy an external independent-review
+requirement.

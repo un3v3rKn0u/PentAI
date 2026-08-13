@@ -122,8 +122,9 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       assets: [{
         asset_id: crypto.randomUUID(),
         effect: "allow",
-        type: "domain",
+        type: normalization.assetType,
         canonical_value: normalization.target,
+        ...(normalization.assetType === "wildcard_domain" ? { include_apex: normalization.includeApex } : {}),
         allowed_paths: normalization.allowedPaths,
         denied_paths: normalization.deniedPaths,
         allowed_ports: normalization.allowedPorts,

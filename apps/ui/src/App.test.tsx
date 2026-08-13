@@ -66,7 +66,7 @@ describe("authorization workflow safety boundary", () => {
       { name: "Synthetic program" },
       { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" },
       { sources: [contract, page], primary: contract, conflicts: [contract.reference], normalizationWarnings: ["Conflicting immutable versions require restrictive review: deny until clarified"] },
-      { target: "example.test", allowedPaths: ["/api"], deniedPaths: ["/api/admin"], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 50, maximumResponseBytes: 100000, rationale: "exact restrictive transcription" }
+      { assetType: "domain", target: "example.test", allowedPaths: ["/api"], deniedPaths: ["/api/admin"], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 50, maximumResponseBytes: 100000, rationale: "exact restrictive transcription" }
     );
     expect(document.sources.map((item: Record<string, string>) => item.source_id)).toEqual([contract.id, page.id]);
     expect(document.field_provenance["/scope"]).toEqual([
@@ -77,6 +77,17 @@ describe("authorization workflow safety boundary", () => {
     expect(document.approvals.status).toBe("pending");
     expect(document.scope.assets[0].canonical_value).toBe("example.test");
     expect(document.normalization_warnings).toContain("Human normalization review: exact restrictive transcription");
+  });
+
+  it("preserves explicit wildcard apex semantics in the manifest draft", () => {
+    const source = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const document = buildManifest(
+      { name: "Synthetic program" },
+      { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" },
+      { sources: [source], primary: source, conflicts: [], normalizationWarnings: [] },
+      { assetType: "wildcard_domain", target: "*.example.test", includeApex: false, allowedPaths: ["/"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "exact wildcard transcription" }
+    );
+    expect(document.scope.assets[0]).toMatchObject({ type: "wildcard_domain", canonical_value: "*.example.test", include_apex: false });
   });
 
   it("does not expose execution or grant issuance", () => {
