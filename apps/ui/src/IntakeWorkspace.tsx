@@ -54,6 +54,17 @@ export type TechniqueReview = {
   conditionalCapabilities: Array<{ capability: string; approvalType: string; conditions: string[] }>;
   allowedHttpMethods: Array<"GET" | "HEAD" | "OPTIONS">;
 };
+export type OperationalLimitReview = {
+  requestsPerSecond: number;
+  perHostRequestsPerSecond: number;
+  burstLimit: number;
+  concurrentConnections: number;
+  maximumRuntimeMinutes: number;
+  maximumTotalRequests: number;
+  maximumRequestBodyBytes: number;
+  maximumResponseBytes: number;
+  stopConditions: string[];
+};
 type AssetRuleDraft = Record<"effect" | "assetType" | "target" | "sourceReference" | "includeApex" | "allowedPaths" | "deniedPaths" | "allowedPorts", string>;
 
 export type NormalizationReview = {
@@ -64,6 +75,7 @@ export type NormalizationReview = {
   assetRules?: AssetRuleReview[];
   scopeBoundaries?: ScopeBoundaryReview;
   techniques?: TechniqueReview;
+  operationalLimits?: OperationalLimitReview;
   allowedPaths: string[];
   deniedPaths: string[];
   allowedPorts: number[];
@@ -182,6 +194,32 @@ export function reviewedTechniques(input: Record<string, string>): TechniqueRevi
     conditionalCapabilities: conditionalCapability ? [{ capability: conditionalCapability, approvalType: conditionalApprovalType, conditions: conditionalConditions }] : [],
     allowedHttpMethods
   };
+}
+
+export function reviewedOperationalLimits(input: Record<string, string>): OperationalLimitReview {
+  const numericFields = ["requestsPerSecond", "perHostRequestsPerSecond", "burstLimit", "concurrentConnections", "maximumRuntimeMinutes", "maximumTotalRequests", "maximumRequestBodyBytes", "maximumResponseBytes"];
+  const requestsPerSecond = Number(input.requestsPerSecond);
+  const perHostRequestsPerSecond = Number(input.perHostRequestsPerSecond);
+  const burstLimit = Number(input.burstLimit);
+  const concurrentConnections = Number(input.concurrentConnections);
+  const maximumRuntimeMinutes = Number(input.maximumRuntimeMinutes);
+  const maximumTotalRequests = Number(input.maximumTotalRequests);
+  const maximumRequestBodyBytes = Number(input.maximumRequestBodyBytes);
+  const maximumResponseBytes = Number(input.maximumResponseBytes);
+  const stopConditions = [...new Set((input.stopConditions ?? "").split(",").map((item) => item.trim()).filter(Boolean))];
+  if (
+    numericFields.some((field) => !(input[field] ?? "").trim())
+    || !Number.isFinite(requestsPerSecond) || requestsPerSecond <= 0
+    || !Number.isFinite(perHostRequestsPerSecond) || perHostRequestsPerSecond <= 0 || perHostRequestsPerSecond > requestsPerSecond
+    || !Number.isInteger(burstLimit) || burstLimit < 1
+    || !Number.isInteger(concurrentConnections) || concurrentConnections < 1
+    || !Number.isInteger(maximumRuntimeMinutes) || maximumRuntimeMinutes < 1
+    || !Number.isInteger(maximumTotalRequests) || maximumTotalRequests < 1
+    || !Number.isInteger(maximumRequestBodyBytes) || maximumRequestBodyBytes < 0
+    || !Number.isInteger(maximumResponseBytes) || maximumResponseBytes < 1
+    || stopConditions.length === 0 || stopConditions.some((item) => item.length > 200)
+  ) throw new Error("OPERATIONAL_LIMIT_REVIEW_INVALID");
+  return { requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions };
 }
 
 export function reviewedNormalization(input: Record<string, string>): NormalizationReview {
@@ -347,8 +385,14 @@ export function IntakeWorkspace({
   const [conditionalConditions, setConditionalConditions] = useState("");
   const [allowedHttpMethods, setAllowedHttpMethods] = useState<Array<TechniqueReview["allowedHttpMethods"][number]>>(["GET"]);
   const [requestsPerSecond, setRequestsPerSecond] = useState("1");
+  const [perHostRequestsPerSecond, setPerHostRequestsPerSecond] = useState("1");
+  const [burstLimit, setBurstLimit] = useState("1");
+  const [concurrentConnections, setConcurrentConnections] = useState("1");
+  const [maximumRuntimeMinutes, setMaximumRuntimeMinutes] = useState("30");
   const [maximumTotalRequests, setMaximumTotalRequests] = useState("50");
+  const [maximumRequestBodyBytes, setMaximumRequestBodyBytes] = useState("0");
   const [maximumResponseBytes, setMaximumResponseBytes] = useState("100000");
+  const [stopConditions, setStopConditions] = useState("authorization changes,safety control pauses");
   const [normalizationRationale, setNormalizationRationale] = useState("Restrictive values transcribed from the reviewed sources.");
   const [thirdPartyServices, setThirdPartyServices] = useState<ScopeBoundaryReview["thirdPartyServices"]>("deny");
   const [sharedHostingAndCdn, setSharedHostingAndCdn] = useState<ScopeBoundaryReview["sharedHostingAndCdn"]>("deny");
@@ -385,7 +429,7 @@ export function IntakeWorkspace({
       const reviewedRules = reviewedAssetRules(assetRules, sourceReview.sources.map((source) => source.id));
       const primaryAllow = reviewedRules.find((rule) => rule.effect === "allow")!;
       const normalization = reviewedNormalization({ assetType: primaryAllow.assetType, target: primaryAllow.target, includeApex: String(primaryAllow.includeApex ?? false), allowedPaths: primaryAllow.allowedPaths!.join(","), deniedPaths: primaryAllow.deniedPaths!.join(","), allowedPorts: primaryAllow.allowedPorts!.join(","), allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale });
-      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }) });
+      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }) });
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
@@ -459,9 +503,17 @@ export function IntakeWorkspace({
           <label>Required approval type<input value={conditionalApprovalType} onChange={(event) => setConditionalApprovalType(event.target.value)} /></label>
           <label>Conditions (comma-separated)<input value={conditionalConditions} onChange={(event) => setConditionalConditions(event.target.value)} /></label>
         </div>
-        <label>Requests per second<input type="number" min="0.001" step="0.001" value={requestsPerSecond} onChange={(event) => setRequestsPerSecond(event.target.value)} /></label>
-        <label>Maximum total requests<input type="number" min="1" value={maximumTotalRequests} onChange={(event) => setMaximumTotalRequests(event.target.value)} /></label>
-        <label>Maximum response bytes<input type="number" min="1" value={maximumResponseBytes} onChange={(event) => setMaximumResponseBytes(event.target.value)} /></label>
+        <div className="boundary-review"><strong>Operational limits</strong>
+          <label>Global requests per second<input type="number" min="0.001" step="0.001" value={requestsPerSecond} onChange={(event) => setRequestsPerSecond(event.target.value)} /></label>
+          <label>Per-host requests per second<input type="number" min="0.001" step="0.001" value={perHostRequestsPerSecond} onChange={(event) => setPerHostRequestsPerSecond(event.target.value)} /></label>
+          <label>Burst limit<input type="number" min="1" value={burstLimit} onChange={(event) => setBurstLimit(event.target.value)} /></label>
+          <label>Concurrent connections<input type="number" min="1" value={concurrentConnections} onChange={(event) => setConcurrentConnections(event.target.value)} /></label>
+          <label>Maximum runtime minutes<input type="number" min="1" value={maximumRuntimeMinutes} onChange={(event) => setMaximumRuntimeMinutes(event.target.value)} /></label>
+          <label>Maximum total requests<input type="number" min="1" value={maximumTotalRequests} onChange={(event) => setMaximumTotalRequests(event.target.value)} /></label>
+          <label>Maximum request body bytes<input type="number" min="0" value={maximumRequestBodyBytes} onChange={(event) => setMaximumRequestBodyBytes(event.target.value)} /></label>
+          <label>Maximum response bytes<input type="number" min="1" value={maximumResponseBytes} onChange={(event) => setMaximumResponseBytes(event.target.value)} /></label>
+          <label>Stop conditions (comma-separated)<textarea value={stopConditions} onChange={(event) => setStopConditions(event.target.value)} /></label>
+        </div>
         <label>Review rationale<textarea maxLength={500} value={normalizationRationale} onChange={(event) => setNormalizationRationale(event.target.value)} /></label>
       </fieldset>
       <button type="button" onClick={reviewBundle} disabled={reviewIds.length === 0}>Use reviewed source bundle</button>

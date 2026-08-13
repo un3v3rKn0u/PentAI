@@ -257,8 +257,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     plus a bounded scope-expansion process, defaulting both external-infrastructure
     boundaries to deny. Technique review now separates allowed, denied, and optional
     approval-gated conditional capabilities and binds directly allowed HTTP capabilities
-    to explicit reviewed methods. Broader account, timing, data-handling, and reporting
-    rules plus source-statement extraction remain.
+    to explicit reviewed methods. Operational review now captures global and per-host
+    rates, burst and concurrency ceilings, runtime and request/response bounds, and
+    explicit stop conditions, rejecting internally inconsistent limits before draft
+    construction. Testing-window, account, data-handling, and reporting rules plus
+    source-statement extraction remain.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
