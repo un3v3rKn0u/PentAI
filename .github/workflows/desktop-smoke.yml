@@ -23,6 +23,7 @@ permissions:
 jobs:
   tauri-check:
     name: Tauri check (${{ matrix.os }})
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -89,4 +90,5 @@ jobs:
           pnpm exec tauri build --bundles ${{ matrix.bundle }}
           --features bootstrap-smoke
       - name: Test bundled desktop bootstrap lifecycle
+        timeout-minutes: 2
         run: python scripts/smoke_desktop_bundle.py
