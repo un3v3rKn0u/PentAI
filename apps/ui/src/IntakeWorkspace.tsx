@@ -31,6 +31,45 @@ export type SourceBundleReview = {
   normalizationWarnings: string[];
 };
 
+export type NormalizationReview = {
+  target: string;
+  allowedPaths: string[];
+  deniedPaths: string[];
+  allowedPorts: number[];
+  allowedCapabilities: string[];
+  requestsPerSecond: number;
+  maximumTotalRequests: number;
+  maximumResponseBytes: number;
+  rationale: string;
+};
+
+export function reviewedNormalization(input: Record<string, string>): NormalizationReview {
+  const target = input.target.trim().toLowerCase().replace(/\.$/, "");
+  const paths = (value: string) => [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+  const allowedPaths = paths(input.allowedPaths);
+  const deniedPaths = paths(input.deniedPaths);
+  const allowedPorts = paths(input.allowedPorts).map(Number);
+  const allowedCapabilities = paths(input.allowedCapabilities);
+  const requestsPerSecond = Number(input.requestsPerSecond);
+  const maximumTotalRequests = Number(input.maximumTotalRequests);
+  const maximumResponseBytes = Number(input.maximumResponseBytes);
+  const rationale = input.rationale.trim();
+  if (
+    !target.match(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/)
+    || allowedPaths.length === 0
+    || [...allowedPaths, ...deniedPaths].some((path) => !path.startsWith("/"))
+    || allowedPorts.length === 0
+    || allowedPorts.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)
+    || allowedCapabilities.length === 0
+    || allowedCapabilities.some((capability) => !capability.match(/^[a-z][a-z0-9_.-]+$/))
+    || !Number.isFinite(requestsPerSecond) || requestsPerSecond <= 0
+    || !Number.isInteger(maximumTotalRequests) || maximumTotalRequests < 1
+    || !Number.isInteger(maximumResponseBytes) || maximumResponseBytes < 1
+    || !rationale || rationale.length > 500
+  ) throw new Error("NORMALIZATION_REVIEW_INVALID");
+  return { target, allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale };
+}
+
 export function reviewedSourceBundle(
   sources: Json[],
   sourceIds: string[],
@@ -133,7 +172,7 @@ export function IntakeWorkspace({
   connected: boolean; program: Json | null; engagements: Json[]; selectedEngagement: Json | null; sources: Json[]; selectedSources: Json[];
   state: IntakeState; error: string; submit: (source: SourceImport) => Promise<void>;
   selectEngagement: (engagement: Json) => void;
-  selectBundle: (review: SourceBundleReview) => void;
+  selectBundle: (review: SourceBundleReview, normalization: NormalizationReview) => void;
   refresh: () => Promise<void>;
 }) {
   const [mode, setMode] = useState<SourceMode>("pasted_text");
@@ -147,6 +186,15 @@ export function IntakeWorkspace({
   const [reviewIds, setReviewIds] = useState<string[]>(selectedSources.map((item) => item.id));
   const [conflictNote, setConflictNote] = useState("");
   const [reviewError, setReviewError] = useState("");
+  const [target, setTarget] = useState("example.test");
+  const [allowedPaths, setAllowedPaths] = useState("/api");
+  const [deniedPaths, setDeniedPaths] = useState("/api/admin");
+  const [allowedPorts, setAllowedPorts] = useState("443");
+  const [allowedCapabilities, setAllowedCapabilities] = useState("network.http.get");
+  const [requestsPerSecond, setRequestsPerSecond] = useState("1");
+  const [maximumTotalRequests, setMaximumTotalRequests] = useState("50");
+  const [maximumResponseBytes, setMaximumResponseBytes] = useState("100000");
+  const [normalizationRationale, setNormalizationRationale] = useState("Restrictive values transcribed from the reviewed sources.");
   const selectedSourceIds = selectedSources.map((item) => item.id).join("|");
 
   useEffect(() => {
@@ -166,7 +214,10 @@ export function IntakeWorkspace({
   function reviewBundle() {
     setReviewError("");
     try {
-      selectBundle(reviewedSourceBundle(sources, reviewIds, conflictNote));
+      selectBundle(
+        reviewedSourceBundle(sources, reviewIds, conflictNote),
+        reviewedNormalization({ target, allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale })
+      );
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
@@ -211,6 +262,19 @@ export function IntakeWorkspace({
       <p className="hint">Choose every immutable source used by the draft. Contract and authorized clarification take precedence; conflicting versions remain blocked for restrictive review.</p>
       {sources.length === 0 ? <p className="hint">The history is empty.</p> : <ol className="source-list">{sources.map((item) => <li key={item.id} className={reviewIds.includes(item.id) ? "selected" : ""}><div><strong>{item.source_kind} · {item.authority}</strong><span>{item.reference}</span><span>Retrieved {item.retrieved_at}{item.effective_at ? ` · effective ${item.effective_at}` : " · no separate effective date"}</span><code>{item.content_hash.slice(0, 16)}…</code></div><label className="source-choice"><input type="checkbox" checked={reviewIds.includes(item.id)} onChange={(event) => setReviewIds((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} /> Include</label></li>)}</ol>}
       {reviewIds.length > 1 && <label>Conflict review note (required only when one reference has different hashes)<textarea maxLength={500} value={conflictNote} onChange={(event) => setConflictNote(event.target.value)} placeholder="Record the restrictive interpretation and clarification still required." /></label>}
+      <fieldset disabled={reviewIds.length === 0}>
+        <legend>Structured normalization review</legend>
+        <p className="hint">Transcribe exact restrictive values from the reviewed sources. The core canonicalizes and validates this draft again.</p>
+        <label>Exact domain<input value={target} onChange={(event) => setTarget(event.target.value)} /></label>
+        <label>Allowed paths (comma-separated)<input value={allowedPaths} onChange={(event) => setAllowedPaths(event.target.value)} /></label>
+        <label>Denied paths (comma-separated)<input value={deniedPaths} onChange={(event) => setDeniedPaths(event.target.value)} /></label>
+        <label>Allowed ports (comma-separated)<input value={allowedPorts} onChange={(event) => setAllowedPorts(event.target.value)} /></label>
+        <label>Allowed capabilities (comma-separated)<input value={allowedCapabilities} onChange={(event) => setAllowedCapabilities(event.target.value)} /></label>
+        <label>Requests per second<input type="number" min="0.001" step="0.001" value={requestsPerSecond} onChange={(event) => setRequestsPerSecond(event.target.value)} /></label>
+        <label>Maximum total requests<input type="number" min="1" value={maximumTotalRequests} onChange={(event) => setMaximumTotalRequests(event.target.value)} /></label>
+        <label>Maximum response bytes<input type="number" min="1" value={maximumResponseBytes} onChange={(event) => setMaximumResponseBytes(event.target.value)} /></label>
+        <label>Review rationale<textarea maxLength={500} value={normalizationRationale} onChange={(event) => setNormalizationRationale(event.target.value)} /></label>
+      </fieldset>
       <button type="button" onClick={reviewBundle} disabled={reviewIds.length === 0}>Use reviewed source bundle</button>
       {reviewError && <p className="result bad" role="alert">Review denied: {reviewError}</p>}
       {selectedSources.length > 0 && <dl className="hash"><dt>Reviewed immutable sources</dt><dd>{selectedSources.map((item) => item.id).join(", ")}</dd><dt>Primary authority</dt><dd>{selectedSources[0].authority}</dd><dt>SHA-256 provenance</dt><dd>{selectedSources.map((item) => item.content_hash).join(", ")}</dd></dl>}
