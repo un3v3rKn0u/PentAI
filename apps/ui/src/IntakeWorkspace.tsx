@@ -30,6 +30,14 @@ export type SourceBundleReview = {
   conflicts: string[];
   normalizationWarnings: string[];
 };
+export type SourceStatementReview = {
+  sourceId: string;
+  contentHash: string;
+  fieldPath: string;
+  statement: string;
+  interpretation: string;
+  status: "candidate";
+};
 
 export type AssetType = "domain" | "wildcard_domain" | "url" | "ipv4" | "ipv6" | "cidr";
 export type DenyBoundary = { assetType: AssetType; target: string; includeApex?: boolean };
@@ -85,6 +93,7 @@ export type DataHandlingReview = {
 };
 export type ReportingReview = { submissionChannel: string; requiredFields: string[]; evidenceRules: string[]; disclosureTimeline: string };
 type AssetRuleDraft = Record<"effect" | "assetType" | "target" | "sourceReference" | "includeApex" | "allowedPaths" | "deniedPaths" | "allowedPorts", string>;
+type SourceStatementDraft = Record<"sourceId" | "fieldPath" | "statement" | "interpretation", string>;
 
 export type NormalizationReview = {
   assetType: AssetType;
@@ -98,6 +107,7 @@ export type NormalizationReview = {
   dataHandling?: DataHandlingReview;
   reporting?: ReportingReview;
   accountUse?: AccountUseReview;
+  sourceStatements?: SourceStatementReview[];
   allowedPaths: string[];
   deniedPaths: string[];
   allowedPorts: number[];
@@ -277,6 +287,22 @@ export function reviewedAccountUse(input: Record<string, string>): AccountUseRev
   if (mode === "unauthenticated_only" && approvedAccountReferences.length > 0) throw new Error("ACCOUNT_REFERENCE_CONFLICT");
   if (mode === "approved_test_accounts" && approvedAccountReferences.length === 0) throw new Error("ACCOUNT_REFERENCE_REQUIRED");
   return { mode, approvedAccountReferences, sharedAccounts: "deny", credentialHandling: "external_secret_store_only" };
+}
+
+export function reviewedSourceStatements(rows: SourceStatementDraft[], sources: Json[]): SourceStatementReview[] {
+  const allowedFields = new Set(["/scope", "/techniques", "/operational_limits", "/account_controls", "/data_handling", "/reporting"]);
+  const selected = new Map(sources.map((source) => [source.id, source]));
+  if (rows.length === 0 || rows.length > 100 || selected.size !== sources.length) throw new Error("SOURCE_STATEMENTS_INVALID");
+  const statements = rows.map((row) => {
+    const source = selected.get(row.sourceId);
+    const statement = row.statement?.trim() ?? "";
+    const interpretation = row.interpretation?.trim() ?? "";
+    if (!source || typeof source.content_hash !== "string" || !source.content_hash.match(/^[a-f0-9]{64}$/) || !allowedFields.has(row.fieldPath) || !statement || statement.length > 500 || !interpretation || interpretation.length > 500) throw new Error("SOURCE_STATEMENT_INVALID");
+    return { sourceId: source.id, contentHash: source.content_hash, fieldPath: row.fieldPath, statement, interpretation, status: "candidate" as const };
+  });
+  const identities = statements.map((item) => `${item.sourceId}:${item.fieldPath}:${item.statement}`);
+  if (new Set(identities).size !== identities.length) throw new Error("SOURCE_STATEMENT_DUPLICATE");
+  return statements;
 }
 
 export function reviewedDataHandling(input: Record<string, string>): DataHandlingReview {
@@ -483,6 +509,7 @@ export function IntakeWorkspace({
   const [blackoutReason, setBlackoutReason] = useState("");
   const [accountMode, setAccountMode] = useState<AccountUseReview["mode"]>("unauthenticated_only");
   const [approvedAccountReferences, setApprovedAccountReferences] = useState("");
+  const [sourceStatements, setSourceStatements] = useState<SourceStatementDraft[]>([]);
   const [realUserData, setRealUserData] = useState<DataHandlingReview["realUserData"]>("avoid_and_stop");
   const [maximumRecordsToView, setMaximumRecordsToView] = useState("");
   const [retentionDays, setRetentionDays] = useState("7");
@@ -509,7 +536,14 @@ export function IntakeWorkspace({
     }
   }, [assetRules.length, reviewIds]);
 
+  useEffect(() => {
+    if (sourceStatements.length === 0 && reviewIds.length > 0) {
+      setSourceStatements([{ sourceId: reviewIds[0], fieldPath: "/scope", statement: "", interpretation: "" }]);
+    }
+  }, [reviewIds, sourceStatements.length]);
+
   const updateAssetRule = (index: number, changes: Partial<AssetRuleDraft>) => setAssetRules((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...changes } : row));
+  const updateSourceStatement = (index: number, changes: Partial<SourceStatementDraft>) => setSourceStatements((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...changes } : row));
 
   async function importSource(event: FormEvent) {
     event.preventDefault();
@@ -529,7 +563,7 @@ export function IntakeWorkspace({
       const primaryAllow = reviewedRules.find((rule) => rule.effect === "allow")!;
       const normalization = reviewedNormalization({ assetType: primaryAllow.assetType, target: primaryAllow.target, includeApex: String(primaryAllow.includeApex ?? false), allowedPaths: primaryAllow.allowedPaths!.join(","), deniedPaths: primaryAllow.deniedPaths!.join(","), allowedPorts: primaryAllow.allowedPorts!.join(","), allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale });
       const schedule = reviewedTestingSchedule({ testingDays, testingStartTime, testingEndTime, testingTimezone, blackoutStartsAt, blackoutEndsAt, blackoutReason });
-      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: { ...reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }), ...schedule }, dataHandling: reviewedDataHandling({ realUserData, maximumRecordsToView, retentionDays, remoteAiMaxClassification, redactionRules }), reporting: reviewedReporting({ submissionChannel, requiredFields, evidenceRules, disclosureTimeline }), accountUse: reviewedAccountUse({ accountMode, approvedAccountReferences }) });
+      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: { ...reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }), ...schedule }, dataHandling: reviewedDataHandling({ realUserData, maximumRecordsToView, retentionDays, remoteAiMaxClassification, redactionRules }), reporting: reviewedReporting({ submissionChannel, requiredFields, evidenceRules, disclosureTimeline }), accountUse: reviewedAccountUse({ accountMode, approvedAccountReferences }), sourceStatements: reviewedSourceStatements(sourceStatements, sourceReview.sources) });
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
@@ -577,6 +611,15 @@ export function IntakeWorkspace({
       <fieldset disabled={reviewIds.length === 0}>
         <legend>Structured normalization review</legend>
         <p className="hint">Transcribe exact restrictive values from the reviewed sources. The core canonicalizes and validates this draft again.</p>
+        <div className="panel-heading"><strong>Source statements</strong><button type="button" disabled={sourceStatements.length >= 100} onClick={() => setSourceStatements((current) => [...current, { sourceId: reviewIds[0] ?? "", fieldPath: "/scope", statement: "", interpretation: "" }])}>Add statement</button></div>
+        <p className="hint">Record exact bounded source language and a separate candidate interpretation. Statements never apply fields or grant authority automatically.</p>
+        {sourceStatements.map((row, index) => <div className="boundary-review" key={index}>
+          <div className="panel-heading"><strong>Statement {index + 1}</strong><button type="button" disabled={sourceStatements.length === 1} onClick={() => setSourceStatements((current) => current.filter((_, rowIndex) => rowIndex !== index))}>Remove</button></div>
+          <label>Immutable source<select value={row.sourceId} onChange={(event) => updateSourceStatement(index, { sourceId: event.target.value })}><option value="">Select reviewed source</option>{sources.filter((source) => reviewIds.includes(source.id)).map((source) => <option key={source.id} value={source.id}>{source.authority} · {source.reference}</option>)}</select></label>
+          <label>Candidate field<select value={row.fieldPath} onChange={(event) => updateSourceStatement(index, { fieldPath: event.target.value })}><option value="/scope">Scope</option><option value="/techniques">Techniques</option><option value="/operational_limits">Operational limits</option><option value="/account_controls">Account controls</option><option value="/data_handling">Data handling</option><option value="/reporting">Reporting</option></select></label>
+          <label>Exact source statement<textarea maxLength={500} value={row.statement} onChange={(event) => updateSourceStatement(index, { statement: event.target.value })} /></label>
+          <label>Restrictive candidate interpretation<textarea maxLength={500} value={row.interpretation} onChange={(event) => updateSourceStatement(index, { interpretation: event.target.value })} /></label>
+        </div>)}
         <div className="panel-heading"><strong>Scope rules</strong><button type="button" disabled={assetRules.length >= 50} onClick={() => setAssetRules((current) => [...current, { effect: "deny", assetType: "domain", target: "", sourceReference: reviewIds[0] ?? "", includeApex: "false", allowedPaths: "", deniedPaths: "", allowedPorts: "" }])}>Add scope rule</button></div>
         <p className="hint">Each row must cite one selected immutable source. Deny rows cannot carry paths, ports, or ownership authority.</p>
         {assetRules.map((row, index) => <div className="boundary-review" key={index}>

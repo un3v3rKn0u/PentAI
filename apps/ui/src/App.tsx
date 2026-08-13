@@ -128,6 +128,7 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       content_hash: source.content_hash,
       ...(source.effective_at ? { effective_at: source.effective_at } : {})
     })),
+    ...(normalization.sourceStatements ? { source_statements: normalization.sourceStatements.map((item) => ({ source_id: item.sourceId, content_hash: item.contentHash, field_path: item.fieldPath, statement: item.statement, interpretation: item.interpretation, status: item.status })) } : {}),
     field_provenance: Object.fromEntries([
       "/scope", "/techniques", "/operational_limits", "/network",
       "/data_handling", "/reporting", "/agent_controls",

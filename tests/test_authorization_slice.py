@@ -2239,6 +2239,28 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertFalse(version["valid"])
         self.assertIn("TECHNIQUES_INCOMPLETE", {item["code"] for item in version["issues"]})
 
+    def test_source_statements_require_exact_manifest_provenance(self) -> None:
+        candidate = copy.deepcopy(self.manifest)
+        candidate["source_statements"] = [
+            {
+                "source_id": self.source["id"],
+                "content_hash": "f" * 64,
+                "field_path": "/scope",
+                "statement": "Only example.test is in scope.",
+                "interpretation": "Allow only example.test.",
+                "status": "candidate",
+            }
+        ]
+        version = self.service.save_manifest(self.engagement["id"], candidate)
+        self.assertFalse(version["valid"])
+        self.assertIn("PROVENANCE_HASH_MISMATCH", {item["code"] for item in version["issues"]})
+
+        candidate["source_statements"][0]["content_hash"] = self.source["content_hash"]
+        candidate["source_statements"].append(copy.deepcopy(candidate["source_statements"][0]))
+        version = self.service.save_manifest(self.engagement["id"], candidate)
+        self.assertFalse(version["valid"])
+        self.assertIn("SOURCE_STATEMENT_AMBIGUOUS", {item["code"] for item in version["issues"]})
+
     def test_typed_matcher_specificity_is_deterministic(self) -> None:
         candidate = copy.deepcopy(self.manifest)
         source_id = self.source["id"]

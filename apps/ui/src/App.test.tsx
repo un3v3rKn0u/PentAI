@@ -185,6 +185,12 @@ describe("authorization workflow safety boundary", () => {
     expect(document.field_provenance["/account_controls"]).toEqual([{ source_id: source.id, content_hash: source.content_hash }]);
     expect(JSON.stringify(document)).not.toContain("password");
   });
+  it("preserves source statements as provenance-bound candidates only", () => {
+    const source = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const document = buildManifest({ name: "Synthetic program" }, { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" }, { sources: [source], primary: source, conflicts: [], normalizationWarnings: [] }, { assetType: "domain", target: "example.test", sourceStatements: [{ sourceId: source.id, contentHash: source.content_hash, fieldPath: "/scope", statement: "Only example.test is in scope.", interpretation: "Allow only example.test.", status: "candidate" }], allowedPaths: ["/"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "reviewed statement" });
+    expect(document.source_statements).toEqual([{ source_id: source.id, content_hash: source.content_hash, field_path: "/scope", statement: "Only example.test is in scope.", interpretation: "Allow only example.test.", status: "candidate" }]);
+    expect(document.approvals.status).toBe("pending");
+  });
 
   it("does not expose execution or grant issuance", () => {
     const milestoneCapabilities = ["manifest", "policy", "approval", "decision", "audit"];
