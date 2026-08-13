@@ -210,6 +210,20 @@ class AuthorizationSliceTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
+    def test_engagement_history_is_exact_and_unknown_program_denies(self) -> None:
+        history = self.service.list_engagements(self.program["id"])
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["id"], self.engagement["id"])
+        self.assertEqual(history[0]["program_id"], self.program["id"])
+        self.assertEqual(history[0]["active_policy_id"], None)
+        self.assertEqual(history[0]["revocation_epoch"], 0)
+        self.assertEqual(history[0]["version"], 1)
+        other = self.service.create_program("Other synthetic program")
+        self.assertEqual(self.service.list_engagements(other["id"]), [])
+        with self.assertRaises(DomainError) as raised:
+            self.service.list_engagements(str(uuid4()))
+        self.assertEqual(raised.exception.code, "PROGRAM_NOT_FOUND")
+
     def activate(self) -> tuple[dict[str, object], dict[str, object]]:
         version = self.service.save_manifest(self.engagement["id"], self.manifest)
         self.assertTrue(version["valid"], version["issues"])

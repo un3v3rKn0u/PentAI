@@ -185,6 +185,7 @@ export function App() {
   const [bootstrapError, setBootstrapError] = useState("");
   const [programs, setPrograms] = useState<Json[]>([]);
   const [sources, setSources] = useState<Json[]>([]);
+  const [engagements, setEngagements] = useState<Json[]>([]);
   const [intakeState, setIntakeState] = useState<IntakeState>("empty");
   const [sourceError, setSourceError] = useState("");
   const [manifestText, setManifestText] = useState("");
@@ -378,6 +379,7 @@ export function App() {
     selectedProgramId.current = selected?.id ?? "";
     setProgram(selected);
     setSources([]);
+    setEngagements([]);
     setSource(null);
     setEngagement(null);
     setManifest(null);
@@ -411,6 +413,13 @@ export function App() {
     if (selectedProgramId.current !== programId) return;
     setSources(result.sources);
     setIntakeState(result.sources.length ? "ready" : "empty");
+  }
+
+  async function refreshEngagements(programId = program?.id) {
+    if (!programId) return;
+    const result = await request(`/programs/${programId}/engagements`);
+    if (selectedProgramId.current !== programId || !Array.isArray(result.engagements)) return;
+    setEngagements(result.engagements);
   }
 
   async function importSource(submission: SourceImport) {
@@ -449,6 +458,7 @@ export function App() {
         });
       if (selectedProgramId.current !== programId) return;
       setEngagement(createdEngagement);
+      await refreshEngagements(programId);
       setSource(imported);
       await refreshSources(programId);
       const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
@@ -479,6 +489,16 @@ export function App() {
     } else {
       setManifestText("");
     }
+  }
+
+  function selectEngagementForReview(selected: Json) {
+    if (!program || !engagements.some((item) => item.id === selected.id && item.program_id === program.id)) return;
+    setEngagement(selected);
+    setManifest(null); setManifestHistory([]); setManifestDiff(null); setPolicy(null); setPolicyHistory([]); setState("draft");
+    if (source) {
+      const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
+      setManifestText(JSON.stringify(buildManifest(program, selected, source, activeNetworkProfile), null, 2));
+    } else setManifestText("");
   }
 
   async function validateManifest() {
@@ -583,10 +603,10 @@ export function App() {
           <DashboardWorkspace connected={Boolean(connection)} safetyState={safetyState} policyState={state} networkProfiles={networkProfiles} audit={audit} />
         </div>
         <div className="workspace-pane" hidden={activeWorkspace !== "programs"}>
-          <ProgramsWorkspace connected={Boolean(connection)} programs={programs} selectedProgramId={program?.id ?? ""} create={createProgram} select={(selected) => { selectProgram(selected); void run(() => refreshSources(selected.id)); }} refresh={() => run(refreshPrograms)} />
+          <ProgramsWorkspace connected={Boolean(connection)} programs={programs} selectedProgramId={program?.id ?? ""} create={createProgram} select={(selected) => { selectProgram(selected); void run(async () => { await Promise.all([refreshSources(selected.id), refreshEngagements(selected.id)]); }); }} refresh={() => run(refreshPrograms)} />
         </div>
         <div className="workspace-pane" hidden={activeWorkspace !== "intake"}>
-          <IntakeWorkspace key={program?.id ?? "no-program"} connected={Boolean(connection)} program={program} sources={sources} selectedSource={source} state={intakeState} error={sourceError} submit={importSource} select={selectSourceForReview} refresh={() => run(() => refreshSources())} />
+          <IntakeWorkspace key={program?.id ?? "no-program"} connected={Boolean(connection)} program={program} engagements={engagements} selectedEngagement={engagement} sources={sources} selectedSource={source} state={intakeState} error={sourceError} submit={importSource} selectEngagement={selectEngagementForReview} select={selectSourceForReview} refresh={() => run(async () => { await Promise.all([refreshSources(), refreshEngagements()]); })} />
         </div>
         <div className="workspace-pane" hidden={activeWorkspace !== "assessments"}>
           <NetworkProfilesWorkspace connected={Boolean(connection)} state={networkSetupState} proposal={networkProposal} profiles={networkProfiles} error={networkSetupError} discover={discoverNetworkProfile} activate={activateNetworkProfile} revoke={revokeNetworkProfile} />
