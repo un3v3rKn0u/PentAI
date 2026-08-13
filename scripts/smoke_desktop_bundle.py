@@ -4,8 +4,9 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE = ROOT / "apps" / "desktop" / "target" / "release"
@@ -43,33 +44,42 @@ def terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
         os.killpg(process.pid, signal.SIGKILL)
 
 
+def captured_output(output: BinaryIO) -> bytes:
+    """Read bounded diagnostics without waiting for inherited pipe handles to close."""
+    output.seek(0)
+    return output.read()[-MAX_DIAGNOSTIC_BYTES:]
+
+
 def run_bootstrap(executable: Path) -> subprocess.CompletedProcess[bytes]:
-    process = subprocess.Popen(  # noqa: S603 - executable is the locally built desktop
-        [str(executable)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        **process_group_options(),
-    )
-    try:
-        stdout, stderr = process.communicate(timeout=BOOTSTRAP_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired as timeout:
-        terminate_process_tree(process)
+    # The core sidecar inherits the desktop's output handles. A pipe-based
+    # communicate() can therefore wait forever for EOF on Windows even after the
+    # desktop exits. A file preserves diagnostics without coupling process exit
+    # detection to every descendant closing its inherited handles.
+    with tempfile.TemporaryFile() as output:
+        process = subprocess.Popen(  # noqa: S603 - executable is the locally built desktop
+            [str(executable)],
+            stdin=subprocess.DEVNULL,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            **process_group_options(),
+        )
         try:
-            stdout, stderr = process.communicate(timeout=SHUTDOWN_TIMEOUT_SECONDS)
+            returncode = process.wait(timeout=BOOTSTRAP_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=SHUTDOWN_TIMEOUT_SECONDS)
-            stdout = timeout.output or b""
-            stderr = timeout.stderr or b""
-        diagnostic = (stdout + stderr)[-MAX_DIAGNOSTIC_BYTES:].decode(errors="replace")
-        detail = f": {diagnostic.strip()}" if diagnostic.strip() else ""
-        raise RuntimeError(
-            f"bundled desktop bootstrap timed out after {BOOTSTRAP_TIMEOUT_SECONDS} seconds{detail}"
-        ) from None
-    if process.returncode is None:
-        raise RuntimeError("bundled desktop bootstrap process did not finish")
-    return subprocess.CompletedProcess([str(executable)], process.returncode, stdout, stderr)
+            terminate_process_tree(process)
+            try:
+                process.wait(timeout=SHUTDOWN_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=SHUTDOWN_TIMEOUT_SECONDS)
+            diagnostic = captured_output(output).decode(errors="replace")
+            detail = f": {diagnostic.strip()}" if diagnostic.strip() else ""
+            raise RuntimeError(
+                f"bundled desktop bootstrap timed out after "
+                f"{BOOTSTRAP_TIMEOUT_SECONDS} seconds{detail}"
+            ) from None
+        stdout = captured_output(output)
+    return subprocess.CompletedProcess([str(executable)], returncode, stdout, b"")
 
 
 def main() -> None:
