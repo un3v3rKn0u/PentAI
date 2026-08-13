@@ -33,12 +33,24 @@ export type SourceBundleReview = {
 
 export type AssetType = "domain" | "wildcard_domain" | "url" | "ipv4" | "ipv6" | "cidr";
 export type DenyBoundary = { assetType: AssetType; target: string; includeApex?: boolean };
+export type AssetRuleReview = {
+  effect: "allow" | "deny";
+  assetType: AssetType;
+  target: string;
+  sourceReference: string;
+  includeApex?: boolean;
+  allowedPaths?: string[];
+  deniedPaths?: string[];
+  allowedPorts?: number[];
+};
+type AssetRuleDraft = Record<"effect" | "assetType" | "target" | "sourceReference" | "includeApex" | "allowedPaths" | "deniedPaths" | "allowedPorts", string>;
 
 export type NormalizationReview = {
   assetType: AssetType;
   target: string;
   includeApex?: boolean;
   denyBoundary?: DenyBoundary;
+  assetRules?: AssetRuleReview[];
   allowedPaths: string[];
   deniedPaths: string[];
   allowedPorts: number[];
@@ -86,6 +98,44 @@ function normalizedAssetValue(assetType: NormalizationReview["assetType"], value
     if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password || parsed.hash) throw new Error();
     return parsed.toString();
   } catch { throw new Error("NORMALIZATION_REVIEW_INVALID"); }
+}
+
+export function reviewedAssetRules(
+  rows: Array<Record<string, string>>,
+  reviewedSourceIds: string[]
+): AssetRuleReview[] {
+  const assetTypes = ["domain", "wildcard_domain", "url", "ipv4", "ipv6", "cidr"] as const;
+  const sourceIds = new Set(reviewedSourceIds);
+  if (rows.length === 0 || rows.length > 50 || sourceIds.size !== reviewedSourceIds.length) throw new Error("ASSET_RULES_INVALID");
+  const rules = rows.map((row) => {
+    const effect: AssetRuleReview["effect"] | null = row.effect === "allow" || row.effect === "deny" ? row.effect : null;
+    const assetType = assetTypes.find((item) => item === row.assetType);
+    if (!effect || !assetType || !sourceIds.has(row.sourceReference)) throw new Error("ASSET_RULE_INVALID");
+    const target = normalizedAssetValue(assetType, row.target);
+    const paths = (value: string) => [...new Set((value ?? "").split(",").map((item) => item.trim()).filter(Boolean))];
+    const allowedPaths = paths(row.allowedPaths);
+    const deniedPaths = paths(row.deniedPaths);
+    const allowedPorts = paths(row.allowedPorts).map(Number);
+    if (effect === "allow" && (
+      allowedPaths.length === 0
+      || [...allowedPaths, ...deniedPaths].some((path) => !path.startsWith("/"))
+      || allowedPorts.length === 0
+      || allowedPorts.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)
+    )) throw new Error("ASSET_RULE_INVALID");
+    if (effect === "deny" && (allowedPaths.length > 0 || deniedPaths.length > 0 || allowedPorts.length > 0)) throw new Error("DENY_RULE_AUTHORITY_INVALID");
+    return {
+      effect,
+      assetType,
+      target,
+      sourceReference: row.sourceReference,
+      ...(assetType === "wildcard_domain" ? { includeApex: row.includeApex === "true" } : {}),
+      ...(effect === "allow" ? { allowedPaths, deniedPaths, allowedPorts } : {})
+    };
+  });
+  const identities = rules.map((rule) => `${rule.assetType}:${rule.target}`);
+  if (new Set(identities).size !== identities.length) throw new Error("ASSET_RULE_CONFLICT");
+  if (!rules.some((rule) => rule.effect === "allow")) throw new Error("ALLOW_RULE_REQUIRED");
+  return rules;
 }
 
 export function reviewedNormalization(input: Record<string, string>): NormalizationReview {
@@ -244,26 +294,25 @@ export function IntakeWorkspace({
   const [reviewIds, setReviewIds] = useState<string[]>(selectedSources.map((item) => item.id));
   const [conflictNote, setConflictNote] = useState("");
   const [reviewError, setReviewError] = useState("");
-  const [target, setTarget] = useState("example.test");
-  const [assetType, setAssetType] = useState<NormalizationReview["assetType"]>("domain");
-  const [includeApex, setIncludeApex] = useState(false);
-  const [includeDenyBoundary, setIncludeDenyBoundary] = useState(false);
-  const [denyAssetType, setDenyAssetType] = useState<AssetType>("domain");
-  const [denyTarget, setDenyTarget] = useState("");
-  const [denyIncludeApex, setDenyIncludeApex] = useState(false);
-  const [allowedPaths, setAllowedPaths] = useState("/api");
-  const [deniedPaths, setDeniedPaths] = useState("/api/admin");
-  const [allowedPorts, setAllowedPorts] = useState("443");
   const [allowedCapabilities, setAllowedCapabilities] = useState("network.http.get");
   const [requestsPerSecond, setRequestsPerSecond] = useState("1");
   const [maximumTotalRequests, setMaximumTotalRequests] = useState("50");
   const [maximumResponseBytes, setMaximumResponseBytes] = useState("100000");
   const [normalizationRationale, setNormalizationRationale] = useState("Restrictive values transcribed from the reviewed sources.");
+  const [assetRules, setAssetRules] = useState<AssetRuleDraft[]>([]);
   const selectedSourceIds = selectedSources.map((item) => item.id).join("|");
 
   useEffect(() => {
     setReviewIds(selectedSourceIds ? selectedSourceIds.split("|") : []);
   }, [selectedSourceIds]);
+
+  useEffect(() => {
+    if (assetRules.length === 0 && reviewIds.length > 0) {
+      setAssetRules([{ effect: "allow", assetType: "domain", target: "example.test", sourceReference: reviewIds[0], includeApex: "false", allowedPaths: "/api", deniedPaths: "/api/admin", allowedPorts: "443" }]);
+    }
+  }, [assetRules.length, reviewIds]);
+
+  const updateAssetRule = (index: number, changes: Partial<AssetRuleDraft>) => setAssetRules((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...changes } : row));
 
   async function importSource(event: FormEvent) {
     event.preventDefault();
@@ -278,10 +327,11 @@ export function IntakeWorkspace({
   function reviewBundle() {
     setReviewError("");
     try {
-      selectBundle(
-        reviewedSourceBundle(sources, reviewIds, conflictNote),
-        reviewedNormalization({ assetType, target, includeApex: String(includeApex), denyAssetType: includeDenyBoundary ? denyAssetType : "", denyTarget: includeDenyBoundary ? denyTarget : "", denyIncludeApex: String(denyIncludeApex), allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale })
-      );
+      const sourceReview = reviewedSourceBundle(sources, reviewIds, conflictNote);
+      const reviewedRules = reviewedAssetRules(assetRules, sourceReview.sources.map((source) => source.id));
+      const primaryAllow = reviewedRules.find((rule) => rule.effect === "allow")!;
+      const normalization = reviewedNormalization({ assetType: primaryAllow.assetType, target: primaryAllow.target, includeApex: String(primaryAllow.includeApex ?? false), allowedPaths: primaryAllow.allowedPaths!.join(","), deniedPaths: primaryAllow.deniedPaths!.join(","), allowedPorts: primaryAllow.allowedPorts!.join(","), allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale });
+      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules });
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
@@ -329,14 +379,17 @@ export function IntakeWorkspace({
       <fieldset disabled={reviewIds.length === 0}>
         <legend>Structured normalization review</legend>
         <p className="hint">Transcribe exact restrictive values from the reviewed sources. The core canonicalizes and validates this draft again.</p>
-        <label>Asset type<select value={assetType} onChange={(event) => { setAssetType(event.target.value as NormalizationReview["assetType"]); setTarget(""); }}><option value="domain">Domain</option><option value="wildcard_domain">Wildcard domain</option><option value="url">URL</option><option value="ipv4">IPv4</option><option value="ipv6">IPv6</option><option value="cidr">CIDR</option></select></label>
-        <label>Exact asset value<input value={target} onChange={(event) => setTarget(event.target.value)} placeholder={assetType === "wildcard_domain" ? "*.example.test" : assetType === "url" ? "https://example.test/api" : assetType === "cidr" ? "192.0.2.0/24" : "example.test"} /></label>
-        {assetType === "wildcard_domain" && <label className="source-choice"><input type="checkbox" checked={includeApex} onChange={(event) => setIncludeApex(event.target.checked)} /> Explicitly include the apex domain</label>}
-        <label className="source-choice"><input type="checkbox" checked={includeDenyBoundary} onChange={(event) => setIncludeDenyBoundary(event.target.checked)} /> Add an explicit out-of-scope boundary</label>
-        {includeDenyBoundary && <div className="boundary-review"><label>Deny asset type<select value={denyAssetType} onChange={(event) => { setDenyAssetType(event.target.value as AssetType); setDenyTarget(""); }}><option value="domain">Domain</option><option value="wildcard_domain">Wildcard domain</option><option value="url">URL</option><option value="ipv4">IPv4</option><option value="ipv6">IPv6</option><option value="cidr">CIDR</option></select></label><label>Exact denied asset value<input value={denyTarget} onChange={(event) => setDenyTarget(event.target.value)} /></label>{denyAssetType === "wildcard_domain" && <label className="source-choice"><input type="checkbox" checked={denyIncludeApex} onChange={(event) => setDenyIncludeApex(event.target.checked)} /> Deny the wildcard apex too</label>}</div>}
-        <label>Allowed paths (comma-separated)<input value={allowedPaths} onChange={(event) => setAllowedPaths(event.target.value)} /></label>
-        <label>Denied paths (comma-separated)<input value={deniedPaths} onChange={(event) => setDeniedPaths(event.target.value)} /></label>
-        <label>Allowed ports (comma-separated)<input value={allowedPorts} onChange={(event) => setAllowedPorts(event.target.value)} /></label>
+        <div className="panel-heading"><strong>Scope rules</strong><button type="button" disabled={assetRules.length >= 50} onClick={() => setAssetRules((current) => [...current, { effect: "deny", assetType: "domain", target: "", sourceReference: reviewIds[0] ?? "", includeApex: "false", allowedPaths: "", deniedPaths: "", allowedPorts: "" }])}>Add scope rule</button></div>
+        <p className="hint">Each row must cite one selected immutable source. Deny rows cannot carry paths, ports, or ownership authority.</p>
+        {assetRules.map((row, index) => <div className="boundary-review" key={index}>
+          <div className="panel-heading"><strong>Rule {index + 1}</strong><button type="button" disabled={assetRules.length === 1} onClick={() => setAssetRules((current) => current.filter((_, rowIndex) => rowIndex !== index))}>Remove</button></div>
+          <label>Effect<select value={row.effect} onChange={(event) => updateAssetRule(index, { effect: event.target.value, ...(event.target.value === "deny" ? { allowedPaths: "", deniedPaths: "", allowedPorts: "" } : {}) })}><option value="allow">In scope</option><option value="deny">Out of scope</option></select></label>
+          <label>Asset type<select value={row.assetType} onChange={(event) => updateAssetRule(index, { assetType: event.target.value, target: "", includeApex: "false" })}><option value="domain">Domain</option><option value="wildcard_domain">Wildcard domain</option><option value="url">URL</option><option value="ipv4">IPv4</option><option value="ipv6">IPv6</option><option value="cidr">CIDR</option></select></label>
+          <label>Exact asset value<input value={row.target} onChange={(event) => updateAssetRule(index, { target: event.target.value })} /></label>
+          {row.assetType === "wildcard_domain" && <label className="source-choice"><input type="checkbox" checked={row.includeApex === "true"} onChange={(event) => updateAssetRule(index, { includeApex: String(event.target.checked) })} /> Explicitly include the apex</label>}
+          <label>Source<select value={row.sourceReference} onChange={(event) => updateAssetRule(index, { sourceReference: event.target.value })}><option value="">Select reviewed source</option>{sources.filter((source) => reviewIds.includes(source.id)).map((source) => <option key={source.id} value={source.id}>{source.authority} · {source.reference}</option>)}</select></label>
+          {row.effect === "allow" && <><label>Allowed paths (comma-separated)<input value={row.allowedPaths} onChange={(event) => updateAssetRule(index, { allowedPaths: event.target.value })} /></label><label>Denied paths (comma-separated)<input value={row.deniedPaths} onChange={(event) => updateAssetRule(index, { deniedPaths: event.target.value })} /></label><label>Allowed ports (comma-separated)<input value={row.allowedPorts} onChange={(event) => updateAssetRule(index, { allowedPorts: event.target.value })} /></label></>}
+        </div>)}
         <label>Allowed capabilities (comma-separated)<input value={allowedCapabilities} onChange={(event) => setAllowedCapabilities(event.target.value)} /></label>
         <label>Requests per second<input type="number" min="0.001" step="0.001" value={requestsPerSecond} onChange={(event) => setRequestsPerSecond(event.target.value)} /></label>
         <label>Maximum total requests<input type="number" min="1" value={maximumTotalRequests} onChange={(event) => setMaximumTotalRequests(event.target.value)} /></label>

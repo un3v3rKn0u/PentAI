@@ -94,6 +94,20 @@ export function networkManifestSettings(networkProfile?: Json) {
 
 export function buildManifest(program: Json, engagement: Json, review: SourceBundleReview, normalization: NormalizationReview, networkProfile?: Json) {
   const provenance = review.sources.map((source) => ({ source_id: source.id, content_hash: source.content_hash }));
+  const reviewedAssets = normalization.assetRules?.map((rule) => ({
+    asset_id: crypto.randomUUID(),
+    effect: rule.effect,
+    type: rule.assetType,
+    canonical_value: rule.target,
+    ...(rule.assetType === "wildcard_domain" ? { include_apex: rule.includeApex } : {}),
+    ...(rule.effect === "allow" ? {
+      allowed_paths: rule.allowedPaths,
+      denied_paths: rule.deniedPaths,
+      allowed_ports: rule.allowedPorts,
+      ownership_verified: true
+    } : {}),
+    source_reference: rule.sourceReference
+  }));
   return {
     schema_version: "2.0.0",
     engagement: {
@@ -119,7 +133,7 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       "/data_handling", "/reporting", "/agent_controls"
     ].map((field) => [field, provenance])),
     scope: {
-      assets: [{
+      assets: reviewedAssets ?? [{
         asset_id: crypto.randomUUID(),
         effect: "allow",
         type: normalization.assetType,
