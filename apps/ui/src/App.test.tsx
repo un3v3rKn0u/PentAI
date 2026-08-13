@@ -129,6 +129,17 @@ describe("authorization workflow safety boundary", () => {
     expect(document.scope).toMatchObject({ third_party_services: "deny", shared_hosting_and_cdn: "allow_if_explicit", scope_expansion_process: "Obtain written authorization for the exact asset." });
   });
 
+  it("preserves explicit technique classifications and approvals", () => {
+    const source = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const document = buildManifest(
+      { name: "Synthetic program" },
+      { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" },
+      { sources: [source], primary: source, conflicts: [], normalizationWarnings: [] },
+      { assetType: "domain", target: "example.test", techniques: { allowedCapabilities: ["network.http.get"], deniedCapabilities: ["network.http.options"], conditionalCapabilities: [{ capability: "network.http.head", approvalType: "sensitive_validation", conditions: ["written approval"] }], allowedHttpMethods: ["GET"] }, allowedPaths: ["/"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["unused.legacy"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "reviewed techniques" }
+    );
+    expect(document.techniques).toEqual({ allowed_capabilities: ["network.http.get"], denied_capabilities: ["network.http.options"], conditional_capabilities: [{ capability: "network.http.head", approval_type: "sensitive_validation", conditions: ["written approval"] }], allowed_http_methods: ["GET"] });
+  });
+
   it("does not expose execution or grant issuance", () => {
     const milestoneCapabilities = ["manifest", "policy", "approval", "decision", "audit"];
     expect(milestoneCapabilities).not.toContain("action-grant");

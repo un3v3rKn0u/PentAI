@@ -48,6 +48,12 @@ export type ScopeBoundaryReview = {
   sharedHostingAndCdn: "deny" | "allow_if_explicit";
   scopeExpansionProcess: string;
 };
+export type TechniqueReview = {
+  allowedCapabilities: string[];
+  deniedCapabilities: string[];
+  conditionalCapabilities: Array<{ capability: string; approvalType: string; conditions: string[] }>;
+  allowedHttpMethods: Array<"GET" | "HEAD" | "OPTIONS">;
+};
 type AssetRuleDraft = Record<"effect" | "assetType" | "target" | "sourceReference" | "includeApex" | "allowedPaths" | "deniedPaths" | "allowedPorts", string>;
 
 export type NormalizationReview = {
@@ -57,6 +63,7 @@ export type NormalizationReview = {
   denyBoundary?: DenyBoundary;
   assetRules?: AssetRuleReview[];
   scopeBoundaries?: ScopeBoundaryReview;
+  techniques?: TechniqueReview;
   allowedPaths: string[];
   deniedPaths: string[];
   allowedPorts: number[];
@@ -150,6 +157,31 @@ export function reviewedScopeBoundaries(input: Record<string, string>): ScopeBou
   const scopeExpansionProcess = input.scopeExpansionProcess?.trim() ?? "";
   if (!thirdPartyServices || !sharedHostingAndCdn || !scopeExpansionProcess || scopeExpansionProcess.length > 500) throw new Error("SCOPE_BOUNDARY_REVIEW_INVALID");
   return { thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess };
+}
+
+export function reviewedTechniques(input: Record<string, string>): TechniqueReview {
+  const list = (value: string) => [...new Set((value ?? "").split(",").map((item) => item.trim()).filter(Boolean))];
+  const capabilityPattern = /^[a-z][a-z0-9_.-]+$/;
+  const allowedCapabilities = list(input.allowedCapabilities);
+  const deniedCapabilities = list(input.deniedCapabilities);
+  const conditionalCapability = input.conditionalCapability?.trim() ?? "";
+  const conditionalApprovalType = input.conditionalApprovalType?.trim() ?? "";
+  const conditionalConditions = list(input.conditionalConditions);
+  const conditionalParts = [conditionalCapability, conditionalApprovalType, ...conditionalConditions];
+  const hasConditional = conditionalParts.some(Boolean);
+  if (allowedCapabilities.length === 0 || [...allowedCapabilities, ...deniedCapabilities].some((item) => !capabilityPattern.test(item))) throw new Error("TECHNIQUE_REVIEW_INVALID");
+  if (hasConditional && (!conditionalCapability || !capabilityPattern.test(conditionalCapability) || !conditionalApprovalType || conditionalApprovalType.length > 128 || conditionalConditions.length === 0 || conditionalConditions.some((item) => item.length > 200))) throw new Error("CONDITIONAL_CAPABILITY_INVALID");
+  const classified = [...allowedCapabilities, ...deniedCapabilities, ...(conditionalCapability ? [conditionalCapability] : [])];
+  if (new Set(classified).size !== classified.length) throw new Error("TECHNIQUE_CLASSIFICATION_CONFLICT");
+  const allowedHttpMethods = (["GET", "HEAD", "OPTIONS"] as const).filter((method) => input[`method${method}`] === "true");
+  const requiredMethod: Record<string, typeof allowedHttpMethods[number]> = { "network.http.get": "GET", "network.http.head": "HEAD", "network.http.options": "OPTIONS" };
+  if (allowedHttpMethods.length === 0 || allowedCapabilities.some((capability) => requiredMethod[capability] && !allowedHttpMethods.includes(requiredMethod[capability]))) throw new Error("TECHNIQUE_METHOD_CONFLICT");
+  return {
+    allowedCapabilities,
+    deniedCapabilities,
+    conditionalCapabilities: conditionalCapability ? [{ capability: conditionalCapability, approvalType: conditionalApprovalType, conditions: conditionalConditions }] : [],
+    allowedHttpMethods
+  };
 }
 
 export function reviewedNormalization(input: Record<string, string>): NormalizationReview {
@@ -309,6 +341,11 @@ export function IntakeWorkspace({
   const [conflictNote, setConflictNote] = useState("");
   const [reviewError, setReviewError] = useState("");
   const [allowedCapabilities, setAllowedCapabilities] = useState("network.http.get");
+  const [deniedCapabilities, setDeniedCapabilities] = useState("");
+  const [conditionalCapability, setConditionalCapability] = useState("");
+  const [conditionalApprovalType, setConditionalApprovalType] = useState("");
+  const [conditionalConditions, setConditionalConditions] = useState("");
+  const [allowedHttpMethods, setAllowedHttpMethods] = useState<Array<TechniqueReview["allowedHttpMethods"][number]>>(["GET"]);
   const [requestsPerSecond, setRequestsPerSecond] = useState("1");
   const [maximumTotalRequests, setMaximumTotalRequests] = useState("50");
   const [maximumResponseBytes, setMaximumResponseBytes] = useState("100000");
@@ -348,7 +385,7 @@ export function IntakeWorkspace({
       const reviewedRules = reviewedAssetRules(assetRules, sourceReview.sources.map((source) => source.id));
       const primaryAllow = reviewedRules.find((rule) => rule.effect === "allow")!;
       const normalization = reviewedNormalization({ assetType: primaryAllow.assetType, target: primaryAllow.target, includeApex: String(primaryAllow.includeApex ?? false), allowedPaths: primaryAllow.allowedPaths!.join(","), deniedPaths: primaryAllow.deniedPaths!.join(","), allowedPorts: primaryAllow.allowedPorts!.join(","), allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale });
-      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }) });
+      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }) });
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
@@ -413,7 +450,15 @@ export function IntakeWorkspace({
           <label>Shared hosting and CDN<select value={sharedHostingAndCdn} onChange={(event) => setSharedHostingAndCdn(event.target.value as ScopeBoundaryReview["sharedHostingAndCdn"])}><option value="deny">Deny</option><option value="allow_if_explicit">Allow only when explicitly listed</option></select></label>
           <label>Scope expansion process<textarea maxLength={500} value={scopeExpansionProcess} onChange={(event) => setScopeExpansionProcess(event.target.value)} /></label>
         </div>
-        <label>Allowed capabilities (comma-separated)<input value={allowedCapabilities} onChange={(event) => setAllowedCapabilities(event.target.value)} /></label>
+        <div className="boundary-review">
+          <strong>Technique review</strong>
+          <label>Allowed capabilities (comma-separated)<input value={allowedCapabilities} onChange={(event) => setAllowedCapabilities(event.target.value)} /></label>
+          <label>Denied capabilities (comma-separated)<input value={deniedCapabilities} onChange={(event) => setDeniedCapabilities(event.target.value)} /></label>
+          <span className="hint">Allowed HTTP methods</span>{(["GET", "HEAD", "OPTIONS"] as const).map((method) => <label className="source-choice" key={method}><input type="checkbox" checked={allowedHttpMethods.includes(method)} onChange={(event) => setAllowedHttpMethods((current) => event.target.checked ? [...current, method] : current.filter((item) => item !== method))} /> {method}</label>)}
+          <label>Conditional capability (optional)<input value={conditionalCapability} onChange={(event) => setConditionalCapability(event.target.value)} /></label>
+          <label>Required approval type<input value={conditionalApprovalType} onChange={(event) => setConditionalApprovalType(event.target.value)} /></label>
+          <label>Conditions (comma-separated)<input value={conditionalConditions} onChange={(event) => setConditionalConditions(event.target.value)} /></label>
+        </div>
         <label>Requests per second<input type="number" min="0.001" step="0.001" value={requestsPerSecond} onChange={(event) => setRequestsPerSecond(event.target.value)} /></label>
         <label>Maximum total requests<input type="number" min="1" value={maximumTotalRequests} onChange={(event) => setMaximumTotalRequests(event.target.value)} /></label>
         <label>Maximum response bytes<input type="number" min="1" value={maximumResponseBytes} onChange={(event) => setMaximumResponseBytes(event.target.value)} /></label>

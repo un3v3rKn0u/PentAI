@@ -159,10 +159,10 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       ...(normalization.scopeBoundaries ? { scope_expansion_process: normalization.scopeBoundaries.scopeExpansionProcess } : {})
     },
     techniques: {
-      allowed_capabilities: normalization.allowedCapabilities,
-      denied_capabilities: [],
-      conditional_capabilities: [],
-      allowed_http_methods: ["GET"]
+      allowed_capabilities: normalization.techniques?.allowedCapabilities ?? normalization.allowedCapabilities,
+      denied_capabilities: normalization.techniques?.deniedCapabilities ?? [],
+      conditional_capabilities: normalization.techniques?.conditionalCapabilities.map((item) => ({ capability: item.capability, approval_type: item.approvalType, conditions: item.conditions })) ?? [],
+      allowed_http_methods: normalization.techniques?.allowedHttpMethods ?? ["GET"]
     },
     operational_limits: {
       requests_per_second: normalization.requestsPerSecond,
