@@ -231,6 +231,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [x] Implement source import for files, URLs, and pasted text.
 - [x] Store source authority, timestamps, effective dates, hashes, and encrypted originals.
 - [ ] Build the full intake UI from `design_intake_workflow.md`.
+  - Source intake now captures optional effective-time and source-version provenance for
+    every import mode, and immutable history supports explicit exact-source review.
+    Changing the reviewed source clears downstream manifest/policy state before deriving
+    a new draft. Multi-source conflict resolution and full normalization review remain.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.

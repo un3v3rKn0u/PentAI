@@ -424,17 +424,20 @@ export function App() {
         imported = await request("/sources/files", {
           program_id: programId,
           authority: submission.authority, filename: submission.filename,
-          media_type: submission.mediaType, content_base64: submission.contentBase64
+          media_type: submission.mediaType, content_base64: submission.contentBase64,
+          effective_at: submission.effectiveAt, source_version: submission.sourceVersion
         });
       } else if (submission.mode === "url") {
         imported = await request("/sources/urls", {
-          program_id: programId, authority: submission.authority, url: submission.url
+          program_id: programId, authority: submission.authority, url: submission.url,
+          effective_at: submission.effectiveAt, source_version: submission.sourceVersion
         });
       } else {
         imported = await request("/sources", {
           program_id: programId, authority: submission.authority,
           reference: "pasted://local-supervised-intake",
-          content: submission.content
+          content: submission.content, effective_at: submission.effectiveAt,
+          source_version: submission.sourceVersion
         });
       }
       if (selectedProgramId.current !== programId) return;
@@ -463,6 +466,18 @@ export function App() {
           ? "denied"
           : "error"
       );
+    }
+  }
+
+  function selectSourceForReview(selected: Json) {
+    if (!sources.some((item) => item.id === selected.id)) return;
+    setSource(selected);
+    setManifest(null); setManifestHistory([]); setManifestDiff(null); setPolicy(null); setPolicyHistory([]); setState("draft");
+    if (program && engagement) {
+      const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
+      setManifestText(JSON.stringify(buildManifest(program, engagement, selected, activeNetworkProfile), null, 2));
+    } else {
+      setManifestText("");
     }
   }
 
@@ -571,7 +586,7 @@ export function App() {
           <ProgramsWorkspace connected={Boolean(connection)} programs={programs} selectedProgramId={program?.id ?? ""} create={createProgram} select={(selected) => { selectProgram(selected); void run(() => refreshSources(selected.id)); }} refresh={() => run(refreshPrograms)} />
         </div>
         <div className="workspace-pane" hidden={activeWorkspace !== "intake"}>
-          <IntakeWorkspace key={program?.id ?? "no-program"} connected={Boolean(connection)} program={program} sources={sources} selectedSource={source} state={intakeState} error={sourceError} submit={importSource} refresh={() => run(() => refreshSources())} />
+          <IntakeWorkspace key={program?.id ?? "no-program"} connected={Boolean(connection)} program={program} sources={sources} selectedSource={source} state={intakeState} error={sourceError} submit={importSource} select={selectSourceForReview} refresh={() => run(() => refreshSources())} />
         </div>
         <div className="workspace-pane" hidden={activeWorkspace !== "assessments"}>
           <NetworkProfilesWorkspace connected={Boolean(connection)} state={networkSetupState} proposal={networkProposal} profiles={networkProfiles} error={networkSetupError} discover={discoverNetworkProfile} activate={activateNetworkProfile} revoke={revokeNetworkProfile} />
