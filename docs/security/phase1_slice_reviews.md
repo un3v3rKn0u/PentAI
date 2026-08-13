@@ -987,6 +987,31 @@ dependencies; process isolation and gateway binary enforcement remain future con
 This self-authored review is non-independent and cannot satisfy an external
 independent-review requirement.
 
+## 2026-08-13 — Reporting-terms review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Submission channel, required fields, evidence rules, disclosure
+timeline, fixed human approval and automatic-submission denial, manifest mapping,
+compatibility, rollback, and absence of export or submission effects.
+
+**Evidence examined:** UI typecheck; 123 Vitest checks including complete mapping and
+missing channel/field/evidence denial; production UI build; desktop Cargo check; complete
+diff; manifest v2 reporting contract and existing supervised report workflow.
+
+**Findings:** Reporting terms are explicit without creating submission authority. Human
+approval remains true and automatic submission remains false regardless of reviewed text.
+Malformed or incomplete review fails before draft construction.
+
+**Limitations and residual risk:** Terms are reviewed prose, not proof of portal or
+disclosure compliance. Account, testing-window, and source-statement review remain.
+Synthetic terms remain visible locally. This self-authored review is non-independent and
+cannot satisfy an external independent-review requirement.
+
 ## 2026-08-13 — Data-handling review
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local

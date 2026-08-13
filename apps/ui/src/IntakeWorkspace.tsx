@@ -73,6 +73,7 @@ export type DataHandlingReview = {
   remoteAiMaxClassification: "none" | "public" | "internal" | "confidential";
   redactionRules: string[];
 };
+export type ReportingReview = { submissionChannel: string; requiredFields: string[]; evidenceRules: string[]; disclosureTimeline: string };
 type AssetRuleDraft = Record<"effect" | "assetType" | "target" | "sourceReference" | "includeApex" | "allowedPaths" | "deniedPaths" | "allowedPorts", string>;
 
 export type NormalizationReview = {
@@ -85,6 +86,7 @@ export type NormalizationReview = {
   techniques?: TechniqueReview;
   operationalLimits?: OperationalLimitReview;
   dataHandling?: DataHandlingReview;
+  reporting?: ReportingReview;
   allowedPaths: string[];
   deniedPaths: string[];
   allowedPorts: number[];
@@ -243,6 +245,16 @@ export function reviewedDataHandling(input: Record<string, string>): DataHandlin
   if (realUserData === "minimal_if_explicit" && (!recordsText || !Number.isInteger(maximumRecordsToView) || maximumRecordsToView < 1)) throw new Error("REAL_USER_DATA_LIMIT_REQUIRED");
   if (realUserData === "avoid_and_stop" && recordsText) throw new Error("REAL_USER_DATA_LIMIT_CONFLICT");
   return { realUserData, ...(realUserData === "minimal_if_explicit" ? { maximumRecordsToView } : {}), retentionDays, approvedStorage: "local_encrypted", remoteAiMaxClassification, redactionRules };
+}
+
+export function reviewedReporting(input: Record<string, string>): ReportingReview {
+  const list = (value: string) => [...new Set((value ?? "").split(",").map((item) => item.trim()).filter(Boolean))];
+  const submissionChannel = input.submissionChannel?.trim() ?? "";
+  const requiredFields = list(input.requiredFields);
+  const evidenceRules = list(input.evidenceRules);
+  const disclosureTimeline = input.disclosureTimeline?.trim() ?? "";
+  if (!submissionChannel || submissionChannel.length > 200 || requiredFields.length === 0 || evidenceRules.length === 0 || !disclosureTimeline || disclosureTimeline.length > 500 || [...requiredFields, ...evidenceRules].some((item) => item.length > 200)) throw new Error("REPORTING_REVIEW_INVALID");
+  return { submissionChannel, requiredFields, evidenceRules, disclosureTimeline };
 }
 
 export function reviewedNormalization(input: Record<string, string>): NormalizationReview {
@@ -421,6 +433,10 @@ export function IntakeWorkspace({
   const [retentionDays, setRetentionDays] = useState("7");
   const [remoteAiMaxClassification, setRemoteAiMaxClassification] = useState<DataHandlingReview["remoteAiMaxClassification"]>("none");
   const [redactionRules, setRedactionRules] = useState("remove credentials,remove personal identifiers");
+  const [submissionChannel, setSubmissionChannel] = useState("Manual program portal");
+  const [requiredFields, setRequiredFields] = useState("title,affected asset,impact,reproduction,remediation");
+  const [evidenceRules, setEvidenceRules] = useState("redact credentials,include only necessary evidence");
+  const [disclosureTimeline, setDisclosureTimeline] = useState("Follow the reviewed program timeline; do not disclose publicly without approval.");
   const [normalizationRationale, setNormalizationRationale] = useState("Restrictive values transcribed from the reviewed sources.");
   const [thirdPartyServices, setThirdPartyServices] = useState<ScopeBoundaryReview["thirdPartyServices"]>("deny");
   const [sharedHostingAndCdn, setSharedHostingAndCdn] = useState<ScopeBoundaryReview["sharedHostingAndCdn"]>("deny");
@@ -457,7 +473,7 @@ export function IntakeWorkspace({
       const reviewedRules = reviewedAssetRules(assetRules, sourceReview.sources.map((source) => source.id));
       const primaryAllow = reviewedRules.find((rule) => rule.effect === "allow")!;
       const normalization = reviewedNormalization({ assetType: primaryAllow.assetType, target: primaryAllow.target, includeApex: String(primaryAllow.includeApex ?? false), allowedPaths: primaryAllow.allowedPaths!.join(","), deniedPaths: primaryAllow.deniedPaths!.join(","), allowedPorts: primaryAllow.allowedPorts!.join(","), allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale });
-      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }), dataHandling: reviewedDataHandling({ realUserData, maximumRecordsToView, retentionDays, remoteAiMaxClassification, redactionRules }) });
+      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }), dataHandling: reviewedDataHandling({ realUserData, maximumRecordsToView, retentionDays, remoteAiMaxClassification, redactionRules }), reporting: reviewedReporting({ submissionChannel, requiredFields, evidenceRules, disclosureTimeline }) });
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
@@ -549,6 +565,13 @@ export function IntakeWorkspace({
           <label>Approved storage<input value="Local encrypted storage only" disabled /></label>
           <label>Remote AI maximum classification<select value={remoteAiMaxClassification} onChange={(event) => setRemoteAiMaxClassification(event.target.value as DataHandlingReview["remoteAiMaxClassification"])}><option value="none">None</option><option value="public">Public</option><option value="internal">Internal</option><option value="confidential">Confidential</option></select></label>
           <label>Redaction rules (comma-separated)<textarea value={redactionRules} onChange={(event) => setRedactionRules(event.target.value)} /></label>
+        </div>
+        <div className="boundary-review"><strong>Reporting terms</strong>
+          <label>Submission channel<input value={submissionChannel} onChange={(event) => setSubmissionChannel(event.target.value)} /></label>
+          <label>Required report fields (comma-separated)<textarea value={requiredFields} onChange={(event) => setRequiredFields(event.target.value)} /></label>
+          <label>Evidence rules (comma-separated)<textarea value={evidenceRules} onChange={(event) => setEvidenceRules(event.target.value)} /></label>
+          <label>Disclosure timeline<textarea maxLength={500} value={disclosureTimeline} onChange={(event) => setDisclosureTimeline(event.target.value)} /></label>
+          <p className="hint">Submission always requires human approval. Automatic submission remains disabled.</p>
         </div>
         <label>Review rationale<textarea maxLength={500} value={normalizationRationale} onChange={(event) => setNormalizationRationale(event.target.value)} /></label>
       </fieldset>

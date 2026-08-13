@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedDataHandling, reviewedEngagement, reviewedNormalization, reviewedOperationalLimits, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, reviewedTechniques, sourceFileMediaType } from "./IntakeWorkspace";
+import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedDataHandling, reviewedEngagement, reviewedNormalization, reviewedOperationalLimits, reviewedReporting, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, reviewedTechniques, sourceFileMediaType } from "./IntakeWorkspace";
 
 const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", reference: "contract://authorization", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
 const engagement = { id: "20000000-0000-4000-8000-000000000001", program_id: "program-a", status: "draft", effective_from: "2030-01-01T10:00:00Z", expires_at: "2030-01-02T10:00:00Z" };
@@ -131,6 +131,15 @@ describe("supervised Intake workspace", () => {
     expect(() => reviewedDataHandling({ ...valid, realUserData: "minimal_if_explicit" })).toThrow("REAL_USER_DATA_LIMIT_REQUIRED");
     expect(() => reviewedDataHandling({ ...valid, maximumRecordsToView: "1" })).toThrow("REAL_USER_DATA_LIMIT_CONFLICT");
     expect(() => reviewedDataHandling({ ...valid, remoteAiMaxClassification: "secret" })).toThrow("DATA_HANDLING_REVIEW_INVALID");
+  });
+  it("reviews reporting terms without enabling submission", () => {
+    expect(reviewedReporting({ submissionChannel: "Program portal", requiredFields: "title,impact,title", evidenceRules: "redact secrets", disclosureTimeline: "Wait for written approval." })).toEqual({ submissionChannel: "Program portal", requiredFields: ["title", "impact"], evidenceRules: ["redact secrets"], disclosureTimeline: "Wait for written approval." });
+  });
+  it("denies incomplete reporting terms", () => {
+    const valid = { submissionChannel: "Portal", requiredFields: "title", evidenceRules: "redact secrets", disclosureTimeline: "Wait for approval." };
+    expect(() => reviewedReporting({ ...valid, submissionChannel: "" })).toThrow("REPORTING_REVIEW_INVALID");
+    expect(() => reviewedReporting({ ...valid, requiredFields: "" })).toThrow("REPORTING_REVIEW_INVALID");
+    expect(() => reviewedReporting({ ...valid, evidenceRules: "" })).toThrow("REPORTING_REVIEW_INVALID");
   });
   it("denies malformed or incomplete structured normalization", () => {
     const valid = { assetType: "domain", target: "example.test", allowedPaths: "/api", deniedPaths: "/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "50", maximumResponseBytes: "1000", rationale: "reviewed" };
