@@ -104,6 +104,20 @@ describe("authorization workflow safety boundary", () => {
     expect(document.scope.assets[1]).not.toHaveProperty("ownership_verified");
   });
 
+  it("emits reviewed scope rows with their exact source provenance", () => {
+    const first = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const second = { ...first, id: "10000000-0000-4000-8000-000000000002", reference: "contract://exclusions", content_hash: "b".repeat(64) };
+    const document = buildManifest(
+      { name: "Synthetic program" },
+      { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" },
+      { sources: [first, second], primary: first, conflicts: [], normalizationWarnings: [] },
+      { assetType: "domain", target: "unused.test", assetRules: [{ effect: "allow", assetType: "domain", target: "example.test", sourceReference: first.id, allowedPaths: ["/api"], deniedPaths: [], allowedPorts: [443] }, { effect: "deny", assetType: "domain", target: "excluded.test", sourceReference: second.id }], allowedPaths: ["/"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "reviewed rows" }
+    );
+    expect(document.scope.assets.map((asset) => asset.source_reference)).toEqual([first.id, second.id]);
+    expect(document.scope.assets[1]).not.toHaveProperty("allowed_paths");
+    expect(document.scope.assets[1]).not.toHaveProperty("ownership_verified");
+  });
+
   it("does not expose execution or grant issuance", () => {
     const milestoneCapabilities = ["manifest", "policy", "approval", "decision", "audit"];
     expect(milestoneCapabilities).not.toContain("action-grant");

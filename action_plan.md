@@ -250,8 +250,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     URL, IPv4, IPv6, or CIDR matcher type and requires explicit wildcard-apex behavior,
     without inferring authority across types. The review can also add one independently
     typed explicit out-of-scope boundary, rejects incomplete or exact allow/deny duplicate
-    input, and keeps deny rows free of allow-only authority. General multi-row scope
-    editing, broader structured rules, and source-statement extraction remain.
+    input, and keeps deny rows free of allow-only authority. Scope review now supports
+    up to 50 independently typed allow/deny rows, binds each row to one selected immutable
+    source, requires at least one allow row, and rejects canonical duplicates before draft
+    construction. Broader structured rules and source-statement extraction remain.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.

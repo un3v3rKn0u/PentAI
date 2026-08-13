@@ -2819,3 +2819,38 @@ different matcher types; core deny precedence and contradiction validation are m
 Synthetic boundary values remain visible inside the authenticated same-user desktop
 boundary. This review is self-authored and non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-13 — Multi-row scope review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Bounded multi-row allow/deny entry, per-row immutable-source
+provenance, typed normalization, wildcard-apex handling, allow-only authority fields,
+canonical duplicate rejection, minimum allow coverage, manifest construction,
+compatibility, rollback, and absence of discovery or execution.
+
+**Evidence examined:** UI typecheck; 108 Vitest checks including multi-row normalization,
+unknown provenance denial, duplicate-source denial, deny authority denial, deny-only
+denial, canonical duplicate denial, and exact manifest source references; production UI
+build; desktop Cargo check; complete diff; manifest v2 validation and duplicate-asset
+tests; intake completeness requirements.
+
+**Findings:** A supervised review can now express multiple exact asset boundaries without
+sharing provenance or leaking allow-only authority into deny rows. Local validation is
+conservative and aligned with the core's duplicate-asset rejection. The core remains the
+only authority for canonical manifest validation, compilation, approval, and activation.
+
+**Limitations and deferred work:** Scope review is capped at 50 rows and still depends on
+manual transcription. Structured technique, reporting, account, timing, stop-condition,
+and data-handling rules plus source-statement extraction remain. Rollback affects draft
+presentation only.
+
+**Residual risk accepted:** Per-row UI validation cannot prove that different matcher
+types are semantically non-overlapping; core deny precedence and contradiction validation
+remain mandatory. Synthetic boundary values remain visible inside the authenticated
+same-user desktop boundary. This review is self-authored and non-independent and cannot
+satisfy an external independent-review requirement.

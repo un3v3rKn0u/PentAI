@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeBytesBase64, prepareSourceImport, reviewedEngagement, reviewedNormalization, reviewedSource, reviewedSourceBundle, sourceFileMediaType } from "./IntakeWorkspace";
+import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedEngagement, reviewedNormalization, reviewedSource, reviewedSourceBundle, sourceFileMediaType } from "./IntakeWorkspace";
 
 const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", reference: "contract://authorization", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
 const engagement = { id: "20000000-0000-4000-8000-000000000001", program_id: "program-a", status: "draft", effective_from: "2030-01-01T10:00:00Z", expires_at: "2030-01-02T10:00:00Z" };
@@ -59,6 +59,25 @@ describe("supervised Intake workspace", () => {
     expect(() => reviewedNormalization({ ...valid, denyAssetType: "domain", denyTarget: "" })).toThrow("DENY_BOUNDARY_INVALID");
     expect(() => reviewedNormalization({ ...valid, denyAssetType: "", denyTarget: "other.test" })).toThrow("DENY_BOUNDARY_INVALID");
     expect(() => reviewedNormalization({ ...valid, denyAssetType: "domain", denyTarget: "EXAMPLE.TEST" })).toThrow("DENY_BOUNDARY_CONFLICT");
+  });
+  it("reviews bounded multi-row scope with exact per-row provenance", () => {
+    const rules = reviewedAssetRules([
+      { effect: "allow", assetType: "domain", target: "EXAMPLE.TEST", sourceReference: "source-a", allowedPaths: "/api,/api", deniedPaths: "/api/admin", allowedPorts: "443" },
+      { effect: "deny", assetType: "wildcard_domain", target: "*.third-party.test", sourceReference: "source-b", includeApex: "true" }
+    ], ["source-a", "source-b"]);
+    expect(rules).toEqual([
+      { effect: "allow", assetType: "domain", target: "example.test", sourceReference: "source-a", allowedPaths: ["/api"], deniedPaths: ["/api/admin"], allowedPorts: [443] },
+      { effect: "deny", assetType: "wildcard_domain", target: "*.third-party.test", sourceReference: "source-b", includeApex: true }
+    ]);
+  });
+  it("denies invalid multi-row authority and canonical duplicates", () => {
+    const allow = { effect: "allow", assetType: "domain", target: "example.test", sourceReference: "source-a", allowedPaths: "/", deniedPaths: "", allowedPorts: "443" };
+    expect(() => reviewedAssetRules([], ["source-a"])).toThrow("ASSET_RULES_INVALID");
+    expect(() => reviewedAssetRules([allow], ["source-a", "source-a"])).toThrow("ASSET_RULES_INVALID");
+    expect(() => reviewedAssetRules([{ ...allow, sourceReference: "unknown" }], ["source-a"])).toThrow("ASSET_RULE_INVALID");
+    expect(() => reviewedAssetRules([{ ...allow, effect: "deny" }], ["source-a"])).toThrow("DENY_RULE_AUTHORITY_INVALID");
+    expect(() => reviewedAssetRules([{ ...allow, effect: "deny", allowedPaths: "", allowedPorts: "" }], ["source-a"])).toThrow("ALLOW_RULE_REQUIRED");
+    expect(() => reviewedAssetRules([allow, { effect: "deny", assetType: "domain", target: "EXAMPLE.TEST", sourceReference: "source-a" }], ["source-a"])).toThrow("ASSET_RULE_CONFLICT");
   });
   it("denies malformed or incomplete structured normalization", () => {
     const valid = { assetType: "domain", target: "example.test", allowedPaths: "/api", deniedPaths: "/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "50", maximumResponseBytes: "1000", rationale: "reviewed" };
