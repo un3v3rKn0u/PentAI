@@ -121,7 +121,9 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
 .intake-state.loading { background: #302814; color: #e7c573; }
 .intake-state.denied, .intake-state.error, .intake-state.degraded { background: #35191e; color: #ff9ca9; }
 .source-list { list-style: none; padding: 0; display: grid; gap: 7px; }
-.source-list li { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 7px; background: #0c1016; font-size: 11px; }
+.source-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 10px; border: 1px solid transparent; border-radius: 7px; background: #0c1016; font-size: 11px; }
+.source-list li.selected { border-color: #3f9b7c; }
+.source-list li > div { min-width: 0; display: grid; gap: 4px; }
 .source-list strong { color: #71d9b5; text-transform: uppercase; font-size: 9px; }
 .source-list span { color: #a3adba; overflow-wrap: anywhere; }
 .source-list code { color: #647283; }

@@ -1135,6 +1135,41 @@ future isolated gateway to report its bounded measurement. A compromised reporte
 not yet independently contained. This self-authored review is non-independent and
 cannot satisfy an external independent-review requirement.
 
+## 2026-08-13 — Supervised source provenance review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Optional effective timestamp normalization, bounded source-version
+provenance, all three import modes, exact immutable-history selection, malformed and
+duplicate history denial, downstream manifest/policy invalidation, compatibility,
+rollback, privacy, and absence of automatic acquisition or authority inference.
+
+**Evidence examined:** UI typecheck; 90 Vitest checks including provenance preservation,
+ambiguous history denial, and malformed digest denial; production UI build; desktop Cargo
+check; complete diff; source request models; immutable source listing implementation; and
+the source-intake security boundary.
+
+**Findings:** The UI no longer silently treats only the most recently imported source as
+the sole reviewable history item. An operator selects one exact core-returned source, and
+any selection change invalidates derived manifest and policy presentation before a new
+draft is constructed. The core remains authoritative for provenance validation,
+immutability, encryption, and persistence.
+
+**Limitations and deferred work:** This remains a single-source manifest draft. It does
+not resolve conflicts across multiple sources, merge authority, render imported active
+content, or infer rules from text. Historical source review after a full restart still
+requires durable engagement selection. Rollback affects presentation only.
+
+**Residual risk accepted:** Source references, timestamps, version labels, and hashes are
+visible inside the authenticated same-user desktop boundary. Local datetime conversion is
+made explicit as an ISO timestamp and may be rejected safely by the core. This review is
+self-authored and non-independent and cannot satisfy an external independent-review
+requirement.
+
 ## 2026-08-13 — Policy-derived coverage selection
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local

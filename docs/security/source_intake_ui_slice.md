@@ -11,6 +11,11 @@ immutable source history and SHA-256 provenance, then uses the selected source t
 a provenance-linked manifest draft. No import starts automatically or retries in the
 background.
 
+Every import mode also accepts an optional effective timestamp and bounded source-version
+label. History displays authority, retrieval time, effective time, reference, and digest,
+and requires an explicit exact-source selection before that source becomes the reviewed
+manifest input. Changing the reviewed source clears derived manifest and policy state.
+
 ## Safety and failure states
 
 The file chooser accepts only the approved extensions. The UI checks the selected
