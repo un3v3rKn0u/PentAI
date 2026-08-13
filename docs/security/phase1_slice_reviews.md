@@ -987,6 +987,39 @@ dependencies; process isolation and gateway binary enforcement remain future con
 This self-authored review is non-independent and cannot satisfy an external
 independent-review requirement.
 
+## 2026-08-13 — Structured technique review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Allowed, denied, and conditional capability classification; explicit
+HTTP methods; conditional approval type and conditions; overlap and completeness denial;
+manifest mapping; compatibility; rollback; and absence of execution.
+
+**Evidence examined:** UI typecheck; 114 Vitest checks including full technique mapping,
+empty-allow denial, overlap denial, incomplete-conditional denial, missing-method denial,
+and legacy builder compatibility; production UI build; desktop Cargo check; complete
+diff; manifest v2 technique contract and core contradiction/method validation.
+
+**Findings:** Technique authority is no longer represented only by an allow list and a
+fixed GET method. Each capability has one reviewed classification, conditional rules keep
+their approval requirement, and directly allowed built-in HTTP capabilities require their
+matching method. The core remains authoritative for supported capabilities and policy.
+
+**Limitations and deferred work:** Intake offers one conditional capability and the three
+HTTP capabilities currently supported by the core. General conditional-rule editing,
+forbidden-technique prose, account, timing, stop-condition, data-handling, and reporting
+review plus source-statement extraction remain. Rollback affects draft presentation only.
+
+**Residual risk accepted:** UI syntax and method checks are defense in depth and cannot
+replace the core's supported-capability set or semantic validation. Synthetic technique
+terms remain visible inside the authenticated same-user desktop boundary. This review is
+self-authored and non-independent and cannot satisfy an external independent-review
+requirement.
+
 ## 2026-08-11 — Durable redirect-chain authorization
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local

@@ -255,7 +255,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     source, requires at least one allow row, and rejects canonical duplicates before draft
     construction. It also records explicit third-party and shared-hosting/CDN handling
     plus a bounded scope-expansion process, defaulting both external-infrastructure
-    boundaries to deny. Broader technique, account, timing, data-handling, and reporting
+    boundaries to deny. Technique review now separates allowed, denied, and optional
+    approval-gated conditional capabilities and binds directly allowed HTTP capabilities
+    to explicit reviewed methods. Broader account, timing, data-handling, and reporting
     rules plus source-statement extraction remain.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedEngagement, reviewedNormalization, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, sourceFileMediaType } from "./IntakeWorkspace";
+import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedEngagement, reviewedNormalization, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, reviewedTechniques, sourceFileMediaType } from "./IntakeWorkspace";
 
 const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", reference: "contract://authorization", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
 const engagement = { id: "20000000-0000-4000-8000-000000000001", program_id: "program-a", status: "draft", effective_from: "2030-01-01T10:00:00Z", expires_at: "2030-01-02T10:00:00Z" };
@@ -91,6 +91,21 @@ describe("supervised Intake workspace", () => {
     expect(() => reviewedScopeBoundaries({ ...valid, thirdPartyServices: "unknown" })).toThrow("SCOPE_BOUNDARY_REVIEW_INVALID");
     expect(() => reviewedScopeBoundaries({ ...valid, scopeExpansionProcess: " " })).toThrow("SCOPE_BOUNDARY_REVIEW_INVALID");
     expect(() => reviewedScopeBoundaries({ ...valid, scopeExpansionProcess: "x".repeat(501) })).toThrow("SCOPE_BOUNDARY_REVIEW_INVALID");
+  });
+  it("reviews explicit allowed, denied, and conditional techniques", () => {
+    expect(reviewedTechniques({ allowedCapabilities: "network.http.get", deniedCapabilities: "network.http.options", conditionalCapability: "network.http.head", conditionalApprovalType: "sensitive_validation", conditionalConditions: "written approval,active engagement", methodGET: "true", methodHEAD: "false", methodOPTIONS: "false" })).toEqual({
+      allowedCapabilities: ["network.http.get"],
+      deniedCapabilities: ["network.http.options"],
+      conditionalCapabilities: [{ capability: "network.http.head", approvalType: "sensitive_validation", conditions: ["written approval", "active engagement"] }],
+      allowedHttpMethods: ["GET"]
+    });
+  });
+  it("denies incomplete, overlapping, or method-inconsistent techniques", () => {
+    const valid = { allowedCapabilities: "network.http.get", deniedCapabilities: "", conditionalCapability: "", conditionalApprovalType: "", conditionalConditions: "", methodGET: "true", methodHEAD: "false", methodOPTIONS: "false" };
+    expect(() => reviewedTechniques({ ...valid, allowedCapabilities: "" })).toThrow("TECHNIQUE_REVIEW_INVALID");
+    expect(() => reviewedTechniques({ ...valid, deniedCapabilities: "network.http.get" })).toThrow("TECHNIQUE_CLASSIFICATION_CONFLICT");
+    expect(() => reviewedTechniques({ ...valid, conditionalCapability: "network.http.head" })).toThrow("CONDITIONAL_CAPABILITY_INVALID");
+    expect(() => reviewedTechniques({ ...valid, methodGET: "false" })).toThrow("TECHNIQUE_METHOD_CONFLICT");
   });
   it("denies malformed or incomplete structured normalization", () => {
     const valid = { assetType: "domain", target: "example.test", allowedPaths: "/api", deniedPaths: "/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "50", maximumResponseBytes: "1000", rationale: "reviewed" };
