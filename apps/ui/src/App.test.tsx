@@ -151,6 +151,17 @@ describe("authorization workflow safety boundary", () => {
     expect(document.operational_limits).toEqual({ requests_per_second: 2, per_host_requests_per_second: 1, burst_limit: 2, concurrent_connections: 1, maximum_runtime_minutes: 20, maximum_total_requests: 10, maximum_request_body_bytes: 0, maximum_response_bytes: 5000, stop_conditions: ["authorization changes", "safety control pauses"] });
   });
 
+  it("preserves reviewed data handling without broadening storage", () => {
+    const source = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const document = buildManifest(
+      { name: "Synthetic program" },
+      { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" },
+      { sources: [source], primary: source, conflicts: [], normalizationWarnings: [] },
+      { assetType: "domain", target: "example.test", dataHandling: { realUserData: "minimal_if_explicit", maximumRecordsToView: 2, retentionDays: 3, approvedStorage: "local_encrypted", remoteAiMaxClassification: "none", redactionRules: ["remove credentials"] }, allowedPaths: ["/"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "reviewed handling" }
+    );
+    expect(document.data_handling).toEqual({ real_user_data: "minimal_if_explicit", maximum_records_to_view: 2, retention_days: 3, approved_storage: "local_encrypted", remote_ai_max_classification: "none", redaction_rules: ["remove credentials"] });
+  });
+
   it("does not expose execution or grant issuance", () => {
     const milestoneCapabilities = ["manifest", "policy", "approval", "decision", "audit"];
     expect(milestoneCapabilities).not.toContain("action-grant");
