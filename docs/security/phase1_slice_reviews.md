@@ -1135,6 +1135,39 @@ future isolated gateway to report its bounded measurement. A compromised reporte
 not yet independently contained. This self-authored review is non-independent and
 cannot satisfy an external independent-review requirement.
 
+## 2026-08-13 — Policy-derived coverage selection
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Exact workflow snapshot binding, active policy bundle matching,
+non-executing workflow assertion, allow-only asset filtering, non-deny capability
+filtering, asset applicability, malformed and duplicate rule denial, workflow-change
+invalidation, compatibility, rollback, and absence of inferred coverage or execution.
+
+**Evidence examined:** UI typecheck; 86 Vitest checks including exact policy selection,
+wrong-policy denial, inactive-policy denial, and authority-bearing workflow denial;
+production UI build; desktop Cargo check; complete diff; Policy IR schema; core coverage
+policy-link validation.
+
+**Findings:** Manual authority-bearing rule identifiers are no longer accepted by the
+coverage form. Recording remains disabled until the exact workflow is bound to the active
+policy, and capability comes from the selected authoritative rule. The core remains the
+final enforcement boundary and revalidates every policy link.
+
+**Limitations and deferred work:** The selector uses the active policy currently held by
+the workbench; reopening a historical workflow still requires restoring its exact policy
+to the workbench. There is no bulk matrix editor, automatic inference, submission, or
+network execution. Rollback affects presentation only.
+
+**Residual risk accepted:** Policy matchers and synthetic identifiers are visible inside
+the authenticated same-user desktop boundary. JSON matcher labels favor exactness over
+friendly formatting. This review is self-authored and non-independent and cannot satisfy
+an external independent-review requirement.
+
 ## 2026-08-11 — Isolated HTTP TEST-NET fixture transport
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local

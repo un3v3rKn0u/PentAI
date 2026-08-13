@@ -7,6 +7,7 @@ import {
   reportFileExportRequest
 } from "./ReportsWorkspace";
 import { coveragePath, coverageRecordRequest, selectCoverageId, verifiedCoverage } from "./ReportsWorkspace";
+import { coveragePolicySelection } from "./ReportsWorkspace";
 
 const first = "10000000-0000-4000-8000-000000000001";
 const second = "20000000-0000-4000-8000-000000000001";
@@ -59,5 +60,17 @@ describe("supervised reports workspace", () => {
   it("denies unsupported coverage claims and authority-bearing responses", () => {
     expect(() => coverageRecordRequest({ assetRuleId: first, capabilityRuleId: second, capability: "network.http.get", outcome: "tested_no_findings", startedAt: "2030-01-01T10:00", endedAt: "2030-01-01T11:00", evidenceIds: "", limitations: "limited", notes: "reviewed", idempotencyKey: "coverage-ui-stable-001" })).toThrow("COVERAGE_RECORD_INVALID");
     expect(() => verifiedCoverage({ coverage_id: first, workflow_id: first, coverage_complete: true, outcome: "tested_no_findings", evidence_ids: [first], limitations: ["limited"] }, first)).toThrow("COVERAGE_RESPONSE_INVALID");
+  });
+  it("derives only permitted rules from the exact active workflow policy", () => {
+    const policy = { id: first, policy: { asset_rules: [{ rule_id: first, effect: "allow", asset_type: "domain", matcher: { value: "example.test" } }, { rule_id: second, effect: "deny", asset_type: "domain", matcher: { value: "denied.test" } }], capability_rules: [{ rule_id: second, capability: "network.http.get", effect: "allow", applicable_asset_rule_ids: [first] }] } };
+    const selection = coveragePolicySelection({ workflow: { workflow_id: first, policy_bundle_id: first, execution_enabled: false } }, first, policy, "active");
+    expect(selection.assetRules.map((rule) => rule.ruleId)).toEqual([first]);
+    expect(selection.capabilityRules).toMatchObject([{ ruleId: second, capability: "network.http.get", applicableAssetRuleIds: [first] }]);
+  });
+  it("denies stale, inactive, or authority-bearing workflow policy bindings", () => {
+    const policy = { id: first, policy: { asset_rules: [], capability_rules: [] } };
+    expect(() => coveragePolicySelection({ workflow: { workflow_id: first, policy_bundle_id: second, execution_enabled: false } }, first, policy, "active")).toThrow("COVERAGE_POLICY_BINDING_INVALID");
+    expect(() => coveragePolicySelection({ workflow: { workflow_id: first, policy_bundle_id: first, execution_enabled: true } }, first, policy, "active")).toThrow("COVERAGE_POLICY_BINDING_INVALID");
+    expect(() => coveragePolicySelection({ workflow: { workflow_id: first, policy_bundle_id: first, execution_enabled: false } }, first, policy, "revoked")).toThrow("COVERAGE_POLICY_BINDING_INVALID");
   });
 });

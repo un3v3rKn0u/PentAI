@@ -572,7 +572,7 @@ export function App() {
         <LogsWorkspace audit={audit} connected={Boolean(connection)} refresh={() => run(refreshAudit)} />
         <EvidenceWorkspace connection={connection} />
         <FindingsWorkspace connection={connection} />
-        <ReportsWorkspace connection={connection} />
+        <ReportsWorkspace connection={connection} policy={policy} policyState={state} />
       </div>
 
       <footer className="state-key" aria-label="Policy state legend">
