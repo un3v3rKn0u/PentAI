@@ -17,6 +17,14 @@ export function reviewedPolicy(response: Json, summary: Json, engagementId: stri
   return response;
 }
 
+export function reviewedManifestDiff(response: Json, manifests: Json[], fromId: string, toId: string) {
+  const allowedSections = new Set(["scope", "techniques", "operational_limits", "network", "data_handling", "reporting", "agent_controls", "unresolved_questions"]);
+  const from = manifests.filter((item) => item.id === fromId);
+  const to = manifests.filter((item) => item.id === toId);
+  if (fromId === toId || from.length !== 1 || to.length !== 1 || response.from?.id !== fromId || response.to?.id !== toId || response.from.version_number !== from[0].version_number || response.to.version_number !== to[0].version_number || response.from.content_hash !== from[0].content_hash || response.to.content_hash !== to[0].content_hash || !Array.isArray(response.changed_sections) || !Array.isArray(response.changes) || response.changes.some((change: Json) => !allowedSections.has(change.section)) || new Set(response.changed_sections).size !== response.changed_sections.length || response.changed_sections.some((section: unknown) => typeof section !== "string" || !allowedSections.has(section)) || JSON.stringify(response.changed_sections) !== JSON.stringify(response.changes.map((change: Json) => change.section))) throw new Error("MANIFEST_DIFF_REVIEW_INVALID");
+  return response;
+}
+
 export function policyApprovalRequest(decision: "approved" | "rejected", expiresAt: string, reason: string) {
   const normalizedReason = reason.trim();
   if (!normalizedReason || normalizedReason.length > 500) throw new Error("POLICY_APPROVAL_REASON_INVALID");
@@ -32,13 +40,14 @@ export function policyRevocationRequest(reason: string) {
 
 export function PolicyWorkspace({
   connected, manifestText, setManifestText, manifest, manifestHistory, manifestDiff,
-  policy, policyHistory, state, engagementId, activePolicyId, selectManifest, selectPolicy, validate, compile, approve, activate, revoke
+  policy, policyHistory, state, engagementId, activePolicyId, selectManifest, selectPolicy, compareManifests, validate, compile, approve, activate, revoke
 }: {
   connected: boolean; manifestText: string; setManifestText: (value: string) => void;
   manifest: Json | null; manifestHistory: Json[]; manifestDiff: Json | null;
   policy: Json | null; policyHistory: Json[]; state: string;
   engagementId: string; activePolicyId: string | null; selectManifest: (manifest: Json) => void;
   selectPolicy: (policy: Json) => Promise<void>;
+  compareManifests: (fromId: string, toId: string) => Promise<void>;
   validate: () => Promise<void>; compile: () => Promise<void>;
   approve: (request: Json) => Promise<void>; activate: () => Promise<void>;
   revoke: (request: Json) => Promise<void>;
@@ -48,6 +57,8 @@ export function PolicyWorkspace({
   const [approvalExpiry, setApprovalExpiry] = useState("");
   const [approved, setApproved] = useState(false);
   const [revocationReason, setRevocationReason] = useState("");
+  const [compareFromId, setCompareFromId] = useState("");
+  const [compareToId, setCompareToId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -86,6 +97,7 @@ export function PolicyWorkspace({
         <div><strong>Immutable manifests · {manifestHistory.length}</strong>{manifestHistory.length === 0 ? <p className="hint">No versions saved.</p> : <ol className="source-list">{manifestHistory.map((item) => <li key={item.id} className={manifest?.id === item.id ? "selected" : ""}><div><strong>Version {item.version_number}</strong><span>{item.validation_status}</span><code>{item.content_hash.slice(0, 16)}…</code></div><button type="button" onClick={() => selectManifest(reviewedManifest(manifestHistory, item.id, engagementId))} aria-pressed={manifest?.id === item.id}>{manifest?.id === item.id ? "Selected" : "Review version"}</button></li>)}</ol>}</div>
         <div><strong>Signed policies · {policyHistory.length}</strong>{policyHistory.length === 0 ? <p className="hint">No policies compiled.</p> : <ol className="source-list">{policyHistory.map((item) => <li key={item.id} className={policy?.id === item.id ? "selected" : ""}><div><strong>{item.status}</strong><span>Compiler {item.compiler_version}</span><code>{item.content_hash.slice(0, 16)}…</code></div><button type="button" onClick={() => void perform(() => selectPolicy(item))} aria-pressed={policy?.id === item.id}>{policy?.id === item.id ? "Selected" : "Verify and review"}</button></li>)}</ol>}</div>
       </div>
+      {manifestHistory.length > 1 && <div className="report-form-grid"><label>Compare from<select value={compareFromId} onChange={(event) => setCompareFromId(event.target.value)}><option value="">Select baseline</option>{manifestHistory.map((item) => <option key={item.id} value={item.id}>Version {item.version_number}</option>)}</select></label><label>Compare to<select value={compareToId} onChange={(event) => setCompareToId(event.target.value)}><option value="">Select target</option>{manifestHistory.map((item) => <option key={item.id} value={item.id}>Version {item.version_number}</option>)}</select></label><button type="button" onClick={() => void perform(() => compareManifests(compareFromId, compareToId))} disabled={busy || !compareFromId || !compareToId || compareFromId === compareToId}>Compare immutable versions</button></div>}
       {manifestDiff && <div className="result"><strong>Changes from version {manifestDiff.from.version_number}</strong><p>{manifestDiff.changed_sections.length ? manifestDiff.changed_sections.join(", ") : "No authorization-bearing sections changed."}</p></div>}
       {policy && <><pre className="preview">{JSON.stringify(policy.policy, null, 2)}</pre><dl className="hash"><dt>Exact compiled policy SHA-256</dt><dd>{policy.content_hash}</dd></dl>
         <div className="policy-approval-grid">
