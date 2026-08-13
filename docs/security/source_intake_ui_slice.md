@@ -24,6 +24,9 @@ engagement identity, schema, digest, validation status, and provenance document 
 Policy summaries require a separate exact core read before signed content is displayed.
 The core recomputes stored hash bindings and verifies the Ed25519 signature; restoration
 uses the persisted lifecycle status and creates no approval or activation.
+When two canonical manifest versions exist, an operator can explicitly request their
+existing engagement-scoped semantic comparison. The UI verifies both record identities,
+versions, digests, and the allowlisted changed-section structure before display.
 
 ## Safety and failure states
 

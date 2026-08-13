@@ -1276,6 +1276,39 @@ the local development key custody already accepted under the non-independent exc
 This review is self-authored and non-independent and cannot satisfy an external
 independent-review requirement.
 
+## 2026-08-13 — Historical manifest comparison recovery
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Explicit baseline/target selection, distinct immutable identities,
+engagement-scoped diff route, stale response rejection, exact version/digest binding,
+authorization-bearing section allowlist, changed-summary/detail agreement, duplicate and
+reversed-selection denial, compatibility, rollback, privacy, and absence of mutation or
+policy authority.
+
+**Evidence examined:** UI typecheck; 94 Vitest checks including reversed identity and
+unknown-section denial; production UI build; desktop Cargo check; complete diff; existing
+manifest diff service; canonical manifest history validation; and manifest v2 contract.
+
+**Findings:** Semantic comparisons are recoverable after restart without reconstructing
+them in the browser. The UI accepts only a response bound to two exact loaded immutable
+records and rejects unknown or internally inconsistent change categories. A late response
+cannot cross the selected engagement boundary.
+
+**Limitations and deferred work:** Comparisons cover the eight authorization-bearing
+sections implemented by the existing core service and do not provide arbitrary JSON
+diffs. The selection is not persisted across restart. Multi-source conflict resolution
+and comparison of unsigned drafts remain deferred. Rollback affects presentation only.
+
+**Residual risk accepted:** Before/after authorization terms are visible inside the
+authenticated same-user desktop boundary. Comparison display grants no approval,
+activation, or execution authority. This review is self-authored and non-independent and
+cannot satisfy an external independent-review requirement.
+
 ## 2026-08-13 — Policy-derived coverage selection
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local

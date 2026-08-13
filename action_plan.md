@@ -238,7 +238,8 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     window needed to resume that review after restart, then reloads canonical manifest
     history for explicit exact-version review. Exact signed-policy restoration now
     revalidates stored hash/signature integrity and lifecycle identity without creating
-    authority. Multi-source conflict resolution and full normalization review remain.
+    authority. Operators can also recover exact semantic comparisons between two
+    immutable versions. Multi-source conflict resolution and full normalization review remain.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
