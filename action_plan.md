@@ -433,6 +433,8 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     plaintext acknowledgement and displays the immutable export receipt. It now also
     records and reloads exact policy/evidence-bound coverage while treating each record
     as individually incomplete; final No Findings sufficiency remains core-authoritative.
+    Coverage entry verifies the exact non-executing workflow against the active policy
+    and derives allow-only, asset-applicable selectors instead of accepting copied rule IDs.
     Submission remains absent and the broader multi-page workspace is still incomplete.
   - The Logs workspace presents the authenticated tamper-evident ledger as a read-only,
     locally filtered history with explicit chain validity and exact event identity/hash
