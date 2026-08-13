@@ -1204,6 +1204,42 @@ They are coordination metadata and confer no grant or execution authority. This 
 is self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
 
+## 2026-08-13 — Canonical manifest history recovery
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Exact engagement-bound manifest and policy-history loading, stale
+response rejection, canonical manifest UUID/schema/version/digest/document validation,
+embedded engagement binding, validation-status consistency, duplicate denial, explicit
+selection, downstream policy invalidation, compatibility, rollback, and absence of
+policy-authority inference.
+
+**Evidence examined:** UI typecheck; 92 Vitest checks including cross-engagement,
+duplicate-record, and inconsistent-validation denial; production UI build; desktop Cargo
+check; complete diff; canonical manifest record implementation; manifest v2 contract;
+and policy-history summary behavior.
+
+**Findings:** Restart recovery can now continue from an exact canonical manifest rather
+than rebuilding it from mutable session state. Late history responses cannot cross an
+engagement selection boundary. Selecting a historical manifest clears displayed policy
+state and conservatively returns a valid version to awaiting approval rather than
+claiming any historical approval or activation.
+
+**Limitations and deferred work:** Signed policy history lacks the policy document and
+signature needed for exact restoration, so summaries remain non-selectable. Manifest
+diff restoration is not automatic, and multi-source conflict resolution remains open.
+Rollback removes history selection without changing immutable manifest records.
+
+**Residual risk accepted:** Canonical manifest content and policy summary metadata are
+visible inside the authenticated same-user desktop boundary. A restored valid manifest
+can be explicitly recompiled, but no approval or activation is inferred. This review is
+self-authored and non-independent and cannot satisfy an external independent-review
+requirement.
+
 ## 2026-08-13 — Policy-derived coverage selection
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local
