@@ -9,6 +9,7 @@ from functools import cache
 from importlib import resources
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from jsonschema import Draft202012Validator, FormatChecker  # type: ignore[import-untyped]
 
@@ -556,7 +557,9 @@ def validate_and_canonicalize_manifest(
                     "registered IPv6 identities require approved_only IPv6 mode",
                 )
             )
-        if network.get("dns_mode") == "approved_resolver" and not network.get("approved_resolvers"):
+        if network.get("dns_mode") == "approved_resolver" and not network.get(
+            "approved_resolvers"
+        ):
             issues.append(
                 ValidationIssue(
                     "NETWORK_CONSTRAINTS_INCOMPLETE",
@@ -565,6 +568,38 @@ def validate_and_canonicalize_manifest(
                 )
             )
 
+    operational_limits = document.get("operational_limits")
+    if isinstance(operational_limits, dict):
+        for index, window in enumerate(operational_limits.get("allowed_testing_windows", [])):
+            if not isinstance(window, dict):
+                continue
+            try:
+                ZoneInfo(window["timezone"])
+                invalid_window = window["start_time"] >= window["end_time"]
+            except (KeyError, TypeError, ZoneInfoNotFoundError):
+                invalid_window = True
+            if invalid_window:
+                issues.append(
+                    ValidationIssue(
+                        "TESTING_WINDOW_INVALID",
+                        f"/operational_limits/allowed_testing_windows/{index}",
+                        "testing window end must follow its start",
+                    )
+                )
+        for index, period in enumerate(operational_limits.get("blackout_periods", [])):
+            if not isinstance(period, dict):
+                continue
+            try:
+                if parse_time(period["starts_at"]) >= parse_time(period["ends_at"]):
+                    raise ValueError
+            except (KeyError, TypeError, ValueError):
+                issues.append(
+                    ValidationIssue(
+                        "BLACKOUT_PERIOD_INVALID",
+                        f"/operational_limits/blackout_periods/{index}",
+                        "blackout end must follow its timezone-aware start",
+                    )
+                )
     engagement = document.get("engagement")
     if isinstance(engagement, dict):
         try:

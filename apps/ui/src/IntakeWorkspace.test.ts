@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedDataHandling, reviewedEngagement, reviewedNormalization, reviewedOperationalLimits, reviewedReporting, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, reviewedTechniques, sourceFileMediaType } from "./IntakeWorkspace";
+import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedDataHandling, reviewedEngagement, reviewedNormalization, reviewedOperationalLimits, reviewedReporting, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, reviewedTechniques, reviewedTestingSchedule, sourceFileMediaType } from "./IntakeWorkspace";
 
 const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", reference: "contract://authorization", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
 const engagement = { id: "20000000-0000-4000-8000-000000000001", program_id: "program-a", status: "draft", effective_from: "2030-01-01T10:00:00Z", expires_at: "2030-01-02T10:00:00Z" };
@@ -119,6 +119,20 @@ describe("supervised Intake workspace", () => {
     expect(() => reviewedOperationalLimits({ ...valid, maximumRequestBodyBytes: "" })).toThrow("OPERATIONAL_LIMIT_REVIEW_INVALID");
     expect(() => reviewedOperationalLimits({ ...valid, maximumRequestBodyBytes: "-1" })).toThrow("OPERATIONAL_LIMIT_REVIEW_INVALID");
     expect(() => reviewedOperationalLimits({ ...valid, stopConditions: " " })).toThrow("OPERATIONAL_LIMIT_REVIEW_INVALID");
+  });
+  it("reviews an explicit testing window and optional blackout", () => {
+    expect(reviewedTestingSchedule({ testingDays: "Monday,tuesday,monday", testingStartTime: "09:00", testingEndTime: "17:00", testingTimezone: "UTC", blackoutStartsAt: "2030-01-01T12:00:00Z", blackoutEndsAt: "2030-01-01T13:00:00Z", blackoutReason: "Maintenance" })).toEqual({
+      allowedTestingWindows: [{ days: ["monday", "tuesday"], startTime: "09:00", endTime: "17:00", timezone: "UTC" }],
+      blackoutPeriods: [{ startsAt: new Date("2030-01-01T12:00").toISOString(), endsAt: new Date("2030-01-01T13:00").toISOString(), reason: "Maintenance" }]
+    });
+  });
+  it("denies invalid testing windows and incomplete blackouts", () => {
+    const valid = { testingDays: "monday", testingStartTime: "09:00", testingEndTime: "17:00", testingTimezone: "UTC", blackoutStartsAt: "", blackoutEndsAt: "", blackoutReason: "" };
+    expect(() => reviewedTestingSchedule({ ...valid, testingDays: "holiday" })).toThrow("TESTING_WINDOW_REVIEW_INVALID");
+    expect(() => reviewedTestingSchedule({ ...valid, testingTimezone: "Unknown/Zone" })).toThrow("TESTING_WINDOW_REVIEW_INVALID");
+    expect(() => reviewedTestingSchedule({ ...valid, testingEndTime: "09:00" })).toThrow("TESTING_WINDOW_REVIEW_INVALID");
+    expect(() => reviewedTestingSchedule({ ...valid, blackoutReason: "Maintenance" })).toThrow("BLACKOUT_PERIOD_REVIEW_INVALID");
+    expect(() => reviewedTestingSchedule({ ...valid, blackoutStartsAt: "2030-01-02T10:00:00Z", blackoutEndsAt: "2030-01-01T10:00:00Z", blackoutReason: "Maintenance" })).toThrow("BLACKOUT_PERIOD_REVIEW_INVALID");
   });
   it("reviews bounded real-user data handling and redaction", () => {
     expect(reviewedDataHandling({ realUserData: "minimal_if_explicit", maximumRecordsToView: "3", retentionDays: "7", remoteAiMaxClassification: "none", redactionRules: "remove credentials,remove identifiers,remove credentials" })).toEqual({

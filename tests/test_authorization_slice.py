@@ -2162,6 +2162,37 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertIn("CONTRADICTORY_RULES", codes)
         self.assertIn("NETWORK_CONSTRAINTS_INCOMPLETE", codes)
 
+    def test_testing_windows_and_blackouts_require_ordered_known_time(self) -> None:
+        candidate = copy.deepcopy(self.manifest)
+        candidate["operational_limits"]["allowed_testing_windows"] = [
+            {
+                "days": ["monday"],
+                "start_time": "17:00",
+                "end_time": "09:00",
+                "timezone": "UTC",
+            }
+        ]
+        candidate["operational_limits"]["blackout_periods"] = [
+            {
+                "starts_at": "2030-01-02T10:00:00Z",
+                "ends_at": "2030-01-01T10:00:00Z",
+                "reason": "Maintenance",
+            }
+        ]
+        version = self.service.save_manifest(self.engagement["id"], candidate)
+        self.assertFalse(version["valid"])
+        codes = {issue["code"] for issue in version["issues"]}
+        self.assertIn("TESTING_WINDOW_INVALID", codes)
+        self.assertIn("BLACKOUT_PERIOD_INVALID", codes)
+
+        candidate["operational_limits"]["allowed_testing_windows"][0].update(
+            {"start_time": "09:00", "end_time": "17:00", "timezone": "Unknown/Zone"}
+        )
+        candidate["operational_limits"]["blackout_periods"] = []
+        version = self.service.save_manifest(self.engagement["id"], candidate)
+        self.assertFalse(version["valid"])
+        self.assertIn("TESTING_WINDOW_INVALID", {issue["code"] for issue in version["issues"]})
+
     def test_manifest_requires_an_explicitly_allowed_capability(self) -> None:
         candidate = copy.deepcopy(self.manifest)
         candidate["techniques"]["allowed_capabilities"] = []

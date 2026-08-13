@@ -3010,3 +3010,32 @@ types are semantically non-overlapping; core deny precedence and contradiction v
 remain mandatory. Synthetic boundary values remain visible inside the authenticated
 same-user desktop boundary. This review is self-authored and non-independent and cannot
 satisfy an external independent-review requirement.
+
+## 2026-08-13 — Testing-window review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Structured allowed weekdays, local start/end ordering, IANA timezone,
+optional blackout interval and reason, manifest mapping, contract validation,
+compatibility, rollback, and absence of scheduling or execution.
+
+**Evidence examined:** UI unit tests for normalization and denial paths; manifest-builder
+mapping tests; TypeScript typecheck and production build; Python policy checks; manifest
+v2 schema validation; complete diff; operational-limit review and MVP requirements.
+
+**Findings:** Intake can no longer place opaque objects into testing-window fields. A
+complete reviewed window is mandatory for new UI drafts, partial blackouts fail closed,
+and the policy boundary independently validates timezone identity and interval ordering.
+
+**Limitations and deferred work:** Runtime wall-clock trust and window enforcement,
+multiple-window editing, recurring blackout rules, account-reference review, and
+source-statement extraction remain. Rollback affects draft construction only.
+
+**Residual risk accepted:** Browser and host timezone databases can differ; the core is
+authoritative and may safely over-deny. Reviewed timing terms do not authorize execution.
+This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.
