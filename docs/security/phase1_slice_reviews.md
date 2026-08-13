@@ -987,6 +987,39 @@ dependencies; process isolation and gateway binary enforcement remain future con
 This self-authored review is non-independent and cannot satisfy an external
 independent-review requirement.
 
+## 2026-08-13 — Data-handling review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Real-user-data mode, record-view ceiling, retention, fixed encrypted
+storage, remote-AI classification, redaction rules, stale authority clearing, manifest
+mapping, compatibility, rollback, and absence of data access or transmission.
+
+**Evidence examined:** UI typecheck; 120 Vitest checks including complete data-handling
+mapping, missing-retention denial, missing-record-ceiling denial, stale-ceiling conflict,
+unknown-classification denial, and legacy builder defaults; production UI build; desktop
+Cargo check; complete diff; manifest v2 data-handling contract and evidence retention use.
+
+**Findings:** Intake no longer relies exclusively on fixed hidden data-handling values.
+Minimal real-user-data authority is bounded by an explicit record ceiling, while the
+default remains avoid-and-stop, encrypted local storage, and no remote AI. Invalid or
+contradictory review fails before draft construction.
+
+**Limitations and deferred work:** Redaction rules are reviewed prose and do not perform
+or prove redaction. General preview sandboxing and remaining deletion/backup assurances
+are unchanged. Account, testing-window, reporting, and source-statement review remain.
+Rollback affects draft presentation only.
+
+**Residual risk accepted:** UI review cannot prove downstream minimization, redaction, or
+model-context filtering; core evidence and future provider boundaries remain mandatory.
+Synthetic handling terms remain visible inside the authenticated same-user desktop
+boundary. This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.
+
 ## 2026-08-13 — Operational-limit review
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local

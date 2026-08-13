@@ -65,6 +65,14 @@ export type OperationalLimitReview = {
   maximumResponseBytes: number;
   stopConditions: string[];
 };
+export type DataHandlingReview = {
+  realUserData: "avoid_and_stop" | "minimal_if_explicit";
+  maximumRecordsToView?: number;
+  retentionDays: number;
+  approvedStorage: "local_encrypted";
+  remoteAiMaxClassification: "none" | "public" | "internal" | "confidential";
+  redactionRules: string[];
+};
 type AssetRuleDraft = Record<"effect" | "assetType" | "target" | "sourceReference" | "includeApex" | "allowedPaths" | "deniedPaths" | "allowedPorts", string>;
 
 export type NormalizationReview = {
@@ -76,6 +84,7 @@ export type NormalizationReview = {
   scopeBoundaries?: ScopeBoundaryReview;
   techniques?: TechniqueReview;
   operationalLimits?: OperationalLimitReview;
+  dataHandling?: DataHandlingReview;
   allowedPaths: string[];
   deniedPaths: string[];
   allowedPorts: number[];
@@ -220,6 +229,20 @@ export function reviewedOperationalLimits(input: Record<string, string>): Operat
     || stopConditions.length === 0 || stopConditions.some((item) => item.length > 200)
   ) throw new Error("OPERATIONAL_LIMIT_REVIEW_INVALID");
   return { requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions };
+}
+
+export function reviewedDataHandling(input: Record<string, string>): DataHandlingReview {
+  const realUserData = input.realUserData === "avoid_and_stop" || input.realUserData === "minimal_if_explicit" ? input.realUserData : null;
+  const remoteAiMaxClassification = ["none", "public", "internal", "confidential"].find((item) => item === input.remoteAiMaxClassification) as DataHandlingReview["remoteAiMaxClassification"] | undefined;
+  const retentionText = input.retentionDays?.trim() ?? "";
+  const retentionDays = Number(retentionText);
+  const recordsText = input.maximumRecordsToView?.trim() ?? "";
+  const maximumRecordsToView = Number(recordsText);
+  const redactionRules = [...new Set((input.redactionRules ?? "").split(",").map((item) => item.trim()).filter(Boolean))];
+  if (!realUserData || !remoteAiMaxClassification || !retentionText || !Number.isInteger(retentionDays) || retentionDays < 1 || redactionRules.some((item) => item.length > 200)) throw new Error("DATA_HANDLING_REVIEW_INVALID");
+  if (realUserData === "minimal_if_explicit" && (!recordsText || !Number.isInteger(maximumRecordsToView) || maximumRecordsToView < 1)) throw new Error("REAL_USER_DATA_LIMIT_REQUIRED");
+  if (realUserData === "avoid_and_stop" && recordsText) throw new Error("REAL_USER_DATA_LIMIT_CONFLICT");
+  return { realUserData, ...(realUserData === "minimal_if_explicit" ? { maximumRecordsToView } : {}), retentionDays, approvedStorage: "local_encrypted", remoteAiMaxClassification, redactionRules };
 }
 
 export function reviewedNormalization(input: Record<string, string>): NormalizationReview {
@@ -393,6 +416,11 @@ export function IntakeWorkspace({
   const [maximumRequestBodyBytes, setMaximumRequestBodyBytes] = useState("0");
   const [maximumResponseBytes, setMaximumResponseBytes] = useState("100000");
   const [stopConditions, setStopConditions] = useState("authorization changes,safety control pauses");
+  const [realUserData, setRealUserData] = useState<DataHandlingReview["realUserData"]>("avoid_and_stop");
+  const [maximumRecordsToView, setMaximumRecordsToView] = useState("");
+  const [retentionDays, setRetentionDays] = useState("7");
+  const [remoteAiMaxClassification, setRemoteAiMaxClassification] = useState<DataHandlingReview["remoteAiMaxClassification"]>("none");
+  const [redactionRules, setRedactionRules] = useState("remove credentials,remove personal identifiers");
   const [normalizationRationale, setNormalizationRationale] = useState("Restrictive values transcribed from the reviewed sources.");
   const [thirdPartyServices, setThirdPartyServices] = useState<ScopeBoundaryReview["thirdPartyServices"]>("deny");
   const [sharedHostingAndCdn, setSharedHostingAndCdn] = useState<ScopeBoundaryReview["sharedHostingAndCdn"]>("deny");
@@ -429,7 +457,7 @@ export function IntakeWorkspace({
       const reviewedRules = reviewedAssetRules(assetRules, sourceReview.sources.map((source) => source.id));
       const primaryAllow = reviewedRules.find((rule) => rule.effect === "allow")!;
       const normalization = reviewedNormalization({ assetType: primaryAllow.assetType, target: primaryAllow.target, includeApex: String(primaryAllow.includeApex ?? false), allowedPaths: primaryAllow.allowedPaths!.join(","), deniedPaths: primaryAllow.deniedPaths!.join(","), allowedPorts: primaryAllow.allowedPorts!.join(","), allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale });
-      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }) });
+      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }), dataHandling: reviewedDataHandling({ realUserData, maximumRecordsToView, retentionDays, remoteAiMaxClassification, redactionRules }) });
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
@@ -513,6 +541,14 @@ export function IntakeWorkspace({
           <label>Maximum request body bytes<input type="number" min="0" value={maximumRequestBodyBytes} onChange={(event) => setMaximumRequestBodyBytes(event.target.value)} /></label>
           <label>Maximum response bytes<input type="number" min="1" value={maximumResponseBytes} onChange={(event) => setMaximumResponseBytes(event.target.value)} /></label>
           <label>Stop conditions (comma-separated)<textarea value={stopConditions} onChange={(event) => setStopConditions(event.target.value)} /></label>
+        </div>
+        <div className="boundary-review"><strong>Data handling</strong>
+          <label>Real-user data<select value={realUserData} onChange={(event) => { setRealUserData(event.target.value as DataHandlingReview["realUserData"]); setMaximumRecordsToView(""); }}><option value="avoid_and_stop">Avoid and stop if encountered</option><option value="minimal_if_explicit">Minimal only when explicit</option></select></label>
+          {realUserData === "minimal_if_explicit" && <label>Maximum records to view<input type="number" min="1" value={maximumRecordsToView} onChange={(event) => setMaximumRecordsToView(event.target.value)} /></label>}
+          <label>Retention days<input type="number" min="1" value={retentionDays} onChange={(event) => setRetentionDays(event.target.value)} /></label>
+          <label>Approved storage<input value="Local encrypted storage only" disabled /></label>
+          <label>Remote AI maximum classification<select value={remoteAiMaxClassification} onChange={(event) => setRemoteAiMaxClassification(event.target.value as DataHandlingReview["remoteAiMaxClassification"])}><option value="none">None</option><option value="public">Public</option><option value="internal">Internal</option><option value="confidential">Confidential</option></select></label>
+          <label>Redaction rules (comma-separated)<textarea value={redactionRules} onChange={(event) => setRedactionRules(event.target.value)} /></label>
         </div>
         <label>Review rationale<textarea maxLength={500} value={normalizationRationale} onChange={(event) => setNormalizationRationale(event.target.value)} /></label>
       </fieldset>

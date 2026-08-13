@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedEngagement, reviewedNormalization, reviewedOperationalLimits, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, reviewedTechniques, sourceFileMediaType } from "./IntakeWorkspace";
+import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedDataHandling, reviewedEngagement, reviewedNormalization, reviewedOperationalLimits, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, reviewedTechniques, sourceFileMediaType } from "./IntakeWorkspace";
 
 const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", reference: "contract://authorization", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
 const engagement = { id: "20000000-0000-4000-8000-000000000001", program_id: "program-a", status: "draft", effective_from: "2030-01-01T10:00:00Z", expires_at: "2030-01-02T10:00:00Z" };
@@ -119,6 +119,18 @@ describe("supervised Intake workspace", () => {
     expect(() => reviewedOperationalLimits({ ...valid, maximumRequestBodyBytes: "" })).toThrow("OPERATIONAL_LIMIT_REVIEW_INVALID");
     expect(() => reviewedOperationalLimits({ ...valid, maximumRequestBodyBytes: "-1" })).toThrow("OPERATIONAL_LIMIT_REVIEW_INVALID");
     expect(() => reviewedOperationalLimits({ ...valid, stopConditions: " " })).toThrow("OPERATIONAL_LIMIT_REVIEW_INVALID");
+  });
+  it("reviews bounded real-user data handling and redaction", () => {
+    expect(reviewedDataHandling({ realUserData: "minimal_if_explicit", maximumRecordsToView: "3", retentionDays: "7", remoteAiMaxClassification: "none", redactionRules: "remove credentials,remove identifiers,remove credentials" })).toEqual({
+      realUserData: "minimal_if_explicit", maximumRecordsToView: 3, retentionDays: 7, approvedStorage: "local_encrypted", remoteAiMaxClassification: "none", redactionRules: ["remove credentials", "remove identifiers"]
+    });
+  });
+  it("denies incomplete or contradictory data handling", () => {
+    const valid = { realUserData: "avoid_and_stop", maximumRecordsToView: "", retentionDays: "7", remoteAiMaxClassification: "none", redactionRules: "remove credentials" };
+    expect(() => reviewedDataHandling({ ...valid, retentionDays: "" })).toThrow("DATA_HANDLING_REVIEW_INVALID");
+    expect(() => reviewedDataHandling({ ...valid, realUserData: "minimal_if_explicit" })).toThrow("REAL_USER_DATA_LIMIT_REQUIRED");
+    expect(() => reviewedDataHandling({ ...valid, maximumRecordsToView: "1" })).toThrow("REAL_USER_DATA_LIMIT_CONFLICT");
+    expect(() => reviewedDataHandling({ ...valid, remoteAiMaxClassification: "secret" })).toThrow("DATA_HANDLING_REVIEW_INVALID");
   });
   it("denies malformed or incomplete structured normalization", () => {
     const valid = { assetType: "domain", target: "example.test", allowedPaths: "/api", deniedPaths: "/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "50", maximumResponseBytes: "1000", rationale: "reviewed" };

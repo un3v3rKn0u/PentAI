@@ -177,10 +177,12 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
     },
     network: networkManifestSettings(networkProfile),
     data_handling: {
-      real_user_data: "avoid_and_stop",
-      retention_days: 7,
+      real_user_data: normalization.dataHandling?.realUserData ?? "avoid_and_stop",
+      ...(normalization.dataHandling?.maximumRecordsToView != null ? { maximum_records_to_view: normalization.dataHandling.maximumRecordsToView } : {}),
+      retention_days: normalization.dataHandling?.retentionDays ?? 7,
       approved_storage: "local_encrypted",
-      remote_ai_max_classification: "none"
+      remote_ai_max_classification: normalization.dataHandling?.remoteAiMaxClassification ?? "none",
+      ...(normalization.dataHandling ? { redaction_rules: normalization.dataHandling.redactionRules } : {})
     },
     reporting: {
       submission_channel: "manual",
