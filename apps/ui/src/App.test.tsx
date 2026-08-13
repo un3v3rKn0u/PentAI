@@ -90,6 +90,20 @@ describe("authorization workflow safety boundary", () => {
     expect(document.scope.assets[0]).toMatchObject({ type: "wildcard_domain", canonical_value: "*.example.test", include_apex: false });
   });
 
+  it("keeps an explicit deny boundary independent from the allow rule", () => {
+    const source = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const document = buildManifest(
+      { name: "Synthetic program" },
+      { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" },
+      { sources: [source], primary: source, conflicts: [], normalizationWarnings: [] },
+      { assetType: "domain", target: "example.test", denyBoundary: { assetType: "wildcard_domain", target: "*.third-party.test", includeApex: true }, allowedPaths: ["/api"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "exact boundary transcription" }
+    );
+    expect(document.scope.assets).toHaveLength(2);
+    expect(document.scope.assets[1]).toMatchObject({ effect: "deny", type: "wildcard_domain", canonical_value: "*.third-party.test", include_apex: true, source_reference: source.id });
+    expect(document.scope.assets[1]).not.toHaveProperty("allowed_ports");
+    expect(document.scope.assets[1]).not.toHaveProperty("ownership_verified");
+  });
+
   it("does not expose execution or grant issuance", () => {
     const milestoneCapabilities = ["manifest", "policy", "approval", "decision", "audit"];
     expect(milestoneCapabilities).not.toContain("action-grant");

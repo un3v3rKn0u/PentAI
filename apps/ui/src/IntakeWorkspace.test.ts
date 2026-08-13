@@ -50,6 +50,16 @@ describe("supervised Intake workspace", () => {
     expect(reviewedNormalization({ ...base, assetType: "ipv6", target: "2001:DB8::1" }).target).toBe("2001:db8::1");
     expect(reviewedNormalization({ ...base, assetType: "cidr", target: "192.0.2.0/24" }).target).toBe("192.0.2.0/24");
   });
+  it("records a complete typed deny boundary without granting it allow fields", () => {
+    const review = reviewedNormalization({ assetType: "domain", target: "example.test", includeApex: "false", denyAssetType: "wildcard_domain", denyTarget: "*.third-party.test", denyIncludeApex: "true", allowedPaths: "/", deniedPaths: "", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "5", maximumResponseBytes: "1000", rationale: "reviewed explicit boundary" });
+    expect(review.denyBoundary).toEqual({ assetType: "wildcard_domain", target: "*.third-party.test", includeApex: true });
+  });
+  it("denies partial or exactly contradictory out-of-scope boundaries", () => {
+    const valid = { assetType: "domain", target: "example.test", allowedPaths: "/", deniedPaths: "", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "5", maximumResponseBytes: "1000", rationale: "reviewed" };
+    expect(() => reviewedNormalization({ ...valid, denyAssetType: "domain", denyTarget: "" })).toThrow("DENY_BOUNDARY_INVALID");
+    expect(() => reviewedNormalization({ ...valid, denyAssetType: "", denyTarget: "other.test" })).toThrow("DENY_BOUNDARY_INVALID");
+    expect(() => reviewedNormalization({ ...valid, denyAssetType: "domain", denyTarget: "EXAMPLE.TEST" })).toThrow("DENY_BOUNDARY_CONFLICT");
+  });
   it("denies malformed or incomplete structured normalization", () => {
     const valid = { assetType: "domain", target: "example.test", allowedPaths: "/api", deniedPaths: "/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "50", maximumResponseBytes: "1000", rationale: "reviewed" };
     expect(() => reviewedNormalization({ ...valid, target: "*.example.test" })).toThrow("NORMALIZATION_REVIEW_INVALID");

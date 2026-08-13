@@ -31,10 +31,14 @@ export type SourceBundleReview = {
   normalizationWarnings: string[];
 };
 
+export type AssetType = "domain" | "wildcard_domain" | "url" | "ipv4" | "ipv6" | "cidr";
+export type DenyBoundary = { assetType: AssetType; target: string; includeApex?: boolean };
+
 export type NormalizationReview = {
-  assetType: "domain" | "wildcard_domain" | "url" | "ipv4" | "ipv6" | "cidr";
+  assetType: AssetType;
   target: string;
   includeApex?: boolean;
+  denyBoundary?: DenyBoundary;
   allowedPaths: string[];
   deniedPaths: string[];
   allowedPorts: number[];
@@ -89,6 +93,17 @@ export function reviewedNormalization(input: Record<string, string>): Normalizat
   const assetType = assetTypes.find((item) => item === input.assetType);
   if (!assetType) throw new Error("NORMALIZATION_REVIEW_INVALID");
   const target = normalizedAssetValue(assetType, input.target);
+  const denyAssetType = assetTypes.find((item) => item === input.denyAssetType);
+  const denyTarget = input.denyTarget?.trim() ?? "";
+  if ((denyAssetType && !denyTarget) || (!denyAssetType && denyTarget)) throw new Error("DENY_BOUNDARY_INVALID");
+  const denyBoundary = denyAssetType && denyTarget
+    ? {
+        assetType: denyAssetType,
+        target: normalizedAssetValue(denyAssetType, denyTarget),
+        ...(denyAssetType === "wildcard_domain" ? { includeApex: input.denyIncludeApex === "true" } : {})
+      }
+    : undefined;
+  if (denyBoundary?.assetType === assetType && denyBoundary.target === target) throw new Error("DENY_BOUNDARY_CONFLICT");
   const paths = (value: string) => [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
   const allowedPaths = paths(input.allowedPaths);
   const deniedPaths = paths(input.deniedPaths);
@@ -110,7 +125,7 @@ export function reviewedNormalization(input: Record<string, string>): Normalizat
     || !Number.isInteger(maximumResponseBytes) || maximumResponseBytes < 1
     || !rationale || rationale.length > 500
   ) throw new Error("NORMALIZATION_REVIEW_INVALID");
-  return { assetType, target, ...(assetType === "wildcard_domain" ? { includeApex: input.includeApex === "true" } : {}), allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale };
+  return { assetType, target, ...(assetType === "wildcard_domain" ? { includeApex: input.includeApex === "true" } : {}), ...(denyBoundary ? { denyBoundary } : {}), allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale };
 }
 
 export function reviewedSourceBundle(
@@ -232,6 +247,10 @@ export function IntakeWorkspace({
   const [target, setTarget] = useState("example.test");
   const [assetType, setAssetType] = useState<NormalizationReview["assetType"]>("domain");
   const [includeApex, setIncludeApex] = useState(false);
+  const [includeDenyBoundary, setIncludeDenyBoundary] = useState(false);
+  const [denyAssetType, setDenyAssetType] = useState<AssetType>("domain");
+  const [denyTarget, setDenyTarget] = useState("");
+  const [denyIncludeApex, setDenyIncludeApex] = useState(false);
   const [allowedPaths, setAllowedPaths] = useState("/api");
   const [deniedPaths, setDeniedPaths] = useState("/api/admin");
   const [allowedPorts, setAllowedPorts] = useState("443");
@@ -261,7 +280,7 @@ export function IntakeWorkspace({
     try {
       selectBundle(
         reviewedSourceBundle(sources, reviewIds, conflictNote),
-        reviewedNormalization({ assetType, target, includeApex: String(includeApex), allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale })
+        reviewedNormalization({ assetType, target, includeApex: String(includeApex), denyAssetType: includeDenyBoundary ? denyAssetType : "", denyTarget: includeDenyBoundary ? denyTarget : "", denyIncludeApex: String(denyIncludeApex), allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale })
       );
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
@@ -313,6 +332,8 @@ export function IntakeWorkspace({
         <label>Asset type<select value={assetType} onChange={(event) => { setAssetType(event.target.value as NormalizationReview["assetType"]); setTarget(""); }}><option value="domain">Domain</option><option value="wildcard_domain">Wildcard domain</option><option value="url">URL</option><option value="ipv4">IPv4</option><option value="ipv6">IPv6</option><option value="cidr">CIDR</option></select></label>
         <label>Exact asset value<input value={target} onChange={(event) => setTarget(event.target.value)} placeholder={assetType === "wildcard_domain" ? "*.example.test" : assetType === "url" ? "https://example.test/api" : assetType === "cidr" ? "192.0.2.0/24" : "example.test"} /></label>
         {assetType === "wildcard_domain" && <label className="source-choice"><input type="checkbox" checked={includeApex} onChange={(event) => setIncludeApex(event.target.checked)} /> Explicitly include the apex domain</label>}
+        <label className="source-choice"><input type="checkbox" checked={includeDenyBoundary} onChange={(event) => setIncludeDenyBoundary(event.target.checked)} /> Add an explicit out-of-scope boundary</label>
+        {includeDenyBoundary && <div className="boundary-review"><label>Deny asset type<select value={denyAssetType} onChange={(event) => { setDenyAssetType(event.target.value as AssetType); setDenyTarget(""); }}><option value="domain">Domain</option><option value="wildcard_domain">Wildcard domain</option><option value="url">URL</option><option value="ipv4">IPv4</option><option value="ipv6">IPv6</option><option value="cidr">CIDR</option></select></label><label>Exact denied asset value<input value={denyTarget} onChange={(event) => setDenyTarget(event.target.value)} /></label>{denyAssetType === "wildcard_domain" && <label className="source-choice"><input type="checkbox" checked={denyIncludeApex} onChange={(event) => setDenyIncludeApex(event.target.checked)} /> Deny the wildcard apex too</label>}</div>}
         <label>Allowed paths (comma-separated)<input value={allowedPaths} onChange={(event) => setAllowedPaths(event.target.value)} /></label>
         <label>Denied paths (comma-separated)<input value={deniedPaths} onChange={(event) => setDeniedPaths(event.target.value)} /></label>
         <label>Allowed ports (comma-separated)<input value={allowedPorts} onChange={(event) => setAllowedPorts(event.target.value)} /></label>
