@@ -43,6 +43,11 @@ export type AssetRuleReview = {
   deniedPaths?: string[];
   allowedPorts?: number[];
 };
+export type ScopeBoundaryReview = {
+  thirdPartyServices: "deny" | "allow_if_explicit";
+  sharedHostingAndCdn: "deny" | "allow_if_explicit";
+  scopeExpansionProcess: string;
+};
 type AssetRuleDraft = Record<"effect" | "assetType" | "target" | "sourceReference" | "includeApex" | "allowedPaths" | "deniedPaths" | "allowedPorts", string>;
 
 export type NormalizationReview = {
@@ -51,6 +56,7 @@ export type NormalizationReview = {
   includeApex?: boolean;
   denyBoundary?: DenyBoundary;
   assetRules?: AssetRuleReview[];
+  scopeBoundaries?: ScopeBoundaryReview;
   allowedPaths: string[];
   deniedPaths: string[];
   allowedPorts: number[];
@@ -136,6 +142,14 @@ export function reviewedAssetRules(
   if (new Set(identities).size !== identities.length) throw new Error("ASSET_RULE_CONFLICT");
   if (!rules.some((rule) => rule.effect === "allow")) throw new Error("ALLOW_RULE_REQUIRED");
   return rules;
+}
+
+export function reviewedScopeBoundaries(input: Record<string, string>): ScopeBoundaryReview {
+  const thirdPartyServices = input.thirdPartyServices === "deny" || input.thirdPartyServices === "allow_if_explicit" ? input.thirdPartyServices : null;
+  const sharedHostingAndCdn = input.sharedHostingAndCdn === "deny" || input.sharedHostingAndCdn === "allow_if_explicit" ? input.sharedHostingAndCdn : null;
+  const scopeExpansionProcess = input.scopeExpansionProcess?.trim() ?? "";
+  if (!thirdPartyServices || !sharedHostingAndCdn || !scopeExpansionProcess || scopeExpansionProcess.length > 500) throw new Error("SCOPE_BOUNDARY_REVIEW_INVALID");
+  return { thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess };
 }
 
 export function reviewedNormalization(input: Record<string, string>): NormalizationReview {
@@ -299,6 +313,9 @@ export function IntakeWorkspace({
   const [maximumTotalRequests, setMaximumTotalRequests] = useState("50");
   const [maximumResponseBytes, setMaximumResponseBytes] = useState("100000");
   const [normalizationRationale, setNormalizationRationale] = useState("Restrictive values transcribed from the reviewed sources.");
+  const [thirdPartyServices, setThirdPartyServices] = useState<ScopeBoundaryReview["thirdPartyServices"]>("deny");
+  const [sharedHostingAndCdn, setSharedHostingAndCdn] = useState<ScopeBoundaryReview["sharedHostingAndCdn"]>("deny");
+  const [scopeExpansionProcess, setScopeExpansionProcess] = useState("Stop and obtain written authorization before adding any new asset.");
   const [assetRules, setAssetRules] = useState<AssetRuleDraft[]>([]);
   const selectedSourceIds = selectedSources.map((item) => item.id).join("|");
 
@@ -331,7 +348,7 @@ export function IntakeWorkspace({
       const reviewedRules = reviewedAssetRules(assetRules, sourceReview.sources.map((source) => source.id));
       const primaryAllow = reviewedRules.find((rule) => rule.effect === "allow")!;
       const normalization = reviewedNormalization({ assetType: primaryAllow.assetType, target: primaryAllow.target, includeApex: String(primaryAllow.includeApex ?? false), allowedPaths: primaryAllow.allowedPaths!.join(","), deniedPaths: primaryAllow.deniedPaths!.join(","), allowedPorts: primaryAllow.allowedPorts!.join(","), allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale });
-      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules });
+      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }) });
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
@@ -390,6 +407,12 @@ export function IntakeWorkspace({
           <label>Source<select value={row.sourceReference} onChange={(event) => updateAssetRule(index, { sourceReference: event.target.value })}><option value="">Select reviewed source</option>{sources.filter((source) => reviewIds.includes(source.id)).map((source) => <option key={source.id} value={source.id}>{source.authority} · {source.reference}</option>)}</select></label>
           {row.effect === "allow" && <><label>Allowed paths (comma-separated)<input value={row.allowedPaths} onChange={(event) => updateAssetRule(index, { allowedPaths: event.target.value })} /></label><label>Denied paths (comma-separated)<input value={row.deniedPaths} onChange={(event) => updateAssetRule(index, { deniedPaths: event.target.value })} /></label><label>Allowed ports (comma-separated)<input value={row.allowedPorts} onChange={(event) => updateAssetRule(index, { allowedPorts: event.target.value })} /></label></>}
         </div>)}
+        <div className="boundary-review">
+          <strong>External infrastructure boundaries</strong>
+          <label>Third-party services<select value={thirdPartyServices} onChange={(event) => setThirdPartyServices(event.target.value as ScopeBoundaryReview["thirdPartyServices"])}><option value="deny">Deny</option><option value="allow_if_explicit">Allow only when explicitly listed</option></select></label>
+          <label>Shared hosting and CDN<select value={sharedHostingAndCdn} onChange={(event) => setSharedHostingAndCdn(event.target.value as ScopeBoundaryReview["sharedHostingAndCdn"])}><option value="deny">Deny</option><option value="allow_if_explicit">Allow only when explicitly listed</option></select></label>
+          <label>Scope expansion process<textarea maxLength={500} value={scopeExpansionProcess} onChange={(event) => setScopeExpansionProcess(event.target.value)} /></label>
+        </div>
         <label>Allowed capabilities (comma-separated)<input value={allowedCapabilities} onChange={(event) => setAllowedCapabilities(event.target.value)} /></label>
         <label>Requests per second<input type="number" min="0.001" step="0.001" value={requestsPerSecond} onChange={(event) => setRequestsPerSecond(event.target.value)} /></label>
         <label>Maximum total requests<input type="number" min="1" value={maximumTotalRequests} onChange={(event) => setMaximumTotalRequests(event.target.value)} /></label>

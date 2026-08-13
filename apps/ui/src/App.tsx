@@ -154,7 +154,9 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       }] : [])],
       discovered_assets_default: "deny",
       redirects_outside_scope: "stop",
-      third_party_services: "deny"
+      third_party_services: normalization.scopeBoundaries?.thirdPartyServices ?? "deny",
+      shared_hosting_and_cdn: normalization.scopeBoundaries?.sharedHostingAndCdn ?? "deny",
+      ...(normalization.scopeBoundaries ? { scope_expansion_process: normalization.scopeBoundaries.scopeExpansionProcess } : {})
     },
     techniques: {
       allowed_capabilities: normalization.allowedCapabilities,

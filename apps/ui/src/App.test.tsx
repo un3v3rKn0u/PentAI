@@ -118,6 +118,17 @@ describe("authorization workflow safety boundary", () => {
     expect(document.scope.assets[1]).not.toHaveProperty("ownership_verified");
   });
 
+  it("preserves explicit third-party and shared-hosting boundaries", () => {
+    const source = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const document = buildManifest(
+      { name: "Synthetic program" },
+      { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" },
+      { sources: [source], primary: source, conflicts: [], normalizationWarnings: [] },
+      { assetType: "domain", target: "example.test", scopeBoundaries: { thirdPartyServices: "deny", sharedHostingAndCdn: "allow_if_explicit", scopeExpansionProcess: "Obtain written authorization for the exact asset." }, allowedPaths: ["/"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "reviewed boundaries" }
+    );
+    expect(document.scope).toMatchObject({ third_party_services: "deny", shared_hosting_and_cdn: "allow_if_explicit", scope_expansion_process: "Obtain written authorization for the exact asset." });
+  });
+
   it("does not expose execution or grant issuance", () => {
     const milestoneCapabilities = ["manifest", "policy", "approval", "decision", "audit"];
     expect(milestoneCapabilities).not.toContain("action-grant");
