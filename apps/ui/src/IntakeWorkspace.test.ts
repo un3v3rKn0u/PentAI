@@ -38,13 +38,24 @@ describe("supervised Intake workspace", () => {
     expect(() => reviewedSourceBundle([{ ...source, effective_at: "not-a-time" }], [source.id], "")).toThrow("SOURCE_BUNDLE_INVALID");
   });
   it("normalizes explicit scope and budget review without widening it", () => {
-    expect(reviewedNormalization({ target: "Example.TEST.", allowedPaths: " /api, /status, /api ", deniedPaths: "/api/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "0.5", maximumTotalRequests: "25", maximumResponseBytes: "4096", rationale: "  exact restrictive transcription  " })).toEqual({
-      target: "example.test", allowedPaths: ["/api", "/status"], deniedPaths: ["/api/admin"], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 0.5, maximumTotalRequests: 25, maximumResponseBytes: 4096, rationale: "exact restrictive transcription"
+    expect(reviewedNormalization({ assetType: "domain", target: "Example.TEST.", allowedPaths: " /api, /status, /api ", deniedPaths: "/api/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "0.5", maximumTotalRequests: "25", maximumResponseBytes: "4096", rationale: "  exact restrictive transcription  " })).toEqual({
+      assetType: "domain", target: "example.test", allowedPaths: ["/api", "/status"], deniedPaths: ["/api/admin"], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 0.5, maximumTotalRequests: 25, maximumResponseBytes: 4096, rationale: "exact restrictive transcription"
     });
   });
+  it("normalizes each typed asset without inferring wildcard apex authority", () => {
+    const base = { assetType: "domain", target: "example.test", includeApex: "false", allowedPaths: "/", deniedPaths: "", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "5", maximumResponseBytes: "1000", rationale: "reviewed" };
+    expect(reviewedNormalization({ ...base, assetType: "wildcard_domain", target: "*.Example.TEST" })).toMatchObject({ assetType: "wildcard_domain", target: "*.example.test", includeApex: false });
+    expect(reviewedNormalization({ ...base, assetType: "url", target: "https://Example.TEST/api" }).target).toBe("https://example.test/api");
+    expect(reviewedNormalization({ ...base, assetType: "ipv4", target: "192.0.2.10" }).target).toBe("192.0.2.10");
+    expect(reviewedNormalization({ ...base, assetType: "ipv6", target: "2001:DB8::1" }).target).toBe("2001:db8::1");
+    expect(reviewedNormalization({ ...base, assetType: "cidr", target: "192.0.2.0/24" }).target).toBe("192.0.2.0/24");
+  });
   it("denies malformed or incomplete structured normalization", () => {
-    const valid = { target: "example.test", allowedPaths: "/api", deniedPaths: "/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "50", maximumResponseBytes: "1000", rationale: "reviewed" };
+    const valid = { assetType: "domain", target: "example.test", allowedPaths: "/api", deniedPaths: "/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "50", maximumResponseBytes: "1000", rationale: "reviewed" };
     expect(() => reviewedNormalization({ ...valid, target: "*.example.test" })).toThrow("NORMALIZATION_REVIEW_INVALID");
+    expect(() => reviewedNormalization({ ...valid, assetType: "ipv4", target: "192.0.2.01" })).toThrow("NORMALIZATION_REVIEW_INVALID");
+    expect(() => reviewedNormalization({ ...valid, assetType: "url", target: "https://user@example.test/" })).toThrow("NORMALIZATION_REVIEW_INVALID");
+    expect(() => reviewedNormalization({ ...valid, assetType: "cidr", target: "192.0.2.0/33" })).toThrow("NORMALIZATION_REVIEW_INVALID");
     expect(() => reviewedNormalization({ ...valid, allowedPaths: "api" })).toThrow("NORMALIZATION_REVIEW_INVALID");
     expect(() => reviewedNormalization({ ...valid, allowedPorts: "0" })).toThrow("NORMALIZATION_REVIEW_INVALID");
     expect(() => reviewedNormalization({ ...valid, rationale: " " })).toThrow("NORMALIZATION_REVIEW_INVALID");

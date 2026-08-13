@@ -32,7 +32,9 @@ export type SourceBundleReview = {
 };
 
 export type NormalizationReview = {
+  assetType: "domain" | "wildcard_domain" | "url" | "ipv4" | "ipv6" | "cidr";
   target: string;
+  includeApex?: boolean;
   allowedPaths: string[];
   deniedPaths: string[];
   allowedPorts: number[];
@@ -43,8 +45,50 @@ export type NormalizationReview = {
   rationale: string;
 };
 
+function normalizedAssetValue(assetType: NormalizationReview["assetType"], value: string): string {
+  const target = value.trim();
+  const domain = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+  const normalizeDomain = (candidate: string) => {
+    const normalized = candidate.toLowerCase().replace(/\.$/, "");
+    if (!domain.test(normalized)) throw new Error("NORMALIZATION_REVIEW_INVALID");
+    return normalized;
+  };
+  const normalizeIpv4 = (candidate: string) => {
+    const octets = candidate.split(".");
+    if (octets.length !== 4 || octets.some((octet) => !octet.match(/^(?:0|[1-9][0-9]{0,2})$/) || Number(octet) > 255)) throw new Error("NORMALIZATION_REVIEW_INVALID");
+    return octets.join(".");
+  };
+  if (assetType === "domain") return normalizeDomain(target);
+  if (assetType === "wildcard_domain") return `*.${normalizeDomain(target.startsWith("*.") ? target.slice(2) : target)}`;
+  if (assetType === "ipv4") return normalizeIpv4(target);
+  if (assetType === "ipv6") {
+    try {
+      const parsed = new URL(`http://[${target}]/`);
+      if (!parsed.hostname.startsWith("[") || !target.includes(":")) throw new Error();
+      return parsed.hostname.slice(1, -1).toLowerCase();
+    } catch { throw new Error("NORMALIZATION_REVIEW_INVALID"); }
+  }
+  if (assetType === "cidr") {
+    const [address, prefix, ...rest] = target.split("/");
+    const maximum = address.includes(":") ? 128 : 32;
+    if (rest.length > 0 || !prefix?.match(/^(?:0|[1-9][0-9]{0,2})$/) || Number(prefix) > maximum) throw new Error("NORMALIZATION_REVIEW_INVALID");
+    const normalizedAddress: string = address.includes(":")
+      ? normalizedAssetValue("ipv6", address)
+      : normalizeIpv4(address);
+    return `${normalizedAddress}/${Number(prefix)}`;
+  }
+  try {
+    const parsed = new URL(target);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password || parsed.hash) throw new Error();
+    return parsed.toString();
+  } catch { throw new Error("NORMALIZATION_REVIEW_INVALID"); }
+}
+
 export function reviewedNormalization(input: Record<string, string>): NormalizationReview {
-  const target = input.target.trim().toLowerCase().replace(/\.$/, "");
+  const assetTypes = ["domain", "wildcard_domain", "url", "ipv4", "ipv6", "cidr"] as const;
+  const assetType = assetTypes.find((item) => item === input.assetType);
+  if (!assetType) throw new Error("NORMALIZATION_REVIEW_INVALID");
+  const target = normalizedAssetValue(assetType, input.target);
   const paths = (value: string) => [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
   const allowedPaths = paths(input.allowedPaths);
   const deniedPaths = paths(input.deniedPaths);
@@ -55,8 +99,7 @@ export function reviewedNormalization(input: Record<string, string>): Normalizat
   const maximumResponseBytes = Number(input.maximumResponseBytes);
   const rationale = input.rationale.trim();
   if (
-    !target.match(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/)
-    || allowedPaths.length === 0
+    allowedPaths.length === 0
     || [...allowedPaths, ...deniedPaths].some((path) => !path.startsWith("/"))
     || allowedPorts.length === 0
     || allowedPorts.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)
@@ -67,7 +110,7 @@ export function reviewedNormalization(input: Record<string, string>): Normalizat
     || !Number.isInteger(maximumResponseBytes) || maximumResponseBytes < 1
     || !rationale || rationale.length > 500
   ) throw new Error("NORMALIZATION_REVIEW_INVALID");
-  return { target, allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale };
+  return { assetType, target, ...(assetType === "wildcard_domain" ? { includeApex: input.includeApex === "true" } : {}), allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale };
 }
 
 export function reviewedSourceBundle(
@@ -187,6 +230,8 @@ export function IntakeWorkspace({
   const [conflictNote, setConflictNote] = useState("");
   const [reviewError, setReviewError] = useState("");
   const [target, setTarget] = useState("example.test");
+  const [assetType, setAssetType] = useState<NormalizationReview["assetType"]>("domain");
+  const [includeApex, setIncludeApex] = useState(false);
   const [allowedPaths, setAllowedPaths] = useState("/api");
   const [deniedPaths, setDeniedPaths] = useState("/api/admin");
   const [allowedPorts, setAllowedPorts] = useState("443");
@@ -216,7 +261,7 @@ export function IntakeWorkspace({
     try {
       selectBundle(
         reviewedSourceBundle(sources, reviewIds, conflictNote),
-        reviewedNormalization({ target, allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale })
+        reviewedNormalization({ assetType, target, includeApex: String(includeApex), allowedPaths, deniedPaths, allowedPorts, allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale })
       );
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
@@ -265,7 +310,9 @@ export function IntakeWorkspace({
       <fieldset disabled={reviewIds.length === 0}>
         <legend>Structured normalization review</legend>
         <p className="hint">Transcribe exact restrictive values from the reviewed sources. The core canonicalizes and validates this draft again.</p>
-        <label>Exact domain<input value={target} onChange={(event) => setTarget(event.target.value)} /></label>
+        <label>Asset type<select value={assetType} onChange={(event) => { setAssetType(event.target.value as NormalizationReview["assetType"]); setTarget(""); }}><option value="domain">Domain</option><option value="wildcard_domain">Wildcard domain</option><option value="url">URL</option><option value="ipv4">IPv4</option><option value="ipv6">IPv6</option><option value="cidr">CIDR</option></select></label>
+        <label>Exact asset value<input value={target} onChange={(event) => setTarget(event.target.value)} placeholder={assetType === "wildcard_domain" ? "*.example.test" : assetType === "url" ? "https://example.test/api" : assetType === "cidr" ? "192.0.2.0/24" : "example.test"} /></label>
+        {assetType === "wildcard_domain" && <label className="source-choice"><input type="checkbox" checked={includeApex} onChange={(event) => setIncludeApex(event.target.checked)} /> Explicitly include the apex domain</label>}
         <label>Allowed paths (comma-separated)<input value={allowedPaths} onChange={(event) => setAllowedPaths(event.target.value)} /></label>
         <label>Denied paths (comma-separated)<input value={deniedPaths} onChange={(event) => setDeniedPaths(event.target.value)} /></label>
         <label>Allowed ports (comma-separated)<input value={allowedPorts} onChange={(event) => setAllowedPorts(event.target.value)} /></label>
