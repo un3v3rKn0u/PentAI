@@ -397,7 +397,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   validation/report-readiness transitions, and retain immutable full-version and audit
   history. The Findings workspace now supports exact candidate creation, workflow lists,
   and version-fenced human transitions. Automatic duplicate proposals remain a later slice.
-- [ ] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
+- [x] Build Dashboard, Programs, Intake, Assessments, Evidence, Findings, Reports, and Logs pages.
+  - A keyboard-accessible Phase 1 workspace navigation now exposes each required area
+    exactly once, keeps inactive workspaces mounted to preserve supervised draft state,
+    and leaves the global safety control visible across every destination.
   - The Dashboard now summarizes authenticated core connectivity, global safety, local
     policy lifecycle, active network-profile cardinality, and complete audit verification.
     Missing or ambiguous inputs are never presented as ready, and the summary grants no
@@ -435,7 +438,7 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     as individually incomplete; final No Findings sufficiency remains core-authoritative.
     Coverage entry verifies the exact non-executing workflow against the active policy
     and derives allow-only, asset-applicable selectors instead of accepting copied rule IDs.
-    Submission remains absent and the broader multi-page workspace is still incomplete.
+    Submission remains absent.
   - The Logs workspace presents the authenticated tamper-evident ledger as a read-only,
     locally filtered history with explicit chain validity and exact event identity/hash
     inspection. It does not expose event-data search, mutation, export, or replay.

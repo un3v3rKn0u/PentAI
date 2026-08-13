@@ -1168,6 +1168,39 @@ the authenticated same-user desktop boundary. JSON matcher labels favor exactnes
 friendly formatting. This review is self-authored and non-independent and cannot satisfy
 an external independent-review requirement.
 
+## 2026-08-13 — Phase 1 workspace navigation
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Exact required workspace inventory, unique identifiers, native-button
+navigation, current-page semantics, keyboard focus visibility, inactive accessibility,
+mounted state preservation, global safety visibility, compatibility, rollback, and
+absence of authority-bearing navigation side effects.
+
+**Evidence examined:** UI typecheck; 88 Vitest checks including exact unique Phase 1
+workspace inventory; production UI build; desktop Cargo check; complete diff; existing
+workspace security reviews and global safety-control placement.
+
+**Findings:** Each required Phase 1 area is now an explicit destination. Navigation only
+changes local presentation state, and hidden workspaces cannot be reached through the
+accessibility tree. The global safety control and core failure state remain outside the
+workspace switcher and visible regardless of destination.
+
+**Limitations and deferred work:** Navigation does not persist across application restart,
+encode destinations in URLs, or create separate desktop windows. Supporting controls for
+network setup, policy, and authorization remain intentionally grouped under Assessments.
+Rollback affects presentation only.
+
+**Residual risk accepted:** Inactive workspace component state remains in same-process
+memory until its existing identity key changes or the application closes. That state is
+already inside the authenticated same-user desktop boundary and does not grant authority.
+This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.
+
 ## 2026-08-11 — Isolated HTTP TEST-NET fixture transport
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local
