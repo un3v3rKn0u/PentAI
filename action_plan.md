@@ -235,8 +235,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     every import mode, and immutable history supports explicit exact-source review.
     Changing the reviewed source clears downstream manifest/policy state before deriving
     a new draft. Durable program engagement history now restores the exact validity
-    window needed to resume that review after restart. Multi-source conflict resolution
-    and full normalization review remain.
+    window needed to resume that review after restart, then reloads canonical manifest
+    history for explicit exact-version review. Multi-source conflict resolution, active
+    signed-policy restoration, and full normalization review remain.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.

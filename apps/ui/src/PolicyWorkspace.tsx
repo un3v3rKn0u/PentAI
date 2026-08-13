@@ -2,6 +2,14 @@ import { useState } from "react";
 
 type Json = Record<string, any>;
 
+export function reviewedManifest(manifests: Json[], manifestId: string, engagementId: string) {
+  const matches = manifests.filter((manifest) => manifest.id === manifestId);
+  const manifest = matches[0];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (matches.length !== 1 || !manifest || !uuid.test(manifest.id) || manifest.engagement_id !== engagementId || manifest.schema_version !== "2.0.0" || !Number.isSafeInteger(manifest.version_number) || manifest.version_number < 1 || typeof manifest.content_hash !== "string" || !manifest.content_hash.match(/^[a-f0-9]{64}$/) || !manifest.document || typeof manifest.document !== "object" || manifest.document.schema_version !== "2.0.0" || manifest.document.engagement?.id !== engagementId || !Array.isArray(manifest.document.sources) || manifest.document.sources.length < 1 || typeof manifest.valid !== "boolean" || !["valid", "invalid"].includes(manifest.validation_status) || manifest.valid !== (manifest.validation_status === "valid") || !Array.isArray(manifest.issues)) throw new Error("MANIFEST_REVIEW_INVALID");
+  return manifest;
+}
+
 export function policyApprovalRequest(decision: "approved" | "rejected", expiresAt: string, reason: string) {
   const normalizedReason = reason.trim();
   if (!normalizedReason || normalizedReason.length > 500) throw new Error("POLICY_APPROVAL_REASON_INVALID");
@@ -17,11 +25,12 @@ export function policyRevocationRequest(reason: string) {
 
 export function PolicyWorkspace({
   connected, manifestText, setManifestText, manifest, manifestHistory, manifestDiff,
-  policy, policyHistory, state, validate, compile, approve, activate, revoke
+  policy, policyHistory, state, engagementId, selectManifest, validate, compile, approve, activate, revoke
 }: {
   connected: boolean; manifestText: string; setManifestText: (value: string) => void;
   manifest: Json | null; manifestHistory: Json[]; manifestDiff: Json | null;
   policy: Json | null; policyHistory: Json[]; state: string;
+  engagementId: string; selectManifest: (manifest: Json) => void;
   validate: () => Promise<void>; compile: () => Promise<void>;
   approve: (request: Json) => Promise<void>; activate: () => Promise<void>;
   revoke: (request: Json) => Promise<void>;
@@ -66,7 +75,7 @@ export function PolicyWorkspace({
       </div>
       {manifest && <div className={manifest.valid ? "result good" : "result bad"}><strong>{manifest.valid ? "Fully resolved" : "Activation blocked"}</strong><ul>{manifest.issues.length === 0 ? <li>Schema, semantics, provenance, validity, and scope passed.</li> : manifest.issues.map((issue: Json) => <li key={`${issue.path}:${issue.code}`}>{issue.code} — {issue.path}</li>)}</ul></div>}
       <div className="policy-history-grid">
-        <div><strong>Immutable manifests · {manifestHistory.length}</strong>{manifestHistory.length === 0 ? <p className="hint">No versions saved.</p> : <ol className="source-list">{manifestHistory.map((item) => <li key={item.id}><strong>Version {item.version_number}</strong><span>{item.validation_status}</span><code>{item.content_hash.slice(0, 16)}…</code></li>)}</ol>}</div>
+        <div><strong>Immutable manifests · {manifestHistory.length}</strong>{manifestHistory.length === 0 ? <p className="hint">No versions saved.</p> : <ol className="source-list">{manifestHistory.map((item) => <li key={item.id} className={manifest?.id === item.id ? "selected" : ""}><div><strong>Version {item.version_number}</strong><span>{item.validation_status}</span><code>{item.content_hash.slice(0, 16)}…</code></div><button type="button" onClick={() => selectManifest(reviewedManifest(manifestHistory, item.id, engagementId))} aria-pressed={manifest?.id === item.id}>{manifest?.id === item.id ? "Selected" : "Review version"}</button></li>)}</ol>}</div>
         <div><strong>Signed policies · {policyHistory.length}</strong>{policyHistory.length === 0 ? <p className="hint">No policies compiled.</p> : <ol className="source-list">{policyHistory.map((item) => <li key={item.id}><strong>{item.status}</strong><span>Compiler {item.compiler_version}</span><code>{item.content_hash.slice(0, 16)}…</code></li>)}</ol>}</div>
       </div>
       {manifestDiff && <div className="result"><strong>Changes from version {manifestDiff.from.version_number}</strong><p>{manifestDiff.changed_sections.length ? manifestDiff.changed_sections.join(", ") : "No authorization-bearing sections changed."}</p></div>}

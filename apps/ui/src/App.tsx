@@ -207,6 +207,7 @@ export function App() {
   const [networkProfiles, setNetworkProfiles] = useState<Json[]>([]);
   const [error, setError] = useState("");
   const selectedProgramId = useRef("");
+  const selectedEngagementId = useRef("");
 
   const statusClass = state.replace(" ", "-");
 
@@ -382,6 +383,7 @@ export function App() {
     setEngagements([]);
     setSource(null);
     setEngagement(null);
+    selectedEngagementId.current = "";
     setManifest(null);
     setManifestHistory([]);
     setManifestDiff(null);
@@ -422,6 +424,16 @@ export function App() {
     setEngagements(result.engagements);
   }
 
+  async function refreshPolicyHistory(engagementId: string) {
+    const [manifests, policies] = await Promise.all([
+      request(`/engagements/${engagementId}/manifests`),
+      request(`/engagements/${engagementId}/policies`)
+    ]);
+    if (selectedEngagementId.current !== engagementId || !Array.isArray(manifests.manifests) || !Array.isArray(policies.policies)) return;
+    setManifestHistory(manifests.manifests);
+    setPolicyHistory(policies.policies);
+  }
+
   async function importSource(submission: SourceImport) {
     if (!program) return;
     const programId = program.id;
@@ -458,6 +470,7 @@ export function App() {
         });
       if (selectedProgramId.current !== programId) return;
       setEngagement(createdEngagement);
+      selectedEngagementId.current = createdEngagement.id;
       await refreshEngagements(programId);
       setSource(imported);
       await refreshSources(programId);
@@ -494,11 +507,18 @@ export function App() {
   function selectEngagementForReview(selected: Json) {
     if (!program || !engagements.some((item) => item.id === selected.id && item.program_id === program.id)) return;
     setEngagement(selected);
+    selectedEngagementId.current = selected.id;
     setManifest(null); setManifestHistory([]); setManifestDiff(null); setPolicy(null); setPolicyHistory([]); setState("draft");
     if (source) {
       const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
       setManifestText(JSON.stringify(buildManifest(program, selected, source, activeNetworkProfile), null, 2));
     } else setManifestText("");
+    void run(() => refreshPolicyHistory(selected.id));
+  }
+
+  function selectManifestForReview(selected: Json) {
+    if (!engagement || !manifestHistory.some((item) => item.id === selected.id && item.engagement_id === engagement.id)) return;
+    setManifest(selected); setManifestText(JSON.stringify(selected.document, null, 2)); setManifestDiff(null); setPolicy(null); setState(selected.valid ? "awaiting approval" : "invalid");
   }
 
   async function validateManifest() {
@@ -611,7 +631,7 @@ export function App() {
         <div className="workspace-pane" hidden={activeWorkspace !== "assessments"}>
           <NetworkProfilesWorkspace connected={Boolean(connection)} state={networkSetupState} proposal={networkProposal} profiles={networkProfiles} error={networkSetupError} discover={discoverNetworkProfile} activate={activateNetworkProfile} revoke={revokeNetworkProfile} />
           <AssessmentsWorkspace key={engagement?.id ?? "no-engagement"} connected={Boolean(connection)} engagement={engagement} policy={policy} policyState={state} request={request} auditRefresh={() => void run(refreshAudit)} />
-          <PolicyWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "draft"}`} connected={Boolean(connection)} manifestText={manifestText} setManifestText={(value) => { setManifestText(value); if (manifest?.valid) { setManifest(null); setPolicy(null); setState("draft"); } }} manifest={manifest} manifestHistory={manifestHistory} manifestDiff={manifestDiff} policy={policy} policyHistory={policyHistory} state={state} validate={validateManifest} compile={compilePolicy} approve={approvePolicy} activate={activatePolicy} revoke={revokeActivePolicy} />
+          <PolicyWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "draft"}`} connected={Boolean(connection)} manifestText={manifestText} setManifestText={(value) => { setManifestText(value); if (manifest?.valid) { setManifest(null); setPolicy(null); setState("draft"); } }} manifest={manifest} manifestHistory={manifestHistory} manifestDiff={manifestDiff} policy={policy} policyHistory={policyHistory} state={state} engagementId={engagement?.id ?? ""} selectManifest={selectManifestForReview} validate={validateManifest} compile={compilePolicy} approve={approvePolicy} activate={activatePolicy} revoke={revokeActivePolicy} />
           <AuthorizationWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "none"}`} connected={Boolean(connection)} engagement={engagement} policy={policy} policyState={state} safetyState={safetyState} request={request} changeAssessmentSafety={changeAssessmentSafety} auditRefresh={() => void run(refreshAudit)} />
         </div>
         <div className="workspace-pane" hidden={activeWorkspace !== "evidence"}><EvidenceWorkspace connection={connection} /></div>

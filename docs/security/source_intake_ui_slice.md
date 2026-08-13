@@ -18,6 +18,10 @@ manifest input. Changing the reviewed source clears derived manifest and policy 
 The selected program also reloads its durable engagement history, allowing the operator
 to restore one exact core-returned validity window before rebuilding the draft after a
 restart. Changing engagement clears the same derived state.
+Selecting an engagement reloads its immutable canonical manifest versions and signed-policy
+summaries. A manifest version can be restored only when its outer record, embedded
+engagement identity, schema, digest, validation status, and provenance document agree.
+Policy summaries remain read-only and cannot restore or activate signed policy content.
 
 ## Safety and failure states
 
