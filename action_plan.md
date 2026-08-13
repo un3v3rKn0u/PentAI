@@ -248,8 +248,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     a draft; malformed or incomplete review denies locally and the core still performs
     canonical validation. That review now selects the existing domain, wildcard-domain,
     URL, IPv4, IPv6, or CIDR matcher type and requires explicit wildcard-apex behavior,
-    without inferring authority across types. Multiple asset rules, broader structured
-    rules, and source-statement extraction remain.
+    without inferring authority across types. The review can also add one independently
+    typed explicit out-of-scope boundary, rejects incomplete or exact allow/deny duplicate
+    input, and keeps deny rows free of allow-only authority. General multi-row scope
+    editing, broader structured rules, and source-statement extraction remain.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.

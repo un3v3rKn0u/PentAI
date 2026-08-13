@@ -130,7 +130,14 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
         allowed_ports: normalization.allowedPorts,
         ownership_verified: true,
         source_reference: review.primary.id
-      }],
+      }, ...(normalization.denyBoundary ? [{
+        asset_id: crypto.randomUUID(),
+        effect: "deny",
+        type: normalization.denyBoundary.assetType,
+        canonical_value: normalization.denyBoundary.target,
+        ...(normalization.denyBoundary.assetType === "wildcard_domain" ? { include_apex: normalization.denyBoundary.includeApex } : {}),
+        source_reference: review.primary.id
+      }] : [])],
       discovered_assets_default: "deny",
       redirects_outside_scope: "stop",
       third_party_services: "deny"

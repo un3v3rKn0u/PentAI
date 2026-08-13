@@ -2784,3 +2784,38 @@ from the security canonicalizer; only the core result can become policy. Synthet
 values remain visible inside the authenticated same-user desktop boundary. This review
 is self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
+
+## 2026-08-13 — Explicit deny-boundary review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Optional typed deny-boundary input, complete-pair validation,
+type-switch invalidation, wildcard apex semantics, exact allow/deny duplicate denial,
+independent manifest identity and provenance, omission of allow-only fields,
+compatibility, rollback, and absence of discovery or execution.
+
+**Evidence examined:** UI typecheck; 105 Vitest checks including complete typed denial,
+partial-input denial, exact canonical duplicate denial, deny-row manifest construction,
+and absence of allow ports and ownership claims; production UI build; desktop Cargo
+check; complete diff; manifest v2 asset contract, policy deny precedence and
+contradiction tests, typed asset review, and intake completeness requirements.
+
+**Findings:** The draft can now state one explicit out-of-scope boundary without
+accidentally granting it allow metadata. Partial or exact contradictory input cannot
+construct a draft. The core remains the only authority for overlapping matcher
+specificity, canonical contradictions, compilation, and activation.
+
+**Limitations and deferred work:** This is one optional deny row tied to the primary
+reviewed source. General multi-row allow/deny editing, per-row source selection, overlap
+preview, third-party/shared-hosting details, and source-statement extraction remain.
+Rollback affects draft presentation only.
+
+**Residual risk accepted:** UI equality checks do not prove semantic non-overlap across
+different matcher types; core deny precedence and contradiction validation are mandatory.
+Synthetic boundary values remain visible inside the authenticated same-user desktop
+boundary. This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.

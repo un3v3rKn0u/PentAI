@@ -128,6 +128,7 @@ legend { padding: 0 6px; color: #8f9baa; font-size: 12px; font-weight: 800; }
 .source-list span { color: #a3adba; overflow-wrap: anywhere; }
 .source-list code { color: #647283; }
 .source-choice { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.boundary-review { padding: 10px; border-left: 2px solid #c87987; background: #171116; }
 .editor { min-height: 360px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; }
 .button-row, .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .panel-heading h2 { margin: 0; }
