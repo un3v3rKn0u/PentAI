@@ -7,7 +7,7 @@ import { EvidenceWorkspace } from "./EvidenceWorkspace";
 import { auditPath, LogsWorkspace } from "./LogsWorkspace";
 import { DashboardWorkspace } from "./DashboardWorkspace";
 import { ProgramsWorkspace, programsPath } from "./ProgramsWorkspace";
-import { IntakeWorkspace, type IntakeState, type SourceBundleReview, type SourceImport } from "./IntakeWorkspace";
+import { IntakeWorkspace, type IntakeState, type NormalizationReview, type SourceBundleReview, type SourceImport } from "./IntakeWorkspace";
 import { AssessmentsWorkspace } from "./AssessmentsWorkspace";
 import { PolicyWorkspace, reviewedManifestDiff, reviewedPolicy } from "./PolicyWorkspace";
 import { NetworkProfilesWorkspace, type NetworkSetupState } from "./NetworkProfilesWorkspace";
@@ -92,7 +92,7 @@ export function networkManifestSettings(networkProfile?: Json) {
   };
 }
 
-export function buildManifest(program: Json, engagement: Json, review: SourceBundleReview, networkProfile?: Json) {
+export function buildManifest(program: Json, engagement: Json, review: SourceBundleReview, normalization: NormalizationReview, networkProfile?: Json) {
   const provenance = review.sources.map((source) => ({ source_id: source.id, content_hash: source.content_hash }));
   return {
     schema_version: "2.0.0",
@@ -123,10 +123,10 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
         asset_id: crypto.randomUUID(),
         effect: "allow",
         type: "domain",
-        canonical_value: "example.test",
-        allowed_paths: ["/api"],
-        denied_paths: ["/api/admin"],
-        allowed_ports: [443],
+        canonical_value: normalization.target,
+        allowed_paths: normalization.allowedPaths,
+        denied_paths: normalization.deniedPaths,
+        allowed_ports: normalization.allowedPorts,
         ownership_verified: true,
         source_reference: review.primary.id
       }],
@@ -135,20 +135,20 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       third_party_services: "deny"
     },
     techniques: {
-      allowed_capabilities: ["network.http.get"],
+      allowed_capabilities: normalization.allowedCapabilities,
       denied_capabilities: [],
       conditional_capabilities: [],
       allowed_http_methods: ["GET"]
     },
     operational_limits: {
-      requests_per_second: 1,
-      per_host_requests_per_second: 1,
+      requests_per_second: normalization.requestsPerSecond,
+      per_host_requests_per_second: normalization.requestsPerSecond,
       burst_limit: 1,
       concurrent_connections: 1,
       maximum_runtime_minutes: 30,
-      maximum_total_requests: 50,
+      maximum_total_requests: normalization.maximumTotalRequests,
       maximum_request_body_bytes: 0,
-      maximum_response_bytes: 100000,
+      maximum_response_bytes: normalization.maximumResponseBytes,
       stop_conditions: ["authorization changes"]
     },
     network: networkManifestSettings(networkProfile),
@@ -179,9 +179,7 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       ...(!networkProfile ? ["Confirm an active network profile before policy activation."] : []),
       ...review.conflicts.map((reference) => `Resolve conflicting immutable source versions for ${reference}.`)
     ],
-    ...(review.normalizationWarnings.length > 0
-      ? { normalization_warnings: review.normalizationWarnings }
-      : {})
+    normalization_warnings: [...review.normalizationWarnings, `Human normalization review: ${normalization.rationale}`]
   };
 }
 
@@ -198,6 +196,7 @@ export function App() {
   const [program, setProgram] = useState<Json | null>(null);
   const [engagement, setEngagement] = useState<Json | null>(null);
   const [sourceReview, setSourceReview] = useState<SourceBundleReview | null>(null);
+  const [normalizationReview, setNormalizationReview] = useState<NormalizationReview | null>(null);
   const [manifest, setManifest] = useState<Json | null>(null);
   const [manifestHistory, setManifestHistory] = useState<Json[]>([]);
   const [manifestDiff, setManifestDiff] = useState<Json | null>(null);
@@ -340,9 +339,9 @@ export function App() {
       const activated = await request("/network-profiles/activate", activationRequest);
       await refreshNetworkProfiles();
       setNetworkProposal(null);
-      if (program && engagement && sourceReview) {
+      if (program && engagement && sourceReview && normalizationReview) {
         setManifestText(JSON.stringify(
-          buildManifest(program, engagement, sourceReview, activated),
+          buildManifest(program, engagement, sourceReview, normalizationReview, activated),
           null,
           2
         ));
@@ -388,6 +387,7 @@ export function App() {
     setSources([]);
     setEngagements([]);
     setSourceReview(null);
+    setNormalizationReview(null);
     setEngagement(null);
     selectedEngagementId.current = "";
     setManifest(null);
@@ -481,12 +481,8 @@ export function App() {
       const importedReview = { sources: [imported], primary: imported, conflicts: [], normalizationWarnings: [] };
       setSourceReview(importedReview);
       await refreshSources(programId);
-      const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
-      setManifestText(JSON.stringify(
-        buildManifest(program, createdEngagement, importedReview, activeNetworkProfile),
-        null,
-        2
-      ));
+      setNormalizationReview(null);
+      setManifestText("");
       setState("draft");
     } catch (reason) {
       const code = reason instanceof Error ? reason.message : "REQUEST_FAILED";
@@ -499,13 +495,14 @@ export function App() {
     }
   }
 
-  function selectSourceBundleForReview(review: SourceBundleReview) {
+  function selectSourceBundleForReview(review: SourceBundleReview, normalization: NormalizationReview) {
     if (review.sources.some((selected) => !sources.some((item) => item.id === selected.id && item.content_hash === selected.content_hash))) return;
     setSourceReview(review);
+    setNormalizationReview(normalization);
     setManifest(null); setManifestHistory([]); setManifestDiff(null); setPolicy(null); setPolicyHistory([]); setState("draft");
     if (program && engagement) {
       const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
-      setManifestText(JSON.stringify(buildManifest(program, engagement, review, activeNetworkProfile), null, 2));
+      setManifestText(JSON.stringify(buildManifest(program, engagement, review, normalization, activeNetworkProfile), null, 2));
     } else {
       setManifestText("");
     }
@@ -516,9 +513,9 @@ export function App() {
     setEngagement(selected);
     selectedEngagementId.current = selected.id;
     setManifest(null); setManifestHistory([]); setManifestDiff(null); setPolicy(null); setPolicyHistory([]); setState("draft");
-    if (sourceReview) {
+    if (sourceReview && normalizationReview) {
       const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
-      setManifestText(JSON.stringify(buildManifest(program, selected, sourceReview, activeNetworkProfile), null, 2));
+      setManifestText(JSON.stringify(buildManifest(program, selected, sourceReview, normalizationReview, activeNetworkProfile), null, 2));
     } else setManifestText("");
     void run(() => refreshPolicyHistory(selected.id));
   }

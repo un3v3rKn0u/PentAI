@@ -65,7 +65,8 @@ describe("authorization workflow safety boundary", () => {
     const document = buildManifest(
       { name: "Synthetic program" },
       { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" },
-      { sources: [contract, page], primary: contract, conflicts: [contract.reference], normalizationWarnings: ["Conflicting immutable versions require restrictive review: deny until clarified"] }
+      { sources: [contract, page], primary: contract, conflicts: [contract.reference], normalizationWarnings: ["Conflicting immutable versions require restrictive review: deny until clarified"] },
+      { target: "example.test", allowedPaths: ["/api"], deniedPaths: ["/api/admin"], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 50, maximumResponseBytes: 100000, rationale: "exact restrictive transcription" }
     );
     expect(document.sources.map((item: Record<string, string>) => item.source_id)).toEqual([contract.id, page.id]);
     expect(document.field_provenance["/scope"]).toEqual([
@@ -74,6 +75,8 @@ describe("authorization workflow safety boundary", () => {
     ]);
     expect(document.unresolved_questions).toContain(`Resolve conflicting immutable source versions for ${contract.reference}.`);
     expect(document.approvals.status).toBe("pending");
+    expect(document.scope.assets[0].canonical_value).toBe("example.test");
+    expect(document.normalization_warnings).toContain("Human normalization review: exact restrictive transcription");
   });
 
   it("does not expose execution or grant issuance", () => {

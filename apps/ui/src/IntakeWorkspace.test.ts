@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeBytesBase64, prepareSourceImport, reviewedEngagement, reviewedSource, reviewedSourceBundle, sourceFileMediaType } from "./IntakeWorkspace";
+import { encodeBytesBase64, prepareSourceImport, reviewedEngagement, reviewedNormalization, reviewedSource, reviewedSourceBundle, sourceFileMediaType } from "./IntakeWorkspace";
 
 const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", reference: "contract://authorization", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
 const engagement = { id: "20000000-0000-4000-8000-000000000001", program_id: "program-a", status: "draft", effective_from: "2030-01-01T10:00:00Z", expires_at: "2030-01-02T10:00:00Z" };
@@ -36,6 +36,18 @@ describe("supervised Intake workspace", () => {
   it("denies unknown authority and malformed effective-time precedence", () => {
     expect(() => reviewedSourceBundle([{ ...source, authority: "unknown" }], [source.id], "")).toThrow("SOURCE_BUNDLE_INVALID");
     expect(() => reviewedSourceBundle([{ ...source, effective_at: "not-a-time" }], [source.id], "")).toThrow("SOURCE_BUNDLE_INVALID");
+  });
+  it("normalizes explicit scope and budget review without widening it", () => {
+    expect(reviewedNormalization({ target: "Example.TEST.", allowedPaths: " /api, /status, /api ", deniedPaths: "/api/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "0.5", maximumTotalRequests: "25", maximumResponseBytes: "4096", rationale: "  exact restrictive transcription  " })).toEqual({
+      target: "example.test", allowedPaths: ["/api", "/status"], deniedPaths: ["/api/admin"], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 0.5, maximumTotalRequests: 25, maximumResponseBytes: 4096, rationale: "exact restrictive transcription"
+    });
+  });
+  it("denies malformed or incomplete structured normalization", () => {
+    const valid = { target: "example.test", allowedPaths: "/api", deniedPaths: "/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "50", maximumResponseBytes: "1000", rationale: "reviewed" };
+    expect(() => reviewedNormalization({ ...valid, target: "*.example.test" })).toThrow("NORMALIZATION_REVIEW_INVALID");
+    expect(() => reviewedNormalization({ ...valid, allowedPaths: "api" })).toThrow("NORMALIZATION_REVIEW_INVALID");
+    expect(() => reviewedNormalization({ ...valid, allowedPorts: "0" })).toThrow("NORMALIZATION_REVIEW_INVALID");
+    expect(() => reviewedNormalization({ ...valid, rationale: " " })).toThrow("NORMALIZATION_REVIEW_INVALID");
   });
   it("binds engagement recovery to one exact program and validity window", () => {
     expect(reviewedEngagement([engagement], engagement.id, "program-a")).toBe(engagement);

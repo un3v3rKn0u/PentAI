@@ -242,8 +242,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     immutable versions. Intake can now assemble an exact multi-source provenance bundle,
     order it by the documented authority precedence, and require a bounded restrictive
     review note when one reference has divergent immutable hashes. Such conflicts remain
-    explicit unresolved questions and cannot activate policy. Full structured normalization
-    editing remains.
+    explicit unresolved questions and cannot activate policy. The operator must now also
+    explicitly review the exact normalized domain, paths, ports, capabilities, request
+    rate, total-request ceiling, response ceiling, and rationale before the UI constructs
+    a draft; malformed or incomplete review denies locally and the core still performs
+    canonical validation. Broader structured rules and source-statement extraction remain.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.

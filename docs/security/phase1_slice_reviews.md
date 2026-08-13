@@ -2714,3 +2714,37 @@ visible inside the authenticated same-user desktop boundary. UI precedence is de
 depth; canonical manifest validation and activation remain core-authoritative. This
 review is self-authored and non-independent and cannot satisfy an external independent-
 review requirement.
+
+## 2026-08-13 — Structured normalization review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Explicit normalized domain, path, port, capability, request-rate,
+total-request, response-size, and rationale inputs; source-import invalidation; manifest
+mapping and provenance; malformed/missing-input denial; pending approval; compatibility;
+rollback; and absence of extraction, policy authority, or execution.
+
+**Evidence examined:** UI typecheck; 100 Vitest checks including successful restrictive
+normalization and malformed domain, wildcard, path, port, and rationale denial;
+production UI build; desktop Cargo check; complete diff; manifest v2 schema, intake and
+normalization procedure, source-bundle review, and core canonical validation boundary.
+
+**Findings:** Importing immutable material alone no longer creates a seemingly reviewed
+scope. Every draft constructed through Intake has an explicit bounded normalization
+record and retains pending approval. Invalid or incomplete values fail before draft
+construction, while the core independently rejects semantic ambiguity and contradiction.
+
+**Limitations and deferred work:** This slice covers one exact domain and the principal
+HTTP/budget fields. Typed URL, IP, CIDR, wildcard/apex, testing-window, data-handling,
+reporting, and conditional-capability editors, plus source-statement extraction, remain.
+Rollback affects presentation and draft construction only.
+
+**Residual risk accepted:** The UI's domain grammar and list normalization are defense in
+depth and may safely over-deny; they cannot replace core canonicalization. Reviewed
+synthetic scope and rationale remain visible inside the authenticated same-user desktop
+boundary. This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.
