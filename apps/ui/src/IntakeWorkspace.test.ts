@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedEngagement, reviewedNormalization, reviewedSource, reviewedSourceBundle, sourceFileMediaType } from "./IntakeWorkspace";
+import { encodeBytesBase64, prepareSourceImport, reviewedAssetRules, reviewedEngagement, reviewedNormalization, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, sourceFileMediaType } from "./IntakeWorkspace";
 
 const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", reference: "contract://authorization", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
 const engagement = { id: "20000000-0000-4000-8000-000000000001", program_id: "program-a", status: "draft", effective_from: "2030-01-01T10:00:00Z", expires_at: "2030-01-02T10:00:00Z" };
@@ -78,6 +78,19 @@ describe("supervised Intake workspace", () => {
     expect(() => reviewedAssetRules([{ ...allow, effect: "deny" }], ["source-a"])).toThrow("DENY_RULE_AUTHORITY_INVALID");
     expect(() => reviewedAssetRules([{ ...allow, effect: "deny", allowedPaths: "", allowedPorts: "" }], ["source-a"])).toThrow("ALLOW_RULE_REQUIRED");
     expect(() => reviewedAssetRules([allow, { effect: "deny", assetType: "domain", target: "EXAMPLE.TEST", sourceReference: "source-a" }], ["source-a"])).toThrow("ASSET_RULE_CONFLICT");
+  });
+  it("reviews explicit external-infrastructure boundaries", () => {
+    expect(reviewedScopeBoundaries({ thirdPartyServices: "deny", sharedHostingAndCdn: "allow_if_explicit", scopeExpansionProcess: "Stop and obtain written authorization for the exact asset." })).toEqual({
+      thirdPartyServices: "deny",
+      sharedHostingAndCdn: "allow_if_explicit",
+      scopeExpansionProcess: "Stop and obtain written authorization for the exact asset."
+    });
+  });
+  it("denies incomplete or invalid scope-boundary review", () => {
+    const valid = { thirdPartyServices: "deny", sharedHostingAndCdn: "deny", scopeExpansionProcess: "Stop and obtain written authorization." };
+    expect(() => reviewedScopeBoundaries({ ...valid, thirdPartyServices: "unknown" })).toThrow("SCOPE_BOUNDARY_REVIEW_INVALID");
+    expect(() => reviewedScopeBoundaries({ ...valid, scopeExpansionProcess: " " })).toThrow("SCOPE_BOUNDARY_REVIEW_INVALID");
+    expect(() => reviewedScopeBoundaries({ ...valid, scopeExpansionProcess: "x".repeat(501) })).toThrow("SCOPE_BOUNDARY_REVIEW_INVALID");
   });
   it("denies malformed or incomplete structured normalization", () => {
     const valid = { assetType: "domain", target: "example.test", allowedPaths: "/api", deniedPaths: "/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "1", maximumTotalRequests: "50", maximumResponseBytes: "1000", rationale: "reviewed" };

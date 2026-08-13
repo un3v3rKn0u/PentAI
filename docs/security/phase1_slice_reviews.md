@@ -1463,6 +1463,39 @@ probe. Runtime termination after a successful one-shot request remains owned by 
 existing lifecycle supervisor. This self-authored review is non-independent and cannot
 satisfy an external independent-review requirement.
 
+## 2026-08-13 — Structured scope-boundary review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Third-party-service and shared-hosting/CDN decisions, bounded scope
+expansion procedure, conservative defaults, manifest mapping, invalid and missing input,
+compatibility, rollback, and absence of discovery or execution.
+
+**Evidence examined:** UI typecheck; 111 Vitest checks including explicit boundary
+review, unknown-value denial, missing-process denial, length-bound denial, exact manifest
+mapping, and prior multi-row scope tests; production UI build; desktop Cargo check;
+complete diff; manifest v2 scope contract and intake completeness requirements.
+
+**Findings:** External infrastructure handling is no longer an implicit fixed builder
+value. Both decisions begin at deny, and `allow_if_explicit` cannot create authority
+without a separately reviewed exact asset. Incomplete boundary review fails before draft
+construction. The core remains authoritative for validation and activation.
+
+**Limitations and deferred work:** The expansion procedure is bounded human-authored text
+and is not parsed into authority. Structured technique, account, timing, stop-condition,
+data-handling, and reporting review plus source-statement extraction remain. Rollback
+affects draft presentation only.
+
+**Residual risk accepted:** The UI cannot prove that free-text expansion instructions are
+operationally sufficient; explicit assets and core validation remain mandatory. Synthetic
+review text remains visible inside the authenticated same-user desktop boundary. This
+review is self-authored and non-independent and cannot satisfy an external independent-
+review requirement.
+
 ## 2026-08-11 — Owned fixture end-to-end hosted proof
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local
