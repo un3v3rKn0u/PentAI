@@ -178,6 +178,13 @@ describe("authorization workflow safety boundary", () => {
     const document = buildManifest({ name: "Synthetic program" }, { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" }, { sources: [source], primary: source, conflicts: [], normalizationWarnings: [] }, { assetType: "domain", target: "example.test", reporting: { submissionChannel: "Program portal", requiredFields: ["title", "impact"], evidenceRules: ["redact secrets"], disclosureTimeline: "Wait for approval." }, allowedPaths: ["/"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "reviewed reporting" });
     expect(document.reporting).toEqual({ submission_channel: "Program portal", required_fields: ["title", "impact"], evidence_rules: ["redact secrets"], disclosure_timeline: "Wait for approval.", submission_requires_human_approval: true, automatic_submission: false });
   });
+  it("preserves reviewed account identifiers without credential material", () => {
+    const source = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const document = buildManifest({ name: "Synthetic program" }, { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" }, { sources: [source], primary: source, conflicts: [], normalizationWarnings: [] }, { assetType: "domain", target: "example.test", accountUse: { mode: "approved_test_accounts", approvedAccountReferences: ["synthetic-user-1"], sharedAccounts: "deny", credentialHandling: "external_secret_store_only" }, allowedPaths: ["/"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "reviewed accounts" });
+    expect(document.account_controls).toEqual({ mode: "approved_test_accounts", approved_account_references: ["synthetic-user-1"], shared_accounts: "deny", credential_handling: "external_secret_store_only" });
+    expect(document.field_provenance["/account_controls"]).toEqual([{ source_id: source.id, content_hash: source.content_hash }]);
+    expect(JSON.stringify(document)).not.toContain("password");
+  });
 
   it("does not expose execution or grant issuance", () => {
     const milestoneCapabilities = ["manifest", "policy", "approval", "decision", "audit"];

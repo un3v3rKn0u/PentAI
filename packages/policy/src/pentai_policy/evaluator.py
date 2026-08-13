@@ -131,6 +131,17 @@ def evaluate(
     if canonical != intent.get("target"):
         return _decision(intent, stored_hash, "deny", ["TARGET_AMBIGUOUS"], [])
 
+    account_constraints = policy.get("account_constraints")
+    if isinstance(account_constraints, dict):
+        account_reference = intent.get("account_reference")
+        if account_constraints.get("mode") == "unauthenticated_only" and account_reference:
+            return _decision(intent, stored_hash, "deny", ["ACCOUNT_DENIED"], [])
+        if account_constraints.get("mode") == "approved_test_accounts" and (
+            not account_reference
+            or account_reference not in account_constraints.get("approved_account_references", [])
+        ):
+            return _decision(intent, stored_hash, "deny", ["ACCOUNT_DENIED"], [])
+
     capability_rules = [
         rule
         for rule in policy["capability_rules"]

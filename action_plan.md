@@ -267,7 +267,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     disclosure timeline while keeping human approval mandatory and automatic submission
     disabled. Testing-window review now records explicit weekdays, local start/end times,
     an IANA timezone, and optional bounded blackout intervals against a structurally
-    defined manifest contract. Account rules plus source-statement extraction remain.
+    defined manifest contract. Account-use review now distinguishes unauthenticated-only
+    work from approved identifier-only test accounts, prohibits shared accounts and
+    credential material, and compiles that constraint into deterministic decisions.
+    Source-statement extraction remains.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
