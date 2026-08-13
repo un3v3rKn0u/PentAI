@@ -3071,3 +3071,36 @@ remain gated. Source-statement extraction also remains in Intake.
 prove that a human did not paste opaque secret material. The external secret boundary
 must independently prevent disclosure. This review is self-authored and non-independent
 and cannot satisfy an external independent-review requirement.
+
+## 2026-08-14 — Source-statement review
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Bounded exact statement and candidate interpretation entry, selected
+immutable-source ID/hash binding, authorization-field allowlist, duplicate rejection,
+manifest preservation, core provenance validation, compatibility, rollback, and absence
+of automatic extraction or authority.
+
+**Evidence examined:** UI normalization and denial tests; manifest-builder candidate
+mapping; policy provenance mismatch and duplicate tests; manifest v2 contract; TypeScript
+typecheck and production build; Python tests, Ruff, mypy, desktop Cargo check; complete
+diff; source-bundle and structured-normalization reviews; MVP AI-assistance boundary.
+
+**Findings:** Intake now retains the exact language used to support a human interpretation
+without treating that interpretation as a rule. Unknown or stale provenance denies, and
+candidate text cannot enter Policy IR or bypass structured field review.
+
+**Limitations and deferred work:** Encrypted-original preview and document parsing remain
+disabled. AI-assisted proposal generation awaits sandboxing and model-data controls.
+Statement-level semantic contradiction detection and exact character-offset citations
+remain later work.
+
+**Residual risk accepted:** Manual transcription can contain mistakes and the UI cannot
+prove that entered text is a byte-exact excerpt because originals remain encrypted and
+unexposed. Immutable source identity, separate candidate status, and mandatory structured
+review limit this risk. This review is self-authored and non-independent and cannot
+satisfy an external independent-review requirement.

@@ -270,7 +270,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     defined manifest contract. Account-use review now distinguishes unauthenticated-only
     work from approved identifier-only test accounts, prohibits shared accounts and
     credential material, and compiles that constraint into deterministic decisions.
-    Source-statement extraction remains.
+    Source-statement review now records bounded exact language and a separate restrictive
+    candidate interpretation, each bound to one immutable source ID, digest, and
+    authorization-bearing field category. Candidates never populate rules automatically.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.

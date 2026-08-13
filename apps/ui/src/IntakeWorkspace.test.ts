@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeBytesBase64, prepareSourceImport, reviewedAccountUse, reviewedAssetRules, reviewedDataHandling, reviewedEngagement, reviewedNormalization, reviewedOperationalLimits, reviewedReporting, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, reviewedTechniques, reviewedTestingSchedule, sourceFileMediaType } from "./IntakeWorkspace";
+import { encodeBytesBase64, prepareSourceImport, reviewedAccountUse, reviewedAssetRules, reviewedDataHandling, reviewedEngagement, reviewedNormalization, reviewedOperationalLimits, reviewedReporting, reviewedScopeBoundaries, reviewedSource, reviewedSourceBundle, reviewedSourceStatements, reviewedTechniques, reviewedTestingSchedule, sourceFileMediaType } from "./IntakeWorkspace";
 
 const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", reference: "contract://authorization", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
 const engagement = { id: "20000000-0000-4000-8000-000000000001", program_id: "program-a", status: "draft", effective_from: "2030-01-01T10:00:00Z", expires_at: "2030-01-02T10:00:00Z" };
@@ -36,6 +36,17 @@ describe("supervised Intake workspace", () => {
   it("denies unknown authority and malformed effective-time precedence", () => {
     expect(() => reviewedSourceBundle([{ ...source, authority: "unknown" }], [source.id], "")).toThrow("SOURCE_BUNDLE_INVALID");
     expect(() => reviewedSourceBundle([{ ...source, effective_at: "not-a-time" }], [source.id], "")).toThrow("SOURCE_BUNDLE_INVALID");
+  });
+  it("reviews bounded candidate statements with exact immutable provenance", () => {
+    expect(reviewedSourceStatements([{ sourceId: source.id, fieldPath: "/scope", statement: " Only example.test is in scope. ", interpretation: "Allow only example.test." }], [source])).toEqual([{ sourceId: source.id, contentHash: source.content_hash, fieldPath: "/scope", statement: "Only example.test is in scope.", interpretation: "Allow only example.test.", status: "candidate" }]);
+  });
+  it("denies missing, unknown, duplicate, or unbounded source statements", () => {
+    const valid = { sourceId: source.id, fieldPath: "/scope", statement: "Only example.test is in scope.", interpretation: "Allow only example.test." };
+    expect(() => reviewedSourceStatements([], [source])).toThrow("SOURCE_STATEMENTS_INVALID");
+    expect(() => reviewedSourceStatements([{ ...valid, sourceId: "missing" }], [source])).toThrow("SOURCE_STATEMENT_INVALID");
+    expect(() => reviewedSourceStatements([{ ...valid, fieldPath: "/approvals" }], [source])).toThrow("SOURCE_STATEMENT_INVALID");
+    expect(() => reviewedSourceStatements([valid, valid], [source])).toThrow("SOURCE_STATEMENT_DUPLICATE");
+    expect(() => reviewedSourceStatements([{ ...valid, statement: "x".repeat(501) }], [source])).toThrow("SOURCE_STATEMENT_INVALID");
   });
   it("normalizes explicit scope and budget review without widening it", () => {
     expect(reviewedNormalization({ assetType: "domain", target: "Example.TEST.", allowedPaths: " /api, /status, /api ", deniedPaths: "/api/admin", allowedPorts: "443", allowedCapabilities: "network.http.get", requestsPerSecond: "0.5", maximumTotalRequests: "25", maximumResponseBytes: "4096", rationale: "  exact restrictive transcription  " })).toEqual({

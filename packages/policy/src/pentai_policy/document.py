@@ -179,6 +179,7 @@ def validate_and_canonicalize_manifest(
 
     sources = document.get("sources")
     source_ids: set[str] = set()
+    declared_source_hashes: dict[str, str] = {}
     if not isinstance(sources, list) or not sources:
         issues.append(ValidationIssue("PROVENANCE_MISSING", "/sources", "at least one source"))
     else:
@@ -199,6 +200,7 @@ def validate_and_canonicalize_manifest(
                 )
                 continue
             source_ids.add(source_id)
+            declared_source_hashes[source_id] = digest
             if source_id in seen_source_ids:
                 issues.append(
                     ValidationIssue(
@@ -254,6 +256,45 @@ def validate_and_canonicalize_manifest(
                             "field provenance does not match the imported source hash",
                         )
                     )
+
+    source_statements = document.get("source_statements", [])
+    if isinstance(source_statements, list):
+        seen_statements: set[tuple[str, str, str]] = set()
+        for index, statement in enumerate(source_statements):
+            if not isinstance(statement, dict):
+                continue
+            source_id = statement.get("source_id")
+            digest = statement.get("content_hash")
+            identity = (
+                str(source_id),
+                str(statement.get("field_path")),
+                str(statement.get("statement")),
+            )
+            if identity in seen_statements:
+                issues.append(
+                    ValidationIssue(
+                        "SOURCE_STATEMENT_AMBIGUOUS",
+                        f"/source_statements/{index}",
+                        "duplicate source statement",
+                    )
+                )
+            seen_statements.add(identity)
+            if source_id not in source_ids:
+                issues.append(
+                    ValidationIssue(
+                        "PROVENANCE_MISSING",
+                        f"/source_statements/{index}/source_id",
+                        "must reference a manifest source",
+                    )
+                )
+            elif declared_source_hashes.get(str(source_id)) != digest:
+                issues.append(
+                    ValidationIssue(
+                        "PROVENANCE_HASH_MISMATCH",
+                        f"/source_statements/{index}/content_hash",
+                        "statement provenance does not match its manifest source",
+                    )
+                )
 
     scope = document.get("scope")
     assets = scope.get("assets") if isinstance(scope, dict) else None
