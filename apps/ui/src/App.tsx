@@ -173,6 +173,8 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       maximum_total_requests: normalization.operationalLimits?.maximumTotalRequests ?? normalization.maximumTotalRequests,
       maximum_request_body_bytes: normalization.operationalLimits?.maximumRequestBodyBytes ?? 0,
       maximum_response_bytes: normalization.operationalLimits?.maximumResponseBytes ?? normalization.maximumResponseBytes,
+      ...(normalization.operationalLimits?.allowedTestingWindows ? { allowed_testing_windows: normalization.operationalLimits.allowedTestingWindows.map((window) => ({ days: window.days, start_time: window.startTime, end_time: window.endTime, timezone: window.timezone })) } : {}),
+      ...(normalization.operationalLimits?.blackoutPeriods ? { blackout_periods: normalization.operationalLimits.blackoutPeriods.map((period) => ({ starts_at: period.startsAt, ends_at: period.endsAt, reason: period.reason })) } : {}),
       stop_conditions: normalization.operationalLimits?.stopConditions ?? ["authorization changes"]
     },
     network: networkManifestSettings(networkProfile),

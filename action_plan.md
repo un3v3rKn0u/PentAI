@@ -265,7 +265,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     real-user-data allowance to a positive record-view ceiling and redaction rules.
     Reporting review now captures a bounded channel, required fields, evidence rules, and
     disclosure timeline while keeping human approval mandatory and automatic submission
-    disabled. Testing-window and account rules plus source-statement extraction remain.
+    disabled. Testing-window review now records explicit weekdays, local start/end times,
+    an IANA timezone, and optional bounded blackout intervals against a structurally
+    defined manifest contract. Account rules plus source-statement extraction remain.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.

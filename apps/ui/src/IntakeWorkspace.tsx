@@ -64,7 +64,11 @@ export type OperationalLimitReview = {
   maximumRequestBodyBytes: number;
   maximumResponseBytes: number;
   stopConditions: string[];
+  allowedTestingWindows?: TestingWindowReview[];
+  blackoutPeriods?: BlackoutPeriodReview[];
 };
+export type TestingWindowReview = { days: string[]; startTime: string; endTime: string; timezone: string };
+export type BlackoutPeriodReview = { startsAt: string; endsAt: string; reason: string };
 export type DataHandlingReview = {
   realUserData: "avoid_and_stop" | "minimal_if_explicit";
   maximumRecordsToView?: number;
@@ -231,6 +235,31 @@ export function reviewedOperationalLimits(input: Record<string, string>): Operat
     || stopConditions.length === 0 || stopConditions.some((item) => item.length > 200)
   ) throw new Error("OPERATIONAL_LIMIT_REVIEW_INVALID");
   return { requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions };
+}
+
+export function reviewedTestingSchedule(input: Record<string, string>): Pick<OperationalLimitReview, "allowedTestingWindows" | "blackoutPeriods"> {
+  const validDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+  const days = [...new Set((input.testingDays ?? "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))];
+  const timePattern = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
+  const startTime = input.testingStartTime?.trim() ?? "";
+  const endTime = input.testingEndTime?.trim() ?? "";
+  const timezone = input.testingTimezone?.trim() ?? "";
+  let validTimezone = true;
+  try { new Intl.DateTimeFormat("en", { timeZone: timezone }).format(); } catch { validTimezone = false; }
+  if (days.length === 0 || days.some((day) => !validDays.includes(day)) || !timePattern.test(startTime) || !timePattern.test(endTime) || startTime >= endTime || !timezone || timezone.length > 64 || !validTimezone) throw new Error("TESTING_WINDOW_REVIEW_INVALID");
+  const blackoutStarts = input.blackoutStartsAt?.trim() ?? "";
+  const blackoutEnds = input.blackoutEndsAt?.trim() ?? "";
+  const blackoutReason = input.blackoutReason?.trim() ?? "";
+  const hasBlackout = [blackoutStarts, blackoutEnds, blackoutReason].some(Boolean);
+  let blackoutPeriods: BlackoutPeriodReview[] = [];
+  if (hasBlackout) {
+    const timezoneAware = /(?:Z|[+-][0-9]{2}:[0-9]{2})$/;
+    const startsAt = new Date(blackoutStarts);
+    const endsAt = new Date(blackoutEnds);
+    if (!timezoneAware.test(blackoutStarts) || !timezoneAware.test(blackoutEnds) || !blackoutReason || blackoutReason.length > 200 || !Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || startsAt >= endsAt) throw new Error("BLACKOUT_PERIOD_REVIEW_INVALID");
+    blackoutPeriods = [{ startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), reason: blackoutReason }];
+  }
+  return { allowedTestingWindows: [{ days, startTime, endTime, timezone }], blackoutPeriods };
 }
 
 export function reviewedDataHandling(input: Record<string, string>): DataHandlingReview {
@@ -428,6 +457,13 @@ export function IntakeWorkspace({
   const [maximumRequestBodyBytes, setMaximumRequestBodyBytes] = useState("0");
   const [maximumResponseBytes, setMaximumResponseBytes] = useState("100000");
   const [stopConditions, setStopConditions] = useState("authorization changes,safety control pauses");
+  const [testingDays, setTestingDays] = useState("monday,tuesday,wednesday,thursday,friday");
+  const [testingStartTime, setTestingStartTime] = useState("09:00");
+  const [testingEndTime, setTestingEndTime] = useState("17:00");
+  const [testingTimezone, setTestingTimezone] = useState("UTC");
+  const [blackoutStartsAt, setBlackoutStartsAt] = useState("");
+  const [blackoutEndsAt, setBlackoutEndsAt] = useState("");
+  const [blackoutReason, setBlackoutReason] = useState("");
   const [realUserData, setRealUserData] = useState<DataHandlingReview["realUserData"]>("avoid_and_stop");
   const [maximumRecordsToView, setMaximumRecordsToView] = useState("");
   const [retentionDays, setRetentionDays] = useState("7");
@@ -473,7 +509,8 @@ export function IntakeWorkspace({
       const reviewedRules = reviewedAssetRules(assetRules, sourceReview.sources.map((source) => source.id));
       const primaryAllow = reviewedRules.find((rule) => rule.effect === "allow")!;
       const normalization = reviewedNormalization({ assetType: primaryAllow.assetType, target: primaryAllow.target, includeApex: String(primaryAllow.includeApex ?? false), allowedPaths: primaryAllow.allowedPaths!.join(","), deniedPaths: primaryAllow.deniedPaths!.join(","), allowedPorts: primaryAllow.allowedPorts!.join(","), allowedCapabilities, requestsPerSecond, maximumTotalRequests, maximumResponseBytes, rationale: normalizationRationale });
-      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }), dataHandling: reviewedDataHandling({ realUserData, maximumRecordsToView, retentionDays, remoteAiMaxClassification, redactionRules }), reporting: reviewedReporting({ submissionChannel, requiredFields, evidenceRules, disclosureTimeline }) });
+      const schedule = reviewedTestingSchedule({ testingDays, testingStartTime, testingEndTime, testingTimezone, blackoutStartsAt, blackoutEndsAt, blackoutReason });
+      selectBundle(sourceReview, { ...normalization, assetRules: reviewedRules, scopeBoundaries: reviewedScopeBoundaries({ thirdPartyServices, sharedHostingAndCdn, scopeExpansionProcess }), techniques: reviewedTechniques({ allowedCapabilities, deniedCapabilities, conditionalCapability, conditionalApprovalType, conditionalConditions, methodGET: String(allowedHttpMethods.includes("GET")), methodHEAD: String(allowedHttpMethods.includes("HEAD")), methodOPTIONS: String(allowedHttpMethods.includes("OPTIONS")) }), operationalLimits: { ...reviewedOperationalLimits({ requestsPerSecond, perHostRequestsPerSecond, burstLimit, concurrentConnections, maximumRuntimeMinutes, maximumTotalRequests, maximumRequestBodyBytes, maximumResponseBytes, stopConditions }), ...schedule }, dataHandling: reviewedDataHandling({ realUserData, maximumRecordsToView, retentionDays, remoteAiMaxClassification, redactionRules }), reporting: reviewedReporting({ submissionChannel, requiredFields, evidenceRules, disclosureTimeline }) });
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : "SOURCE_BUNDLE_INVALID");
     }
@@ -557,6 +594,13 @@ export function IntakeWorkspace({
           <label>Maximum request body bytes<input type="number" min="0" value={maximumRequestBodyBytes} onChange={(event) => setMaximumRequestBodyBytes(event.target.value)} /></label>
           <label>Maximum response bytes<input type="number" min="1" value={maximumResponseBytes} onChange={(event) => setMaximumResponseBytes(event.target.value)} /></label>
           <label>Stop conditions (comma-separated)<textarea value={stopConditions} onChange={(event) => setStopConditions(event.target.value)} /></label>
+          <label>Allowed testing days (comma-separated)<input value={testingDays} onChange={(event) => setTestingDays(event.target.value)} /></label>
+          <label>Testing window start<input type="time" value={testingStartTime} onChange={(event) => setTestingStartTime(event.target.value)} /></label>
+          <label>Testing window end<input type="time" value={testingEndTime} onChange={(event) => setTestingEndTime(event.target.value)} /></label>
+          <label>Testing timezone<input maxLength={64} value={testingTimezone} onChange={(event) => setTestingTimezone(event.target.value)} /></label>
+          <label>Blackout starts (optional, include timezone)<input value={blackoutStartsAt} onChange={(event) => setBlackoutStartsAt(event.target.value)} placeholder="2030-01-01T12:00:00Z" /></label>
+          <label>Blackout ends (optional, include timezone)<input value={blackoutEndsAt} onChange={(event) => setBlackoutEndsAt(event.target.value)} placeholder="2030-01-01T13:00:00Z" /></label>
+          <label>Blackout reason (required with blackout)<input maxLength={200} value={blackoutReason} onChange={(event) => setBlackoutReason(event.target.value)} /></label>
         </div>
         <div className="boundary-review"><strong>Data handling</strong>
           <label>Real-user data<select value={realUserData} onChange={(event) => { setRealUserData(event.target.value as DataHandlingReview["realUserData"]); setMaximumRecordsToView(""); }}><option value="avoid_and_stop">Avoid and stop if encountered</option><option value="minimal_if_explicit">Minimal only when explicit</option></select></label>

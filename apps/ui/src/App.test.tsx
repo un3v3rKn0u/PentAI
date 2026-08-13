@@ -151,6 +151,18 @@ describe("authorization workflow safety boundary", () => {
     expect(document.operational_limits).toEqual({ requests_per_second: 2, per_host_requests_per_second: 1, burst_limit: 2, concurrent_connections: 1, maximum_runtime_minutes: 20, maximum_total_requests: 10, maximum_request_body_bytes: 0, maximum_response_bytes: 5000, stop_conditions: ["authorization changes", "safety control pauses"] });
   });
 
+  it("preserves only structured reviewed testing windows and blackouts", () => {
+    const source = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const document = buildManifest(
+      { name: "Synthetic program" },
+      { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" },
+      { sources: [source], primary: source, conflicts: [], normalizationWarnings: [] },
+      { assetType: "domain", target: "example.test", operationalLimits: { requestsPerSecond: 1, perHostRequestsPerSecond: 1, burstLimit: 1, concurrentConnections: 1, maximumRuntimeMinutes: 20, maximumTotalRequests: 10, maximumRequestBodyBytes: 0, maximumResponseBytes: 5000, stopConditions: ["authorization changes"], allowedTestingWindows: [{ days: ["monday"], startTime: "09:00", endTime: "17:00", timezone: "UTC" }], blackoutPeriods: [{ startsAt: "2030-01-01T12:00:00Z", endsAt: "2030-01-01T13:00:00Z", reason: "Maintenance" }] }, allowedPaths: ["/"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "reviewed schedule" }
+    );
+    expect(document.operational_limits.allowed_testing_windows).toEqual([{ days: ["monday"], start_time: "09:00", end_time: "17:00", timezone: "UTC" }]);
+    expect(document.operational_limits.blackout_periods).toEqual([{ starts_at: "2030-01-01T12:00:00Z", ends_at: "2030-01-01T13:00:00Z", reason: "Maintenance" }]);
+  });
+
   it("preserves reviewed data handling without broadening storage", () => {
     const source = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
     const document = buildManifest(
