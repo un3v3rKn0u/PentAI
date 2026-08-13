@@ -7,7 +7,7 @@ import { EvidenceWorkspace } from "./EvidenceWorkspace";
 import { auditPath, LogsWorkspace } from "./LogsWorkspace";
 import { DashboardWorkspace } from "./DashboardWorkspace";
 import { ProgramsWorkspace, programsPath } from "./ProgramsWorkspace";
-import { IntakeWorkspace, type IntakeState, type SourceImport } from "./IntakeWorkspace";
+import { IntakeWorkspace, type IntakeState, type SourceBundleReview, type SourceImport } from "./IntakeWorkspace";
 import { AssessmentsWorkspace } from "./AssessmentsWorkspace";
 import { PolicyWorkspace, reviewedManifestDiff, reviewedPolicy } from "./PolicyWorkspace";
 import { NetworkProfilesWorkspace, type NetworkSetupState } from "./NetworkProfilesWorkspace";
@@ -92,7 +92,8 @@ export function networkManifestSettings(networkProfile?: Json) {
   };
 }
 
-function buildManifest(program: Json, engagement: Json, source: Json, networkProfile?: Json) {
+export function buildManifest(program: Json, engagement: Json, review: SourceBundleReview, networkProfile?: Json) {
+  const provenance = review.sources.map((source) => ({ source_id: source.id, content_hash: source.content_hash }));
   return {
     schema_version: "2.0.0",
     engagement: {
@@ -105,17 +106,18 @@ function buildManifest(program: Json, engagement: Json, source: Json, networkPro
       expires_at: engagement.expires_at,
       timezone: "UTC"
     },
-    sources: [{
+    sources: review.sources.map((source) => ({
       source_id: source.id,
       reference: source.reference,
       authority: source.authority,
       retrieved_at: source.retrieved_at,
-      content_hash: source.content_hash
-    }],
+      content_hash: source.content_hash,
+      ...(source.effective_at ? { effective_at: source.effective_at } : {})
+    })),
     field_provenance: Object.fromEntries([
       "/scope", "/techniques", "/operational_limits", "/network",
       "/data_handling", "/reporting", "/agent_controls"
-    ].map((field) => [field, [{ source_id: source.id, content_hash: source.content_hash }]])),
+    ].map((field) => [field, provenance])),
     scope: {
       assets: [{
         asset_id: crypto.randomUUID(),
@@ -126,7 +128,7 @@ function buildManifest(program: Json, engagement: Json, source: Json, networkPro
         denied_paths: ["/api/admin"],
         allowed_ports: [443],
         ownership_verified: true,
-        source_reference: source.id
+        source_reference: review.primary.id
       }],
       discovered_assets_default: "deny",
       redirects_outside_scope: "stop",
@@ -173,9 +175,13 @@ function buildManifest(program: Json, engagement: Json, source: Json, networkPro
       technical_controls_reviewer: "local-user",
       status: "pending"
     },
-    unresolved_questions: networkProfile
-      ? []
-      : ["Confirm an active network profile before policy activation."]
+    unresolved_questions: [
+      ...(!networkProfile ? ["Confirm an active network profile before policy activation."] : []),
+      ...review.conflicts.map((reference) => `Resolve conflicting immutable source versions for ${reference}.`)
+    ],
+    ...(review.normalizationWarnings.length > 0
+      ? { normalization_warnings: review.normalizationWarnings }
+      : {})
   };
 }
 
@@ -191,7 +197,7 @@ export function App() {
   const [manifestText, setManifestText] = useState("");
   const [program, setProgram] = useState<Json | null>(null);
   const [engagement, setEngagement] = useState<Json | null>(null);
-  const [source, setSource] = useState<Json | null>(null);
+  const [sourceReview, setSourceReview] = useState<SourceBundleReview | null>(null);
   const [manifest, setManifest] = useState<Json | null>(null);
   const [manifestHistory, setManifestHistory] = useState<Json[]>([]);
   const [manifestDiff, setManifestDiff] = useState<Json | null>(null);
@@ -334,9 +340,9 @@ export function App() {
       const activated = await request("/network-profiles/activate", activationRequest);
       await refreshNetworkProfiles();
       setNetworkProposal(null);
-      if (program && engagement && source) {
+      if (program && engagement && sourceReview) {
         setManifestText(JSON.stringify(
-          buildManifest(program, engagement, source, activated),
+          buildManifest(program, engagement, sourceReview, activated),
           null,
           2
         ));
@@ -381,7 +387,7 @@ export function App() {
     setProgram(selected);
     setSources([]);
     setEngagements([]);
-    setSource(null);
+    setSourceReview(null);
     setEngagement(null);
     selectedEngagementId.current = "";
     setManifest(null);
@@ -472,11 +478,12 @@ export function App() {
       setEngagement(createdEngagement);
       selectedEngagementId.current = createdEngagement.id;
       await refreshEngagements(programId);
-      setSource(imported);
+      const importedReview = { sources: [imported], primary: imported, conflicts: [], normalizationWarnings: [] };
+      setSourceReview(importedReview);
       await refreshSources(programId);
       const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
       setManifestText(JSON.stringify(
-        buildManifest(program, createdEngagement, imported, activeNetworkProfile),
+        buildManifest(program, createdEngagement, importedReview, activeNetworkProfile),
         null,
         2
       ));
@@ -492,13 +499,13 @@ export function App() {
     }
   }
 
-  function selectSourceForReview(selected: Json) {
-    if (!sources.some((item) => item.id === selected.id)) return;
-    setSource(selected);
+  function selectSourceBundleForReview(review: SourceBundleReview) {
+    if (review.sources.some((selected) => !sources.some((item) => item.id === selected.id && item.content_hash === selected.content_hash))) return;
+    setSourceReview(review);
     setManifest(null); setManifestHistory([]); setManifestDiff(null); setPolicy(null); setPolicyHistory([]); setState("draft");
     if (program && engagement) {
       const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
-      setManifestText(JSON.stringify(buildManifest(program, engagement, selected, activeNetworkProfile), null, 2));
+      setManifestText(JSON.stringify(buildManifest(program, engagement, review, activeNetworkProfile), null, 2));
     } else {
       setManifestText("");
     }
@@ -509,9 +516,9 @@ export function App() {
     setEngagement(selected);
     selectedEngagementId.current = selected.id;
     setManifest(null); setManifestHistory([]); setManifestDiff(null); setPolicy(null); setPolicyHistory([]); setState("draft");
-    if (source) {
+    if (sourceReview) {
       const activeNetworkProfile = networkProfiles.find((item) => item.status === "active");
-      setManifestText(JSON.stringify(buildManifest(program, selected, source, activeNetworkProfile), null, 2));
+      setManifestText(JSON.stringify(buildManifest(program, selected, sourceReview, activeNetworkProfile), null, 2));
     } else setManifestText("");
     void run(() => refreshPolicyHistory(selected.id));
   }
@@ -648,7 +655,7 @@ export function App() {
           <ProgramsWorkspace connected={Boolean(connection)} programs={programs} selectedProgramId={program?.id ?? ""} create={createProgram} select={(selected) => { selectProgram(selected); void run(async () => { await Promise.all([refreshSources(selected.id), refreshEngagements(selected.id)]); }); }} refresh={() => run(refreshPrograms)} />
         </div>
         <div className="workspace-pane" hidden={activeWorkspace !== "intake"}>
-          <IntakeWorkspace key={program?.id ?? "no-program"} connected={Boolean(connection)} program={program} engagements={engagements} selectedEngagement={engagement} sources={sources} selectedSource={source} state={intakeState} error={sourceError} submit={importSource} selectEngagement={selectEngagementForReview} select={selectSourceForReview} refresh={() => run(async () => { await Promise.all([refreshSources(), refreshEngagements()]); })} />
+          <IntakeWorkspace key={program?.id ?? "no-program"} connected={Boolean(connection)} program={program} engagements={engagements} selectedEngagement={engagement} sources={sources} selectedSources={sourceReview?.sources ?? []} state={intakeState} error={sourceError} submit={importSource} selectEngagement={selectEngagementForReview} selectBundle={selectSourceBundleForReview} refresh={() => run(async () => { await Promise.all([refreshSources(), refreshEngagements()]); })} />
         </div>
         <div className="workspace-pane" hidden={activeWorkspace !== "assessments"}>
           <NetworkProfilesWorkspace connected={Boolean(connection)} state={networkSetupState} proposal={networkProposal} profiles={networkProfiles} error={networkSetupError} discover={discoverNetworkProfile} activate={activateNetworkProfile} revoke={revokeNetworkProfile} />

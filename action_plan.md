@@ -239,7 +239,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     history for explicit exact-version review. Exact signed-policy restoration now
     revalidates stored hash/signature integrity and lifecycle identity without creating
     authority. Operators can also recover exact semantic comparisons between two
-    immutable versions. Multi-source conflict resolution and full normalization review remain.
+    immutable versions. Intake can now assemble an exact multi-source provenance bundle,
+    order it by the documented authority precedence, and require a bounded restrictive
+    review note when one reference has divergent immutable hashes. Such conflicts remain
+    explicit unresolved questions and cannot activate policy. Full structured normalization
+    editing remains.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { encodeBytesBase64, prepareSourceImport, reviewedEngagement, reviewedSource, sourceFileMediaType } from "./IntakeWorkspace";
+import { encodeBytesBase64, prepareSourceImport, reviewedEngagement, reviewedSource, reviewedSourceBundle, sourceFileMediaType } from "./IntakeWorkspace";
 
-const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", reference: "contract://authorization", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
 const engagement = { id: "20000000-0000-4000-8000-000000000001", program_id: "program-a", status: "draft", effective_from: "2030-01-01T10:00:00Z", expires_at: "2030-01-02T10:00:00Z" };
 
 describe("supervised Intake workspace", () => {
@@ -18,6 +18,24 @@ describe("supervised Intake workspace", () => {
     expect(reviewedSource([source], source.id)).toBe(source);
     expect(() => reviewedSource([source, { ...source }], source.id)).toThrow("SOURCE_REVIEW_INVALID");
     expect(() => reviewedSource([{ ...source, content_hash: "bad" }], source.id)).toThrow("SOURCE_REVIEW_INVALID");
+  });
+  it("orders a multi-source review by explicit authority precedence", () => {
+    const page = { ...source, id: "10000000-0000-4000-8000-000000000002", authority: "program_page", reference: "https://example.invalid/rules" };
+    const review = reviewedSourceBundle([page, source], [page.id, source.id], "");
+    expect(review.sources.map((item) => item.id)).toEqual([source.id, page.id]);
+    expect(review.primary.id).toBe(source.id);
+    expect(review.conflicts).toEqual([]);
+  });
+  it("denies divergent versions until restrictive conflict review is recorded", () => {
+    const changed = { ...source, id: "10000000-0000-4000-8000-000000000003", content_hash: "b".repeat(64) };
+    expect(() => reviewedSourceBundle([source, changed], [source.id, changed.id], "")).toThrow("SOURCE_CONFLICT_REVIEW_REQUIRED");
+    const review = reviewedSourceBundle([source, changed], [source.id, changed.id], "Use the deny rule and request clarification");
+    expect(review.conflicts).toEqual([source.reference]);
+    expect(review.normalizationWarnings[0]).toContain("Use the deny rule");
+  });
+  it("denies unknown authority and malformed effective-time precedence", () => {
+    expect(() => reviewedSourceBundle([{ ...source, authority: "unknown" }], [source.id], "")).toThrow("SOURCE_BUNDLE_INVALID");
+    expect(() => reviewedSourceBundle([{ ...source, effective_at: "not-a-time" }], [source.id], "")).toThrow("SOURCE_BUNDLE_INVALID");
   });
   it("binds engagement recovery to one exact program and validity window", () => {
     expect(reviewedEngagement([engagement], engagement.id, "program-a")).toBe(engagement);
