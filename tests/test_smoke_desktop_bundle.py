@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import subprocess
 from pathlib import Path
 from unittest.mock import Mock
@@ -9,58 +10,62 @@ import pytest
 from scripts import smoke_desktop_bundle
 
 
-def process_with_communications(*outcomes: object) -> Mock:
+def process_with_waits(*outcomes: object) -> Mock:
     process = Mock(spec=subprocess.Popen)
     process.pid = 123
     process.returncode = None
 
-    def communicate(*, timeout: float) -> tuple[bytes, bytes]:
-        outcome = outcomes[communicate.calls]
-        communicate.calls += 1
+    def wait(*, timeout: float) -> int:
+        outcome = outcomes[wait.calls]
+        wait.calls += 1
         if isinstance(outcome, BaseException):
             raise outcome
-        process.returncode = 0
-        assert isinstance(outcome, tuple)
+        assert isinstance(outcome, int)
+        process.returncode = outcome
         return outcome
 
-    communicate.calls = 0  # type: ignore[attr-defined]
-    process.communicate.side_effect = communicate
+    wait.calls = 0  # type: ignore[attr-defined]
+    process.wait.side_effect = wait
     return process
 
 
 def test_run_bootstrap_returns_completed_output(monkeypatch: pytest.MonkeyPatch) -> None:
-    process = process_with_communications((b"stdout", b"stderr"))
+    process = process_with_waits(0)
     popen = Mock(return_value=process)
+    output = io.BytesIO(b"stdoutstderr")
     monkeypatch.setattr(smoke_desktop_bundle.subprocess, "Popen", popen)
     monkeypatch.setattr(smoke_desktop_bundle, "process_group_options", lambda: {})
+    monkeypatch.setattr(smoke_desktop_bundle.tempfile, "TemporaryFile", lambda: output)
 
     completed = smoke_desktop_bundle.run_bootstrap(Path("desktop"))
 
     assert completed.returncode == 0
-    assert completed.stdout == b"stdout"
-    assert completed.stderr == b"stderr"
-    process.communicate.assert_called_once_with(
-        timeout=smoke_desktop_bundle.BOOTSTRAP_TIMEOUT_SECONDS
-    )
+    assert completed.stdout == b"stdoutstderr"
+    assert completed.stderr == b""
+    process.wait.assert_called_once_with(timeout=smoke_desktop_bundle.BOOTSTRAP_TIMEOUT_SECONDS)
+    assert popen.call_args.kwargs["stdout"] is output
+    assert popen.call_args.kwargs["stderr"] is subprocess.STDOUT
 
 
 def test_run_bootstrap_terminates_process_tree_after_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    process = process_with_communications(
+    process = process_with_waits(
         subprocess.TimeoutExpired("desktop", 30),
-        (b"stopped", b"diagnostic"),
+        -9,
     )
     terminate = Mock()
+    output = io.BytesIO(b"stopped diagnostic")
     monkeypatch.setattr(smoke_desktop_bundle.subprocess, "Popen", Mock(return_value=process))
     monkeypatch.setattr(smoke_desktop_bundle, "process_group_options", lambda: {})
     monkeypatch.setattr(smoke_desktop_bundle, "terminate_process_tree", terminate)
+    monkeypatch.setattr(smoke_desktop_bundle.tempfile, "TemporaryFile", lambda: output)
 
-    with pytest.raises(RuntimeError, match="timed out after 30 seconds: stoppeddiagnostic"):
+    with pytest.raises(RuntimeError, match="timed out after 30 seconds: stopped diagnostic"):
         smoke_desktop_bundle.run_bootstrap(Path("desktop"))
 
     terminate.assert_called_once_with(process)
-    assert process.communicate.call_args_list[-1].kwargs == {
+    assert process.wait.call_args_list[-1].kwargs == {
         "timeout": smoke_desktop_bundle.SHUTDOWN_TIMEOUT_SECONDS
     }
 

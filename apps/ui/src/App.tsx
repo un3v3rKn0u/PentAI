@@ -185,7 +185,8 @@ export function buildManifest(program: Json, engagement: Json, review: SourceBun
       ...(normalization.dataHandling ? { redaction_rules: normalization.dataHandling.redactionRules } : {})
     },
     reporting: {
-      submission_channel: "manual",
+      submission_channel: normalization.reporting?.submissionChannel ?? "manual",
+      ...(normalization.reporting ? { required_fields: normalization.reporting.requiredFields, evidence_rules: normalization.reporting.evidenceRules, disclosure_timeline: normalization.reporting.disclosureTimeline } : {}),
       submission_requires_human_approval: true,
       automatic_submission: false
     },

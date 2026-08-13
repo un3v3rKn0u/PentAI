@@ -161,6 +161,11 @@ describe("authorization workflow safety boundary", () => {
     );
     expect(document.data_handling).toEqual({ real_user_data: "minimal_if_explicit", maximum_records_to_view: 2, retention_days: 3, approved_storage: "local_encrypted", remote_ai_max_classification: "none", redaction_rules: ["remove credentials"] });
   });
+  it("preserves reviewed reporting terms while keeping submission supervised", () => {
+    const source = { id: "10000000-0000-4000-8000-000000000001", reference: "contract://rules", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+    const document = buildManifest({ name: "Synthetic program" }, { id: "20000000-0000-4000-8000-000000000001", effective_from: "2030-01-01T00:00:00Z", expires_at: "2030-01-02T00:00:00Z" }, { sources: [source], primary: source, conflicts: [], normalizationWarnings: [] }, { assetType: "domain", target: "example.test", reporting: { submissionChannel: "Program portal", requiredFields: ["title", "impact"], evidenceRules: ["redact secrets"], disclosureTimeline: "Wait for approval." }, allowedPaths: ["/"], deniedPaths: [], allowedPorts: [443], allowedCapabilities: ["network.http.get"], requestsPerSecond: 1, maximumTotalRequests: 5, maximumResponseBytes: 1000, rationale: "reviewed reporting" });
+    expect(document.reporting).toEqual({ submission_channel: "Program portal", required_fields: ["title", "impact"], evidence_rules: ["redact secrets"], disclosure_timeline: "Wait for approval.", submission_requires_human_approval: true, automatic_submission: false });
+  });
 
   it("does not expose execution or grant issuance", () => {
     const milestoneCapabilities = ["manifest", "policy", "approval", "decision", "audit"];
