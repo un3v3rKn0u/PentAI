@@ -739,6 +739,10 @@ def create_app(
             )
         )
 
+    @app.get("/api/v1/programs/{program_id}/engagements")
+    def list_engagements(program_id: str) -> dict[str, Any]:
+        return {"engagements": call(lambda: authorization.list_engagements(program_id))}
+
     @app.post("/api/v1/sources")
     def import_source(request: SourceRequest, http_request: Request) -> dict[str, Any]:
         actor = principal(http_request)

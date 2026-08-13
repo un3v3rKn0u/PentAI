@@ -15,6 +15,9 @@ Every import mode also accepts an optional effective timestamp and bounded sourc
 label. History displays authority, retrieval time, effective time, reference, and digest,
 and requires an explicit exact-source selection before that source becomes the reviewed
 manifest input. Changing the reviewed source clears derived manifest and policy state.
+The selected program also reloads its durable engagement history, allowing the operator
+to restore one exact core-returned validity window before rebuilding the draft after a
+restart. Changing engagement clears the same derived state.
 
 ## Safety and failure states
 
@@ -37,7 +40,8 @@ identity is added only by the application boundary immediately before the core r
 
 ## Compatibility and rollback
 
-This is an additive UI over versioned `/api/v1` endpoints and needs no migration. It can
+This adds one read-only `/api/v1/programs/{program_id}/engagements` collection over the
+existing engagement rows and needs no migration or schema-version change. It can
 be rolled back without altering imported source rows or encrypted blobs. The existing
 manifest, approval, policy simulation, and audit workflow remains available. This slice
 does not add ActionGrants, assessment networking, rendering, crawling, or autonomous

@@ -17,6 +17,14 @@ export function reviewedSource(sources: Json[], sourceId: string) {
   return source;
 }
 
+export function reviewedEngagement(engagements: Json[], engagementId: string, programId: string) {
+  const matches = engagements.filter((engagement) => engagement.id === engagementId);
+  const engagement = matches[0];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (matches.length !== 1 || !engagement || !uuid.test(engagement.id) || engagement.program_id !== programId || !["draft", "approved", "active", "paused", "expired", "revoked"].includes(engagement.status) || !Number.isFinite(Date.parse(engagement.effective_from)) || !Number.isFinite(Date.parse(engagement.expires_at)) || Date.parse(engagement.effective_from) >= Date.parse(engagement.expires_at)) throw new Error("ENGAGEMENT_REVIEW_INVALID");
+  return engagement;
+}
+
 export function encodeBytesBase64(bytes: Uint8Array) {
   let binary = "";
   for (let offset = 0; offset < bytes.length; offset += 16_384) {
@@ -63,10 +71,11 @@ export async function prepareSourceImport(
 }
 
 export function IntakeWorkspace({
-  connected, program, sources, selectedSource, state, error, submit, select, refresh
+  connected, program, engagements, selectedEngagement, sources, selectedSource, state, error, submit, selectEngagement, select, refresh
 }: {
-  connected: boolean; program: Json | null; sources: Json[]; selectedSource: Json | null;
+  connected: boolean; program: Json | null; engagements: Json[]; selectedEngagement: Json | null; sources: Json[]; selectedSource: Json | null;
   state: IntakeState; error: string; submit: (source: SourceImport) => Promise<void>;
+  selectEngagement: (engagement: Json) => void;
   select: (source: Json) => void;
   refresh: () => Promise<void>;
 }) {
@@ -122,6 +131,8 @@ export function IntakeWorkspace({
         {state === "loading" && "Import in progress. No background retries will occur."}{state === "denied" && `Import denied: ${error}`}
         {state === "degraded" && "Source intake unavailable until the authenticated core recovers."}{state === "error" && `Import failed safely: ${error}`}
       </p>
+      <div className="panel-heading"><strong>Engagement history</strong><span className="hint">Select the exact validity window for source review.</span></div>
+      {engagements.length === 0 ? <p className="hint">No durable engagement is available yet.</p> : <ol className="source-list">{engagements.map((item) => <li key={item.id} className={selectedEngagement?.id === item.id ? "selected" : ""}><div><strong>{item.status}</strong><span>{item.effective_from} → {item.expires_at}</span><code>{item.id}</code></div><button type="button" onClick={() => selectEngagement(reviewedEngagement(engagements, item.id, program?.id ?? ""))} aria-pressed={selectedEngagement?.id === item.id}>{selectedEngagement?.id === item.id ? "Selected" : "Review engagement"}</button></li>)}</ol>}
       <div className="panel-heading"><strong>Source history</strong><button type="button" onClick={() => void refresh()} disabled={!connected || !program || state === "loading"}>Refresh</button></div>
       {sources.length === 0 ? <p className="hint">The history is empty.</p> : <ol className="source-list">{sources.map((item) => <li key={item.id} className={selectedSource?.id === item.id ? "selected" : ""}><div><strong>{item.source_kind} · {item.authority}</strong><span>{item.reference}</span><span>Retrieved {item.retrieved_at}{item.effective_at ? ` · effective ${item.effective_at}` : " · no separate effective date"}</span><code>{item.content_hash.slice(0, 16)}…</code></div><button type="button" onClick={() => select(reviewedSource(sources, item.id))} aria-pressed={selectedSource?.id === item.id}>{selectedSource?.id === item.id ? "Selected" : "Review source"}</button></li>)}</ol>}
       {selectedSource && <dl className="hash"><dt>Selected source ID</dt><dd>{selectedSource.id}</dd><dt>Authority</dt><dd>{selectedSource.authority}</dd><dt>Source version</dt><dd>{selectedSource.source_version ?? "Not specified"}</dd><dt>SHA-256 provenance</dt><dd>{selectedSource.content_hash}</dd></dl>}

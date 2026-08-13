@@ -537,6 +537,21 @@ class AuthorizationService:
             "timezone": timezone,
         }
 
+    def list_engagements(self, program_id: str) -> list[dict[str, Any]]:
+        with transaction(self.database_path) as connection:
+            program = connection.execute(
+                "SELECT 1 FROM programs WHERE id = ?", (program_id,)
+            ).fetchone()
+            if program is None:
+                raise DomainError("PROGRAM_NOT_FOUND", "program does not exist")
+            rows = connection.execute(
+                """SELECT id, program_id, status, effective_from, expires_at, timezone,
+                          active_policy_id, revocation_epoch, version
+                   FROM engagements WHERE program_id = ? ORDER BY effective_from, id""",
+                (program_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def import_source(
         self,
         program_id: str,

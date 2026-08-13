@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { encodeBytesBase64, prepareSourceImport, reviewedSource, sourceFileMediaType } from "./IntakeWorkspace";
+import { encodeBytesBase64, prepareSourceImport, reviewedEngagement, reviewedSource, sourceFileMediaType } from "./IntakeWorkspace";
 
 const source = { id: "10000000-0000-4000-8000-000000000001", authority: "contract", retrieved_at: "2030-01-01T10:00:00Z", content_hash: "a".repeat(64) };
+const engagement = { id: "20000000-0000-4000-8000-000000000001", program_id: "program-a", status: "draft", effective_from: "2030-01-01T10:00:00Z", expires_at: "2030-01-02T10:00:00Z" };
 
 describe("supervised Intake workspace", () => {
   it("encodes selected bytes without exposing a filesystem path", () => expect(encodeBytesBase64(new Uint8Array([0, 1, 2, 253, 254, 255]))).toBe("AAEC/f7/"));
@@ -17,5 +18,10 @@ describe("supervised Intake workspace", () => {
     expect(reviewedSource([source], source.id)).toBe(source);
     expect(() => reviewedSource([source, { ...source }], source.id)).toThrow("SOURCE_REVIEW_INVALID");
     expect(() => reviewedSource([{ ...source, content_hash: "bad" }], source.id)).toThrow("SOURCE_REVIEW_INVALID");
+  });
+  it("binds engagement recovery to one exact program and validity window", () => {
+    expect(reviewedEngagement([engagement], engagement.id, "program-a")).toBe(engagement);
+    expect(() => reviewedEngagement([engagement], engagement.id, "program-b")).toThrow("ENGAGEMENT_REVIEW_INVALID");
+    expect(() => reviewedEngagement([{ ...engagement, expires_at: engagement.effective_from }], engagement.id, "program-a")).toThrow("ENGAGEMENT_REVIEW_INVALID");
   });
 });

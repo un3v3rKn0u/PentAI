@@ -1170,6 +1170,40 @@ made explicit as an ISO timestamp and may be rejected safely by the core. This r
 self-authored and non-independent and cannot satisfy an external independent-review
 requirement.
 
+## 2026-08-13 — Durable engagement history recovery
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Program-owned engagement collection, unknown-program denial, exact
+identity and validity-window selection, status allowlist, duplicate and cross-program
+denial, program-change isolation, downstream manifest/policy invalidation, authenticated
+route integration, compatibility, rollback, privacy, and absence of mutation authority.
+
+**Evidence examined:** Focused authorization pytest suite; UI typecheck; 91 Vitest checks
+including cross-program and invalid-window denial; production UI build; desktop Cargo
+check; full Python tests; contract validation; Ruff; mypy; complete diff; engagement table
+constraints; and existing intake/recovery security boundaries.
+
+**Findings:** A restarted UI can recover a program's durable engagement identity instead
+of manufacturing a replacement window. Unknown programs fail closed in the core, while
+the UI accepts only one exact returned UUID with a valid ordered window for the selected
+program. Selection changes clear all derived manifest and policy presentation.
+
+**Limitations and deferred work:** Engagement selection does not automatically select a
+source, manifest version, or active policy. Full workflow recovery still requires those
+explicit steps, and multi-source conflict resolution remains deferred. The endpoint is
+read-only and rollback removes discovery without changing durable engagements.
+
+**Residual risk accepted:** Engagement identifiers, status, validity, active-policy ID,
+and revocation epoch are visible inside the authenticated same-user desktop boundary.
+They are coordination metadata and confer no grant or execution authority. This review
+is self-authored and non-independent and cannot satisfy an external independent-review
+requirement.
+
 ## 2026-08-13 — Policy-derived coverage selection
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local
