@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 
-import { coreRequest, networkManifestSettings } from "./App";
+import { App, coreRequest, networkManifestSettings, phaseOneWorkspaces } from "./App";
 import { buildIntentTarget } from "./AuthorizationWorkspace";
 import { networkSetupRequirement, parseSourceAddresses } from "./NetworkProfilesWorkspace";
 
@@ -9,6 +10,19 @@ afterEach(() => {
 });
 
 describe("authorization workflow safety boundary", () => {
+  it("exposes every required Phase 1 workspace exactly once", () => {
+    expect(phaseOneWorkspaces.map((workspace) => workspace.label)).toEqual([
+      "Dashboard", "Programs", "Intake", "Assessments", "Evidence", "Findings", "Reports", "Logs"
+    ]);
+    expect(new Set(phaseOneWorkspaces.map((workspace) => workspace.id)).size).toBe(phaseOneWorkspaces.length);
+  });
+
+  it("marks one current workspace and hides inactive content from navigation", () => {
+    const markup = renderToStaticMarkup(<App />);
+    expect(markup).toContain('aria-label="Phase 1 workspaces"');
+    expect(markup.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(markup).toContain('class="workspace-pane" hidden=""');
+  });
   it("keeps every discovered network setting behind explicit human review", () => {
     expect(networkSetupRequirement("CONFIRM_ROUTE")).toContain("Confirm");
     expect(networkSetupRequirement("CONFIRM_RESOLVER_MODE")).toContain("confirm");

@@ -30,6 +30,18 @@ type WorkflowState =
   | "expired";
 
 type SafetyState = "loading" | "active" | "paused" | "stopped" | "error";
+export const phaseOneWorkspaces = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "programs", label: "Programs" },
+  { id: "intake", label: "Intake" },
+  { id: "assessments", label: "Assessments" },
+  { id: "evidence", label: "Evidence" },
+  { id: "findings", label: "Findings" },
+  { id: "reports", label: "Reports" },
+  { id: "logs", label: "Logs" }
+] as const;
+type WorkspaceId = typeof phaseOneWorkspaces[number]["id"];
+
 export async function bootstrapCore(): Promise<CoreConnection> {
   if (isTauri()) {
     return invoke<CoreConnection>("core_bootstrap");
@@ -168,6 +180,7 @@ function buildManifest(program: Json, engagement: Json, source: Json, networkPro
 }
 
 export function App() {
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>("dashboard");
   const [connection, setConnection] = useState<CoreConnection | null>(null);
   const [bootstrapError, setBootstrapError] = useState("");
   const [programs, setPrograms] = useState<Json[]>([]);
@@ -536,43 +549,40 @@ export function App() {
 
       {error && <p className="error" role="alert">{error}</p>}
 
-      <NetworkProfilesWorkspace connected={Boolean(connection)} state={networkSetupState} proposal={networkProposal} profiles={networkProfiles} error={networkSetupError} discover={discoverNetworkProfile} activate={activateNetworkProfile} revoke={revokeNetworkProfile} />
+      <nav className="workspace-navigation" aria-label="Phase 1 workspaces">
+        {phaseOneWorkspaces.map((workspace) => (
+          <button
+            key={workspace.id}
+            type="button"
+            className={activeWorkspace === workspace.id ? "current" : ""}
+            aria-current={activeWorkspace === workspace.id ? "page" : undefined}
+            onClick={() => setActiveWorkspace(workspace.id)}
+          >
+            {workspace.label}
+          </button>
+        ))}
+      </nav>
 
       <div className="workflow-grid">
-        <DashboardWorkspace
-          connected={Boolean(connection)}
-          safetyState={safetyState}
-          policyState={state}
-          networkProfiles={networkProfiles}
-          audit={audit}
-        />
-        <ProgramsWorkspace
-          connected={Boolean(connection)}
-          programs={programs}
-          selectedProgramId={program?.id ?? ""}
-          create={createProgram}
-          select={(selected) => { selectProgram(selected); void run(() => refreshSources(selected.id)); }}
-          refresh={() => run(refreshPrograms)}
-        />
-        <IntakeWorkspace key={program?.id ?? "no-program"} connected={Boolean(connection)} program={program} sources={sources} selectedSource={source} state={intakeState} error={sourceError} submit={importSource} refresh={() => run(() => refreshSources())} />
-        <AssessmentsWorkspace
-          key={engagement?.id ?? "no-engagement"}
-          connected={Boolean(connection)}
-          engagement={engagement}
-          policy={policy}
-          policyState={state}
-          request={request}
-          auditRefresh={() => void run(refreshAudit)}
-        />
-
-        <PolicyWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "draft"}`} connected={Boolean(connection)} manifestText={manifestText} setManifestText={(value) => { setManifestText(value); if (manifest?.valid) { setManifest(null); setPolicy(null); setState("draft"); } }} manifest={manifest} manifestHistory={manifestHistory} manifestDiff={manifestDiff} policy={policy} policyHistory={policyHistory} state={state} validate={validateManifest} compile={compilePolicy} approve={approvePolicy} activate={activatePolicy} revoke={revokeActivePolicy} />
-
-        <AuthorizationWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "none"}`} connected={Boolean(connection)} engagement={engagement} policy={policy} policyState={state} safetyState={safetyState} request={request} changeAssessmentSafety={changeAssessmentSafety} auditRefresh={() => void run(refreshAudit)} />
-
-        <LogsWorkspace audit={audit} connected={Boolean(connection)} refresh={() => run(refreshAudit)} />
-        <EvidenceWorkspace connection={connection} />
-        <FindingsWorkspace connection={connection} />
-        <ReportsWorkspace connection={connection} policy={policy} policyState={state} />
+        <div className="workspace-pane" hidden={activeWorkspace !== "dashboard"}>
+          <DashboardWorkspace connected={Boolean(connection)} safetyState={safetyState} policyState={state} networkProfiles={networkProfiles} audit={audit} />
+        </div>
+        <div className="workspace-pane" hidden={activeWorkspace !== "programs"}>
+          <ProgramsWorkspace connected={Boolean(connection)} programs={programs} selectedProgramId={program?.id ?? ""} create={createProgram} select={(selected) => { selectProgram(selected); void run(() => refreshSources(selected.id)); }} refresh={() => run(refreshPrograms)} />
+        </div>
+        <div className="workspace-pane" hidden={activeWorkspace !== "intake"}>
+          <IntakeWorkspace key={program?.id ?? "no-program"} connected={Boolean(connection)} program={program} sources={sources} selectedSource={source} state={intakeState} error={sourceError} submit={importSource} refresh={() => run(() => refreshSources())} />
+        </div>
+        <div className="workspace-pane" hidden={activeWorkspace !== "assessments"}>
+          <NetworkProfilesWorkspace connected={Boolean(connection)} state={networkSetupState} proposal={networkProposal} profiles={networkProfiles} error={networkSetupError} discover={discoverNetworkProfile} activate={activateNetworkProfile} revoke={revokeNetworkProfile} />
+          <AssessmentsWorkspace key={engagement?.id ?? "no-engagement"} connected={Boolean(connection)} engagement={engagement} policy={policy} policyState={state} request={request} auditRefresh={() => void run(refreshAudit)} />
+          <PolicyWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "draft"}`} connected={Boolean(connection)} manifestText={manifestText} setManifestText={(value) => { setManifestText(value); if (manifest?.valid) { setManifest(null); setPolicy(null); setState("draft"); } }} manifest={manifest} manifestHistory={manifestHistory} manifestDiff={manifestDiff} policy={policy} policyHistory={policyHistory} state={state} validate={validateManifest} compile={compilePolicy} approve={approvePolicy} activate={activatePolicy} revoke={revokeActivePolicy} />
+          <AuthorizationWorkspace key={`${engagement?.id ?? "none"}:${policy?.id ?? "none"}`} connected={Boolean(connection)} engagement={engagement} policy={policy} policyState={state} safetyState={safetyState} request={request} changeAssessmentSafety={changeAssessmentSafety} auditRefresh={() => void run(refreshAudit)} />
+        </div>
+        <div className="workspace-pane" hidden={activeWorkspace !== "evidence"}><EvidenceWorkspace connection={connection} /></div>
+        <div className="workspace-pane" hidden={activeWorkspace !== "findings"}><FindingsWorkspace connection={connection} /></div>
+        <div className="workspace-pane" hidden={activeWorkspace !== "reports"}><ReportsWorkspace connection={connection} policy={policy} policyState={state} /></div>
+        <div className="workspace-pane" hidden={activeWorkspace !== "logs"}><LogsWorkspace audit={audit} connected={Boolean(connection)} refresh={() => run(refreshAudit)} /></div>
       </div>
 
       <footer className="state-key" aria-label="Policy state legend">
