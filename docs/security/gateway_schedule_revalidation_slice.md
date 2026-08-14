@@ -15,6 +15,6 @@ Closed or malformed schedules deny as inactive runtime authority before any gran
 reservation mutation. The check runs in the same immediate database transaction as all
 other final authority checks. Policies without schedules retain legacy compatibility.
 
-This slice enables no socket, worker, destination, or external effect. Continuous clock
-health and termination of a request already in flight when a schedule boundary arrives
-remain separate Phase 1 exit-gate controls.
+The follow-on gateway schedule-deadline slice now caps each committed request at the
+active window union's end or the next blackout boundary. Continuous clock health and
+active interruption at that durable deadline remain separate Phase 1 exit-gate controls.
