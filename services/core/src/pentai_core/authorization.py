@@ -19,6 +19,7 @@ from pentai_policy import (
     compile_manifest,
     content_hash,
     evaluate,
+    testing_schedule_allows,
     validate_and_canonicalize_manifest,
 )
 from pentai_policy.document import contract_issues, parse_time
@@ -2255,6 +2256,7 @@ class AuthorizationService:
                        grr.status AS rate_status, ag.grant_json, ag.grant_hash,
                        ag.audience, ag.revocation_epoch, ag.used_at, ag.revoked_at,
                        ai.intent_json, ai.intent_hash, p.content_hash AS policy_hash,
+                       p.policy_json,
                        p.activated_at,
                        p.revoked_at AS policy_revoked_at, e.active_policy_id,
                        e.revocation_epoch AS current_epoch,
@@ -2287,6 +2289,7 @@ class AuthorizationService:
             grant = json.loads(row["grant_json"])
             intent = json.loads(row["intent_json"])
             decision = json.loads(row["decision_json"])
+            policy_document = json.loads(row["policy_json"])
             signature = grant.get("signature", {})
             try:
                 timeout_seconds = int(grant["constraints"]["timeout_seconds"])
@@ -2312,6 +2315,7 @@ class AuthorizationService:
                 or canonical_json(intent) != row["intent_json"]
                 or content_hash(intent) != row["intent_hash"]
                 or content_hash(decision) != row["decision_hash"]
+                or canonical_json(policy_document) != row["policy_json"]
                 or decision.get("outcome") != "allow"
                 or decision.get("execution_enabled") is not False
                 or decision.get("grant_id") != row["grant_id"]
@@ -2337,6 +2341,10 @@ class AuthorizationService:
                 or row["revocation_epoch"] != row["current_epoch"]
                 or row["engagement_status"] != "active"
                 or row["global_status"] != "active"
+                or (
+                    isinstance(policy_document.get("testing_schedule"), dict)
+                    and not testing_schedule_allows(policy_document["testing_schedule"], instant)
+                )
             ):
                 raise DomainError("GATEWAY_REQUEST_DENIED", "runtime authority is inactive")
             start_id = str(uuid4())

@@ -17,7 +17,7 @@ expiry remain independent outer bounds. Existing Policy IR without a schedule re
 readable for compatibility; every new supervised Intake manifest carries a schedule.
 
 This slice authorizes no new capability or destination. It strengthens decision-time
-authorization only. The existing short-lived grant, gateway deadline, clock rollback
-checks, safety controls, and request-start revalidation remain mandatory. Continuous
-wall-clock health attestation and active-session termination at a schedule boundary
-remain part of the broader execution exit gate.
+authorization, and the gateway separately revalidates the schedule at request start.
+The existing short-lived grant, gateway deadline, clock rollback checks, and safety
+controls remain mandatory. Continuous wall-clock health attestation and active-session
+termination at a schedule boundary remain part of the broader execution exit gate.

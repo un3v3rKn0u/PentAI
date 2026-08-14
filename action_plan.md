@@ -316,7 +316,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     concurrent oversubscription, and returns tokens when a preparation is safely
     aborted before any effect. A final local request-start boundary now revalidates
     authority, consumes the grant, commits request/rate capacity, and persists the
-    earliest safe deadline atomically while keeping execution disabled. A bounded
+    earliest safe deadline atomically while keeping execution disabled. The signed
+    testing schedule is revalidated inside that transaction, so a prepared session
+    cannot start after its window closes or a blackout begins. A bounded
     response reader and atomic finalizer now enforce the committed deadline,
     retain no more than the response ceiling, preserve immutable outcome/authorization
     linkage, and close concurrency exactly once using synthetic in-memory chunks.

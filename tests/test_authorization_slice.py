@@ -22,7 +22,7 @@ from pentai_core.policy_signing import PolicySigner
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_policy import canonicalize_url, content_hash, evaluate
 from pentai_policy.document import contract_issues, parse_time
-from pentai_policy.evaluator import _testing_schedule_allows
+from pentai_policy.evaluator import testing_schedule_allows as schedule_allows
 
 
 def timestamp(offset: timedelta) -> str:
@@ -1196,6 +1196,55 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertEqual(reservation, "reserved")
         self.assertEqual(consumed_events, 0)
 
+    def test_gateway_request_start_revalidates_testing_schedule_without_consumption(
+        self,
+    ) -> None:
+        instant = datetime.now(UTC).replace(second=0, microsecond=0)
+        offset = 12 - instant.hour
+        sign = "-" if offset > 0 else "+"
+        timezone_name = "UTC" if offset == 0 else f"Etc/GMT{sign}{abs(offset)}"
+        local = instant.astimezone(timezone(timedelta(hours=offset)))
+        self.manifest["operational_limits"]["allowed_testing_windows"] = [{
+            "days": [local.strftime("%A").lower()],
+            "start_time": "11:00", "end_time": "13:00", "timezone": timezone_name,
+        }]
+        self.manifest["operational_limits"]["blackout_periods"] = []
+        intent, grant, attestation = self.network_authority()
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
+            sni_host="example.test",
+            host_header="example.test",
+        )
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
+        request_start_instant = datetime.now(UTC)
+
+        with (
+            patch("pentai_core.authorization.testing_schedule_allows", return_value=False) as check,
+            self.assertRaises(DomainError) as denied,
+        ):
+            self.service.commit_gateway_request_start(
+                session["session_id"], now=request_start_instant
+            )
+
+        self.assertEqual(denied.exception.code, "GATEWAY_REQUEST_DENIED")
+        self.assertEqual(check.call_args.args[1], request_start_instant)
+        with closing(sqlite3.connect(self.database)) as connection:
+            grant_state = connection.execute(
+                "SELECT used_at FROM action_grants WHERE grant_id = ?", (grant["grant_id"],)
+            ).fetchone()[0]
+            reservation = connection.execute(
+                "SELECT status FROM budget_reservations WHERE reservation_id = ?",
+                (session["reservation_id"],),
+            ).fetchone()[0]
+        self.assertIsNone(grant_state)
+        self.assertEqual(reservation, "reserved")
+
     def test_gateway_request_start_concurrency_and_recovery_are_fail_closed(self) -> None:
         intent, grant, attestation = self.network_authority()
         destination = self.service.resolve_and_authorize_network_destination(
@@ -1865,9 +1914,9 @@ class AuthorizationSliceTests(unittest.TestCase):
             "allowed_windows": [{**monday_window, "timezone": "Unknown/Zone"}],
             "blackout_periods": [],
         }
-        self.assertFalse(_testing_schedule_allows(closed, instant))
-        self.assertFalse(_testing_schedule_allows(blackout, instant))
-        self.assertFalse(_testing_schedule_allows(malformed, instant))
+        self.assertFalse(schedule_allows(closed, instant))
+        self.assertFalse(schedule_allows(blackout, instant))
+        self.assertFalse(schedule_allows(malformed, instant))
 
     def test_reviewed_account_references_are_compiled_and_enforced(self) -> None:
         self.manifest["account_controls"] = {

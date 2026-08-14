@@ -60,7 +60,7 @@ def _asset_matches(rule: dict[str, Any], target: dict[str, Any]) -> bool:
     return False
 
 
-def _testing_schedule_allows(schedule: dict[str, Any], instant: datetime) -> bool:
+def testing_schedule_allows(schedule: dict[str, Any], instant: datetime) -> bool:
     try:
         for period in schedule["blackout_periods"]:
             if parse_time(period["starts_at"]) <= instant < parse_time(period["ends_at"]):
@@ -144,7 +144,7 @@ def evaluate(
     if instant < parse_time(intent["created_at"]) or instant >= parse_time(intent["expires_at"]):
         return _decision(intent, stored_hash, "deny", ["TESTING_WINDOW_CLOSED"], [])
     testing_schedule = policy.get("testing_schedule")
-    if isinstance(testing_schedule, dict) and not _testing_schedule_allows(
+    if isinstance(testing_schedule, dict) and not testing_schedule_allows(
         testing_schedule, instant
     ):
         return _decision(intent, stored_hash, "deny", ["TESTING_WINDOW_CLOSED"], [])
