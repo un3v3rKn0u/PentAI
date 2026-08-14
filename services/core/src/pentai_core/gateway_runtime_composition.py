@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pentai_core.config import Settings
+from pentai_core.gateway_http_fixture import GatewayFixtureCleanupRecovery
 from pentai_core.gateway_runtime_lifecycle import (
     AssessmentSafetyControl,
     AuthorizationSafetyHandler,
@@ -33,6 +34,10 @@ class RuntimeAttestor(Protocol):
     def measure(self) -> dict[str, object]: ...
 
 
+class FixtureCleanupControl(Protocol):
+    def recover(self) -> int: ...
+
+
 class RuntimeSafetyControl(AssessmentSafetyControl, Protocol):
     def set_global_safety(
         self, *, status: str, reason: str, actor_id: str
@@ -43,12 +48,18 @@ class VerifiedGatewayRuntimeLifecycle:
     """Revalidate configured containment even when no sentinel is currently running."""
 
     def __init__(
-        self, *, lifecycle: GatewayRuntimeLifecycleControl, attestor: RuntimeAttestor
+        self,
+        *,
+        lifecycle: GatewayRuntimeLifecycleControl,
+        attestor: RuntimeAttestor,
+        fixture_cleanup: FixtureCleanupControl,
     ) -> None:
         self._lifecycle = lifecycle
         self._attestor = attestor
+        self._fixture_cleanup = fixture_cleanup
 
     def recover(self) -> int:
+        self._fixture_cleanup.recover()
         recovered = self._lifecycle.recover()
         self._attestor.measure()
         return recovered
@@ -131,7 +142,14 @@ def compose_gateway_runtime_supervisor(
             ),
         )
         verified = VerifiedGatewayRuntimeLifecycle(
-            lifecycle=lifecycle, attestor=runtime_attestor
+            lifecycle=lifecycle,
+            attestor=runtime_attestor,
+            fixture_cleanup=GatewayFixtureCleanupRecovery(
+                database_path=settings.database_path,
+                executable=executable,
+                executor=command_executor,
+                pause_safety=pause_safety,
+            ),
         )
         return GatewayRuntimeSupervisor(
             lifecycle=verified,

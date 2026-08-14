@@ -42,6 +42,10 @@ claim. After a host timeout, the adapter must successfully force-remove that exa
 within two seconds before returning the deadline denial. Failure to confirm removal is a
 distinct fail-closed cleanup error and must invoke the configured global safety pause.
 Failure to latch safety is reported separately with fixed non-sensitive diagnostics.
+Gateway runtime recovery independently enumerates every durable claim still in `claimed`
+state, checks its derived container name, force-removes any match, and verifies absence
+before runtime recovery and containment attestation continue. Ambiguous queries, cleanup
+failure, or failed absence verification pause global safety.
 
 ## Hosted containment proof
 
