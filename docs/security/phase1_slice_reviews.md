@@ -3229,3 +3229,35 @@ detection, and scheduling delay can postpone a watchdog observation by its confi
 interval. Independent time attestation and active deadline interruption remain defense
 layers. This review is self-authored and non-independent and cannot satisfy an external
 independent-review requirement.
+
+## 2026-08-14 — Gateway deadline interruption
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Durable-to-effective deadline derivation, millisecond truncation,
+host executor timeout propagation, timeout error normalization, post-execution boundary
+classification, clock validation, compatibility, and the fixed transport boundary.
+
+**Evidence examined:** Exact host-timeout propagation, executor-timeout denial, late
+completion reclassification, expired-deadline, fixed-argument, malformed-output, and
+containment tests; response finalization tests; complete Python tests, Ruff, mypy, UI
+tests/build/typecheck, desktop Cargo check; complete diff; clock-health and schedule-
+deadline reviews.
+
+**Findings:** The isolated effect no longer relies only on in-container deadline handling.
+The host bounded executor receives the same earlier boundary and kills an overlong OCI
+command, while late success cannot be durably classified as completed.
+
+**Limitations and deferred work:** The slice is deliberately fixture-specific. General
+gateway transports remain disabled and require equivalent deadline interruption. The host
+timeout kills the attached OCI command; containment lifecycle recovery remains the cleanup
+backstop if an OCI implementation does not synchronously remove its `--rm` container.
+
+**Residual risk accepted:** Scheduler latency may delay observation or cleanup slightly,
+though the isolated client independently stops socket I/O at its monotonic boundary. OCI
+runtime defects remain bounded by internal TEST-NET-only containment. This review is
+self-authored and non-independent and cannot satisfy external independent assurance.

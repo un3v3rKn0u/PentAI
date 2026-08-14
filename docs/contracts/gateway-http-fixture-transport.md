@@ -33,6 +33,11 @@ header parsing, and body reads. Headers are read with an 8 KiB ceiling. Only HTT
 malformed headers, incomplete bodies, and transport failures deny. Body reads stop at
 the authorized limit plus one proof byte.
 
+The host adapter independently derives its OCI command timeout from the same absolute
+deadline (still capped at five seconds). The bounded executor kills a command that remains
+active at that boundary, timeout is reported as a fixed fixture-deadline denial, and a
+completion observed at or after the boundary is reclassified as deadline exceeded.
+
 ## Hosted containment proof
 
 The Linux rootless Podman workflow creates a unique internal network on the TEST-NET
@@ -62,6 +67,6 @@ leaves claim, authorization, commitment, result, runtime, and audit records read
 
 This is not general gateway authority. HTTPS/TLS, policy-derived destinations,
 controlled live DNS, independent grant/start verification inside the isolated process, redirect execution,
-response evidence, a dual-homed attested gateway route, active-session kill switches,
+response evidence, a dual-homed attested gateway route, general active-session kill switches,
 and worker-to-gateway traffic remain deferred. Public, customer, bug-bounty, and other
 external targets remain prohibited.

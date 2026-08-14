@@ -1435,7 +1435,7 @@ class AuthorizationSliceTests(unittest.TestCase):
         result = self.service.finalize_gateway_request(
             started["start_id"],
             GatewayResponseMeasurement(
-                "deadline_exceeded", 0, 0, parse_time(started["deadline_at"])
+                "deadline_exceeded", 100001, 100000, parse_time(started["deadline_at"])
             ),
         )
         self.assertEqual(result["outcome"], "deadline_exceeded")
