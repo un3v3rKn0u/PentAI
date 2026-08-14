@@ -1778,6 +1778,35 @@ backup/export anchoring remain defense layers. Hash chaining proves internal
 continuity, not independent timestamping. This self-authored review is non-independent
 and cannot satisfy an external independent-review requirement.
 
+## 2026-08-14 — Gateway schedule revalidation
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Immutable Policy IR reload, canonical stored-document comparison,
+schedule evaluation at exact request-start time, transaction ordering, denial before
+grant/budget mutation, legacy compatibility, rollback, and absence of execution.
+
+**Evidence examined:** Focused request-start denial test proving the schedule check is
+called with the commit instant and leaves the grant unused and reservation reserved;
+authorization tests; complete Python tests, Ruff, mypy, UI tests/build/typecheck, desktop
+Cargo check; complete diff; schedule evaluator and atomic request-start contracts.
+
+**Findings:** Schedule authority is no longer checked only when the intent is evaluated.
+It is revalidated inside the final atomic commitment, closing the prepared-session race
+without consuming one-use authority on denial.
+
+**Limitations and deferred work:** The product still has no general target-facing worker.
+Continuous clock-health proof and termination of already-running work at a schedule
+boundary remain open.
+
+**Residual risk accepted:** The check trusts the same host wall clock as other expiry and
+deadline controls; clock uncertainty must independently pause execution. This review is
+self-authored and non-independent and cannot satisfy external independent assurance.
+
 ## 2026-08-11 — Encrypted immutable evidence originals
 
 **Decision:** Sole-maintainer security review — non-independent; accepted for local
