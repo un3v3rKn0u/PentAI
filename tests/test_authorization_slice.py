@@ -23,6 +23,7 @@ from pentai_core.source_store import EncryptedSourceStore
 from pentai_policy import canonicalize_url, content_hash, evaluate
 from pentai_policy.document import contract_issues, parse_time
 from pentai_policy.evaluator import testing_schedule_allows as schedule_allows
+from pentai_policy.evaluator import testing_schedule_deadline as schedule_deadline
 
 
 def timestamp(offset: timedelta) -> str:
@@ -1225,7 +1226,9 @@ class AuthorizationSliceTests(unittest.TestCase):
         request_start_instant = datetime.now(UTC)
 
         with (
-            patch("pentai_core.authorization.testing_schedule_allows", return_value=False) as check,
+            patch(
+                "pentai_core.authorization.testing_schedule_deadline", return_value=None
+            ) as check,
             self.assertRaises(DomainError) as denied,
         ):
             self.service.commit_gateway_request_start(
@@ -1244,6 +1247,42 @@ class AuthorizationSliceTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertIsNone(grant_state)
         self.assertEqual(reservation, "reserved")
+
+    def test_gateway_request_start_caps_deadline_at_testing_schedule_boundary(self) -> None:
+        instant = datetime.now(UTC).replace(second=0, microsecond=0)
+        offset = 12 - instant.hour
+        sign = "-" if offset > 0 else "+"
+        timezone_name = "UTC" if offset == 0 else f"Etc/GMT{sign}{abs(offset)}"
+        local = instant.astimezone(timezone(timedelta(hours=offset)))
+        self.manifest["operational_limits"]["allowed_testing_windows"] = [{
+            "days": [local.strftime("%A").lower()],
+            "start_time": "11:00", "end_time": "13:00", "timezone": timezone_name,
+        }]
+        self.manifest["operational_limits"]["blackout_periods"] = []
+        intent, grant, attestation = self.network_authority()
+        destination = self.service.resolve_and_authorize_network_destination(
+            grant_id=grant["grant_id"],
+            attestation_id=attestation["attestation_id"],
+            candidate_url=intent["target"]["canonical_url"],
+            resolver_source=FixtureResolverSource(fixture_resolver(("192.0.2.20",))),
+            sni_host="example.test",
+            host_header="example.test",
+        )
+        session = self.service.prepare_gateway_session(
+            grant_id=grant["grant_id"],
+            destination_authorization_id=destination["authorization_id"],
+        )
+        request_start_instant = datetime.now(UTC)
+        boundary = request_start_instant + timedelta(seconds=5)
+
+        with patch(
+            "pentai_core.authorization.testing_schedule_deadline", return_value=boundary
+        ):
+            started = self.service.commit_gateway_request_start(
+                session["session_id"], now=request_start_instant
+            )
+
+        self.assertEqual(started["deadline_at"], boundary.isoformat().replace("+00:00", "Z"))
 
     def test_gateway_request_start_concurrency_and_recovery_are_fail_closed(self) -> None:
         intent, grant, attestation = self.network_authority()
@@ -1917,6 +1956,34 @@ class AuthorizationSliceTests(unittest.TestCase):
         self.assertFalse(schedule_allows(closed, instant))
         self.assertFalse(schedule_allows(blackout, instant))
         self.assertFalse(schedule_allows(malformed, instant))
+
+    def test_testing_schedule_deadline_uses_union_end_and_next_blackout(self) -> None:
+        instant = datetime(2030, 1, 7, 12, 0, tzinfo=UTC)
+        schedule = {
+            "allowed_windows": [
+                {
+                    "days": ["monday"], "start_time": "11:00",
+                    "end_time": "12:30", "timezone": "UTC",
+                },
+                {
+                    "days": ["monday"], "start_time": "11:30",
+                    "end_time": "13:00", "timezone": "UTC",
+                },
+            ],
+            "blackout_periods": [{
+                "starts_at": "2030-01-07T12:20:00Z",
+                "ends_at": "2030-01-07T12:40:00Z", "reason": "Maintenance",
+            }],
+        }
+        self.assertEqual(
+            schedule_deadline(schedule, instant),
+            datetime(2030, 1, 7, 12, 20, tzinfo=UTC),
+        )
+        schedule["blackout_periods"] = []
+        self.assertEqual(
+            schedule_deadline(schedule, instant),
+            datetime(2030, 1, 7, 13, 0, tzinfo=UTC),
+        )
 
     def test_reviewed_account_references_are_compiled_and_enforced(self) -> None:
         self.manifest["account_controls"] = {

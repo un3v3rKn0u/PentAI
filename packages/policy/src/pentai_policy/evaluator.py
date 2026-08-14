@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from ipaddress import ip_address, ip_network
 from typing import Any
 from uuid import UUID, uuid5
@@ -60,22 +60,52 @@ def _asset_matches(rule: dict[str, Any], target: dict[str, Any]) -> bool:
     return False
 
 
-def testing_schedule_allows(schedule: dict[str, Any], instant: datetime) -> bool:
+def _window_end(window: dict[str, Any], instant: datetime) -> datetime | None:
+    zone = ZoneInfo(window["timezone"])
+    local = instant.astimezone(zone)
+    current_time = local.strftime("%H:%M")
+    if (
+        local.strftime("%A").lower() not in window["days"]
+        or not window["start_time"] <= current_time < window["end_time"]
+    ):
+        return None
+    local_end_time = time.fromisoformat(window["end_time"])
+    candidates: list[datetime] = []
+    for fold in (0, 1):
+        local_end = datetime.combine(local.date(), local_end_time, zone).replace(fold=fold)
+        candidate = local_end.astimezone(UTC)
+        if candidate.astimezone(zone).replace(tzinfo=None) == local_end.replace(tzinfo=None):
+            candidates.append(candidate)
+    future_candidates = [candidate for candidate in candidates if candidate > instant]
+    return min(future_candidates, default=None)
+
+
+def testing_schedule_deadline(schedule: dict[str, Any], instant: datetime) -> datetime | None:
     try:
+        blackout_starts: list[datetime] = []
         for period in schedule["blackout_periods"]:
-            if parse_time(period["starts_at"]) <= instant < parse_time(period["ends_at"]):
-                return False
-        for window in schedule["allowed_windows"]:
-            local = instant.astimezone(ZoneInfo(window["timezone"]))
-            current_time = local.strftime("%H:%M")
-            if (
-                local.strftime("%A").lower() in window["days"]
-                and window["start_time"] <= current_time < window["end_time"]
-            ):
-                return True
+            starts_at = parse_time(period["starts_at"])
+            if starts_at <= instant < parse_time(period["ends_at"]):
+                return None
+            if starts_at > instant:
+                blackout_starts.append(starts_at)
+        window_ends = [
+            end
+            for window in schedule["allowed_windows"]
+            if (end := _window_end(window, instant)) is not None
+        ]
+        if not window_ends:
+            return None
+        deadline = max(window_ends)
+        if blackout_starts:
+            deadline = min(deadline, min(blackout_starts))
+        return deadline if deadline > instant else None
     except (KeyError, TypeError, ValueError, ZoneInfoNotFoundError):
-        return False
-    return False
+        return None
+
+
+def testing_schedule_allows(schedule: dict[str, Any], instant: datetime) -> bool:
+    return testing_schedule_deadline(schedule, instant) is not None
 
 
 def _decision(

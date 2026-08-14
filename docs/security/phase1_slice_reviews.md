@@ -3165,3 +3165,35 @@ and retain their prior engagement-validity behavior.
 over-deny. Clock compromise remains outside schedule matching and must trigger the
 separate clock-health safety boundary. This review is self-authored and non-independent
 and cannot satisfy an external independent-review requirement.
+
+## 2026-08-14 — Gateway schedule deadline
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Shared schedule-boundary calculation, overlapping-window union,
+blackout precedence, timezone conversion, ambiguous or invalid local-time fail closure,
+atomic request-start persistence, compatibility, rollback, and absence of new execution
+capability.
+
+**Evidence examined:** Schedule union and blackout deadline tests; closed, active-blackout,
+and malformed-schedule tests; gateway deadline persistence and no-consumption denial tests;
+Policy IR contract; complete authorization suite; Ruff, mypy, UI tests/build/typecheck,
+desktop Cargo check; complete diff; testing-window and gateway revalidation reviews.
+
+**Findings:** The final gateway commit now uses the same policy-owned schedule semantics as
+decision evaluation and persists a deadline no later than the active window union's end or
+the next blackout. Existing response finalization already rejects completion after that
+durable deadline.
+
+**Limitations and deferred work:** The slice does not independently interrupt an active
+transport at the boundary or establish trusted continuous wall-clock health. Those remain
+required gateway exit controls. Policies without schedules preserve legacy behavior.
+
+**Residual risk accepted:** Host timezone data can lag upstream changes and safely
+over-deny. Clock compromise and scheduler delay remain outside boundary calculation. This
+review is self-authored and non-independent and cannot satisfy an external independent-
+review requirement.

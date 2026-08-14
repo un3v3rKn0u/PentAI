@@ -19,7 +19,7 @@ from pentai_policy import (
     compile_manifest,
     content_hash,
     evaluate,
-    testing_schedule_allows,
+    testing_schedule_deadline,
     validate_and_canonicalize_manifest,
 )
 from pentai_policy.document import contract_issues, parse_time
@@ -2291,14 +2291,23 @@ class AuthorizationService:
             decision = json.loads(row["decision_json"])
             policy_document = json.loads(row["policy_json"])
             signature = grant.get("signature", {})
+            testing_schedule = policy_document.get("testing_schedule")
+            schedule_deadline = (
+                testing_schedule_deadline(testing_schedule, instant)
+                if isinstance(testing_schedule, dict)
+                else None
+            )
             try:
                 timeout_seconds = int(grant["constraints"]["timeout_seconds"])
-                deadline = min(
+                deadline_candidates = [
                     instant + timedelta(seconds=timeout_seconds),
                     parse_time(grant["expires_at"]),
                     parse_time(row["engagement_expires_at"]),
                     parse_time(row["attestation_expires_at"]),
-                )
+                ]
+                if schedule_deadline is not None:
+                    deadline_candidates.append(schedule_deadline)
+                deadline = min(deadline_candidates)
             except (KeyError, TypeError, ValueError) as exc:
                 raise DomainError("GATEWAY_REQUEST_DENIED", "request deadline is invalid") from exc
             if (
@@ -2341,10 +2350,7 @@ class AuthorizationService:
                 or row["revocation_epoch"] != row["current_epoch"]
                 or row["engagement_status"] != "active"
                 or row["global_status"] != "active"
-                or (
-                    isinstance(policy_document.get("testing_schedule"), dict)
-                    and not testing_schedule_allows(policy_document["testing_schedule"], instant)
-                )
+                or (isinstance(testing_schedule, dict) and schedule_deadline is None)
             ):
                 raise DomainError("GATEWAY_REQUEST_DENIED", "runtime authority is inactive")
             start_id = str(uuid4())

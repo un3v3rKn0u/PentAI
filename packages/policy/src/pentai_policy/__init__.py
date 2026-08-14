@@ -18,7 +18,7 @@ from pentai_policy.document import (
     content_hash,
     validate_and_canonicalize_manifest,
 )
-from pentai_policy.evaluator import evaluate, testing_schedule_allows
+from pentai_policy.evaluator import evaluate, testing_schedule_allows, testing_schedule_deadline
 
 __all__ = [
     "CanonicalizationError",
@@ -37,5 +37,6 @@ __all__ = [
     "content_hash",
     "evaluate",
     "testing_schedule_allows",
+    "testing_schedule_deadline",
     "validate_and_canonicalize_manifest",
 ]
