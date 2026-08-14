@@ -5,9 +5,11 @@ import tempfile
 import unittest
 from contextlib import closing
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event
 
+from pentai_core.clock_health import ClockHealthMonitor
 from pentai_core.gateway_runtime_supervisor import (
     GatewayRuntimeSupervisor,
     UnconfiguredGatewayRuntimeSupervisor,
@@ -47,6 +49,19 @@ class BlockingLifecycle(FixtureLifecycle):
         self.checked.set()
         self.release.wait(1)
         return 0
+
+
+@dataclass
+class FixtureClockHealth:
+    fail: bool = False
+    checks: int = 0
+    checked: Event = field(default_factory=Event)
+
+    def check(self) -> None:
+        self.checks += 1
+        self.checked.set()
+        if self.fail:
+            raise RuntimeError("synthetic clock failure")
 
 
 class GatewayRuntimeSupervisorTests(unittest.TestCase):
@@ -108,6 +123,66 @@ class GatewayRuntimeSupervisorTests(unittest.TestCase):
         supervisor.start()
         self.assertEqual(lifecycle.recover_calls, 1)
         supervisor.stop()
+
+    def test_clock_health_failure_pauses_before_recovery_or_runtime_check(self) -> None:
+        lifecycle = FixtureLifecycle()
+        clock_health = FixtureClockHealth(fail=True)
+        pauses: list[str] = []
+        startup = GatewayRuntimeSupervisor(
+            lifecycle=lifecycle,
+            pause_safety=pauses.append,
+            clock_health=clock_health,
+            interval_seconds=0.1,
+        )
+        startup.start()
+        self.assertEqual(lifecycle.recover_calls, 0)
+        self.assertEqual(pauses, ["GATEWAY_CLOCK_STARTUP_FAILED"])
+
+        lifecycle = FixtureLifecycle()
+        clock_health = FixtureClockHealth()
+        pauses = []
+        watchdog = GatewayRuntimeSupervisor(
+            lifecycle=lifecycle,
+            pause_safety=pauses.append,
+            clock_health=clock_health,
+            interval_seconds=0.1,
+        )
+        watchdog.start()
+        clock_health.checked.clear()
+        clock_health.fail = True
+        self.assertTrue(clock_health.checked.wait(1))
+        self.assertEqual(lifecycle.check_calls, 0)
+        self.assertEqual(pauses, ["GATEWAY_CLOCK_WATCHDOG_FAILED"])
+
+    def test_clock_health_detects_rollback_and_elapsed_time_divergence(self) -> None:
+        wall = datetime(2030, 1, 1, tzinfo=UTC)
+        monotonic = 100.0
+        monitor = ClockHealthMonitor(
+            wall_clock=lambda: wall,
+            monotonic_clock=lambda: monotonic,
+            max_drift_seconds=0.5,
+        )
+        monitor.check()
+        wall += timedelta(seconds=1)
+        monotonic += 1
+        monitor.check()
+        wall -= timedelta(seconds=2)
+        monotonic += 1
+        with self.assertRaises(RuntimeError):
+            monitor.check()
+
+        wall = datetime(2030, 1, 1, tzinfo=UTC)
+        monotonic = 100.0
+        divergent = ClockHealthMonitor(
+            wall_clock=lambda: wall,
+            monotonic_clock=lambda: monotonic,
+            max_drift_seconds=0.5,
+        )
+        divergent.check()
+        wall += timedelta(seconds=5)
+        monotonic += 1
+        with self.assertRaises(RuntimeError):
+            divergent.check()
 
     def test_shutdown_cleanup_failure_remains_degraded(self) -> None:
         lifecycle = FixtureLifecycle()

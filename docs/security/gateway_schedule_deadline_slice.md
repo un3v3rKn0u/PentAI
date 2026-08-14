@@ -18,6 +18,7 @@ unknown timezones, malformed schedules, and invalid local-time boundaries fail c
 Policies without schedules retain their existing deadline behavior.
 
 The policy package owns schedule matching and boundary calculation, preventing decision
-and gateway paths from drifting apart. This slice adds no socket, worker, destination, or
-external effect. Continuous clock health and active interruption when a committed
-deadline arrives remain separate Phase 1 exit-gate controls.
+and gateway paths from drifting apart. The follow-on clock-health slice now continuously
+compares wall and monotonic progress and pauses global safety on uncertainty. This slice
+adds no socket, worker, destination, or external effect. Active interruption when a
+committed deadline arrives remains a separate Phase 1 exit-gate control.

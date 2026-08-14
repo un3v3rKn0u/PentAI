@@ -7,6 +7,7 @@ from pathlib import Path
 from threading import Event, Lock, Thread, current_thread
 from typing import Any, Protocol
 
+from pentai_core.clock_health import ClockHealthMonitor
 from pentai_core.database import transaction
 
 
@@ -14,6 +15,10 @@ class GatewayRuntimeLifecycleControl(Protocol):
     def recover(self) -> int: ...
 
     def check_all(self) -> int: ...
+
+
+class ClockHealthControl(Protocol):
+    def check(self) -> None: ...
 
 
 class RuntimeSupervisorControl(Protocol):
@@ -48,6 +53,7 @@ class GatewayRuntimeSupervisor:
         *,
         lifecycle: GatewayRuntimeLifecycleControl,
         pause_safety: Callable[[str], Any],
+        clock_health: ClockHealthControl | None = None,
         interval_seconds: float = 5,
         join_timeout_seconds: float = 2,
     ) -> None:
@@ -57,6 +63,7 @@ class GatewayRuntimeSupervisor:
             raise ValueError("runtime watchdog join timeout is invalid")
         self._lifecycle = lifecycle
         self._pause_safety = pause_safety
+        self._clock_health = clock_health or ClockHealthMonitor()
         self._interval_seconds = interval_seconds
         self._join_timeout_seconds = join_timeout_seconds
         self._stop = Event()
@@ -69,6 +76,11 @@ class GatewayRuntimeSupervisor:
             if self._snapshot.status not in {"stopped"}:
                 return
             self._snapshot = SupervisorSnapshot("recovering", None, 0, False)
+        try:
+            self._clock_health.check()
+        except Exception:
+            self._degrade("GATEWAY_CLOCK_STARTUP_FAILED")
+            return
         try:
             recovered = self._lifecycle.recover()
         except Exception:
@@ -111,6 +123,12 @@ class GatewayRuntimeSupervisor:
 
     def _watch(self) -> None:
         while not self._stop.wait(self._interval_seconds):
+            try:
+                self._clock_health.check()
+            except Exception:
+                self._degrade("GATEWAY_CLOCK_WATCHDOG_FAILED")
+                self._stop.set()
+                return
             try:
                 self._lifecycle.check_all()
             except Exception:
