@@ -3378,10 +3378,42 @@ requires the runtime object to prove PentAI management, the fixed fixture role, 
 exact immutable execution claim before issuing force-removal.
 
 **Limitations and deferred work:** OCI labels are runtime-reported rather than independently
-signed. The adapter remains an internal TEST-NET proof and general gateway execution stays
-disabled pending stronger production runtime identity.
+signed. The follow-on runtime-binding slice now cross-checks durable runtime, image, and
+network identity as well as ownership. The adapter remains an internal TEST-NET proof and
+general gateway execution stays disabled pending stronger production runtime identity.
 
 **Residual risk accepted:** A compromised OCI runtime can forge inspection output. Rootless
 containment, trusted executable checks, exact claim identity, and subsequent conformance
 attestation remain defense layers. This review is self-authored and non-independent and
 cannot satisfy external independent assurance.
+
+## 2026-08-14 — Fixture cleanup runtime binding
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Claim-to-runtime durable join, missing-link fail closure, runtime-ID
+syntax, pinned digest and network validation, fixed launch bindings, complete-label subset
+matching, mismatch denial before deletion, compatibility, and fixture-only authority.
+
+**Evidence examined:** Fixed runtime/image/network launch-label assertions; complete
+durable-binding inspection and cleanup test; missing-label safety-pause test; malformed
+identity and ambiguous recovery paths; complete Python tests, Ruff, mypy, UI
+tests/build/typecheck, desktop Cargo check; complete diff; ownership and runtime lifecycle
+reviews.
+
+**Findings:** A container that matches only the claim-derived name and ownership labels can
+no longer authorize deletion. Cleanup requires the exact immutable runtime record, pinned
+image, and managed network associated with that claim.
+
+**Limitations and deferred work:** Bindings are still reported by the configured OCI
+runtime and are not independently signed. The transport remains limited to internal
+TEST-NET proof and general gateway execution stays disabled.
+
+**Residual risk accepted:** A compromised OCI runtime can forge labels and inspection
+output. Trusted executable checks, rootless containment, pinned images, durable identity,
+and subsequent conformance attestation remain defense layers. This review is self-authored
+and non-independent and cannot satisfy external independent assurance.

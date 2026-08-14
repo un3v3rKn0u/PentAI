@@ -124,6 +124,9 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     assert "--label=com.pentai.managed=true" in command
     assert "--label=com.pentai.role=gateway-http-fixture" in command
     assert f"--label=com.pentai.execution-claim={claim()['claim_id']}" in command
+    assert f"--label=com.pentai.runtime-id={claim()['runtime_id']}" in command
+    assert f"--label=com.pentai.gateway-network={NETWORK}" in command
+    assert f"--label=com.pentai.image-digest={IMAGE}" in command
     assert "--network" in command
     assert NETWORK in command
     assert "--read-only" in command
