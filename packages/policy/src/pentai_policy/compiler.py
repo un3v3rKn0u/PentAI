@@ -7,7 +7,7 @@ from uuid import UUID, uuid5
 from pentai_policy.canonicalize import canonicalize_url
 from pentai_policy.document import content_hash
 
-COMPILER_VERSION = "1.1.0"
+COMPILER_VERSION = "1.2.0"
 _NAMESPACE = UUID("825e6af6-8030-43c2-8968-933d894b14b5")
 
 
@@ -161,6 +161,22 @@ def compile_manifest(manifest: dict[str, Any], manifest_hash: str) -> dict[str, 
         "approval_requirements": [],
         "default_effect": "deny",
     }
+    if "allowed_testing_windows" in limits:
+        policy["testing_schedule"] = {
+            "allowed_windows": sorted(
+                deepcopy(limits["allowed_testing_windows"]),
+                key=lambda item: (
+                    item["timezone"],
+                    item["start_time"],
+                    item["end_time"],
+                    item["days"],
+                ),
+            ),
+            "blackout_periods": sorted(
+                deepcopy(limits.get("blackout_periods", [])),
+                key=lambda item: (item["starts_at"], item["ends_at"], item["reason"]),
+            ),
+        }
     account_controls = manifest.get("account_controls")
     if isinstance(account_controls, dict):
         policy["account_constraints"] = {

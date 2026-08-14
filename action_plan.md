@@ -230,7 +230,7 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 
 - [x] Implement source import for files, URLs, and pasted text.
 - [x] Store source authority, timestamps, effective dates, hashes, and encrypted originals.
-- [ ] Build the full intake UI from `design_intake_workflow.md`.
+- [x] Build the full intake UI from `design_intake_workflow.md`.
   - Source intake now captures optional effective-time and source-version provenance for
     every import mode, and immutable history supports explicit exact-source review.
     Changing the reviewed source clears downstream manifest/policy state before deriving
@@ -273,6 +273,8 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Source-statement review now records bounded exact language and a separate restrictive
     candidate interpretation, each bound to one immutable source ID, digest, and
     authorization-bearing field category. Candidates never populate rules automatically.
+    The complete supervised Intake review is now present; future AI-assisted proposal
+    generation remains an optional Phase 2 capability rather than a Phase 1 UI gap.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
@@ -282,6 +284,8 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   manifest/policy history and semantic diffs. It can restore an exact core-verified signed
   policy after restart without inferring a new approval or activation. Target execution
   remains disabled.
+  Reviewed testing windows and blackout periods now compile into signed Policy IR and
+  deny deterministic decisions outside allowed local time or during a blackout.
 - [ ] Build typed, expiring approvals and activation workflow.
   - Signed lifecycle implementation was merged in PR #26 and accepted under the
     explicitly non-independent local-development governance scope. This does not grant

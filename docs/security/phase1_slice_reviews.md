@@ -3104,3 +3104,35 @@ prove that entered text is a byte-exact excerpt because originals remain encrypt
 unexposed. Immutable source identity, separate candidate status, and mandatory structured
 review limit this risk. This review is self-authored and non-independent and cannot
 satisfy an external independent-review requirement.
+
+## 2026-08-14 — Testing-window enforcement
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Manifest-to-Policy-IR schedule compilation, deterministic ordering,
+IANA timezone conversion, weekday and half-open time matching, blackout precedence,
+malformed-data fail closure, legacy compatibility, compiler versioning, rollback, and
+absence of new execution capability.
+
+**Evidence examined:** End-to-end compiled-policy allow test; closed-weekday, blackout,
+and unknown-timezone denial tests; Policy IR contract; authorization test suite; complete
+Python tests, Ruff, mypy, UI tests/build/typecheck, desktop Cargo check; complete diff;
+testing-window review and clock-safety invariant.
+
+**Findings:** A reviewed schedule can no longer disappear during compilation. Signed
+Policy IR binds the exact windows and blackouts, and decisions deny unless the current
+instant is inside at least one allowed window and outside every blackout.
+
+**Limitations and deferred work:** Decision-time enforcement does not independently prove
+wall-clock trust or terminate an already active gateway session at the exact schedule
+boundary. Those remain required execution-gateway controls. Older policies omit schedules
+and retain their prior engagement-validity behavior.
+
+**Residual risk accepted:** Host timezone data may lag upstream IANA changes and safely
+over-deny. Clock compromise remains outside schedule matching and must trigger the
+separate clock-health safety boundary. This review is self-authored and non-independent
+and cannot satisfy an external independent-review requirement.
