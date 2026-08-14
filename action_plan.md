@@ -334,7 +334,8 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     body stop. Runtime startup/shutdown also reconciles unfinished durable fixture claims,
     verifies exact ownership, claim, runtime, pinned-image, and managed-network labels
     plus actual OCI name/image/network/container identity before ID-based removal, proves
-    container absence, and pauses globally on ambiguity. A durable, one-use
+    container absence, appends a hash-chained reconciliation audit event, and pauses
+    globally on ambiguity. A durable, one-use
     execution claim now binds the fixed effect to the committed request start, grant,
     budget/rate reservations, destination decision, runtime image/network, fresh
     containment identity, response ceiling, and absolute deadline; finalization must

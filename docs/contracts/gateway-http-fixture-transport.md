@@ -60,6 +60,10 @@ Recovery inspects the complete OCI object and also requires a canonical containe
 exact claim-derived name, the pinned image as the actual runtime image, and exactly one
 network attachment matching the managed gateway network. Removal targets the verified
 container ID rather than its name, followed by another exact-name absence check.
+Only after verified removal or verified prior absence does recovery append a hash-chained
+`gateway.fixture_cleanup_reconciled` event. It records the durable claim/runtime binding,
+whether removal occurred, the verified container ID when applicable, and the constant
+non-executing state. Failure paths never record a successful reconciliation.
 
 ## Hosted containment proof
 
