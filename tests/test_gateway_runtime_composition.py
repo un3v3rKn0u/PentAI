@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event
 from typing import Any
@@ -193,12 +194,49 @@ class GatewayRuntimeCompositionTests(unittest.TestCase):
                 executable=Path("/bin/echo"),
                 executor=executor,
                 pause_safety=pauses.append,
+                clock=lambda: datetime(2030, 1, 1, 0, 1, tzinfo=UTC),
             ).recover()
             self.assertEqual(recovered, 1)
             self.assertEqual(
                 executor.calls[2], ("/bin/echo", "rm", "--force", container_id)
             )
             self.assertEqual(pauses, [])
+            with sqlite3.connect(database) as connection:
+                event = connection.execute(
+                    """SELECT action, subject_type, subject_id, actor_id, data_json
+                    FROM audit_events ORDER BY sequence DESC LIMIT 1"""
+                ).fetchone()
+            self.assertEqual(event[:4], (
+                "gateway.fixture_cleanup_reconciled",
+                "gateway_fixture_execution_claim",
+                claim_id,
+                "gateway-runtime-supervisor",
+            ))
+            self.assertEqual(
+                json.loads(event[4]),
+                {
+                    "claim_id": claim_id,
+                    "container_id": container_id,
+                    "execution_enabled": False,
+                    "outcome": "removed",
+                    "runtime_id": "runtime",
+                },
+            )
+
+            absent = GatewayFixtureCleanupRecovery(
+                database_path=database,
+                executable=Path("/bin/echo"),
+                executor=FixtureExecutor([CommandResult(0, b"")]),
+                pause_safety=pauses.append,
+                clock=lambda: datetime(2030, 1, 1, 0, 2, tzinfo=UTC),
+            )
+            self.assertEqual(absent.recover(), 1)
+            with sqlite3.connect(database) as connection:
+                absent_data = connection.execute(
+                    "SELECT data_json FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()[0]
+            self.assertEqual(json.loads(absent_data)["outcome"], "already_absent")
+            self.assertIsNone(json.loads(absent_data)["container_id"])
 
             failed_pauses: list[str] = []
             ambiguous = GatewayFixtureCleanupRecovery(

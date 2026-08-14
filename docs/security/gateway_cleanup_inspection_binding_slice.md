@@ -20,3 +20,6 @@ and Podman's plain canonical name forms are both accepted; no other alias is all
 
 This is still an owned TEST-NET proof and trusts the configured OCI inspection boundary.
 General transports require independently trustworthy runtime measurement before activation.
+
+The follow-on cleanup audit slice now records hash-chained evidence only after verified
+removal or verified prior absence, before authorization later abandons the claim.

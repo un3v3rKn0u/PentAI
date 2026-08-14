@@ -11,6 +11,7 @@ from uuid import UUID
 
 from pentai_policy.document import contract_issues, parse_time
 
+from pentai_core.audit import append_audit_event
 from pentai_core.database import transaction
 from pentai_core.gateway_response import GatewayResponseMeasurement
 from pentai_core.oci_runtime_command import oci_run_command
@@ -43,6 +44,7 @@ class GatewayFixtureCleanupRecovery:
         executable: Path,
         executor: BoundedCommandExecutor,
         pause_safety: Callable[[str], Any],
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if not executable.is_absolute():
             raise GatewayHttpFixtureError("HTTP_FIXTURE_INVALID", "fixture is invalid")
@@ -50,6 +52,7 @@ class GatewayFixtureCleanupRecovery:
         self._executable = str(executable)
         self._executor = executor
         self._pause_safety = pause_safety
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def recover(self) -> int:
         try:
@@ -114,6 +117,11 @@ class GatewayFixtureCleanupRecovery:
                         raise GatewayHttpFixtureError(
                             "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
                         )
+                self._record_reconciliation(
+                    claim_id=claim_id,
+                    runtime_id=runtime_id,
+                    container_id=container_id,
+                )
             return len(claims)
         except (
             GatewayHttpFixtureError,
@@ -132,6 +140,28 @@ class GatewayFixtureCleanupRecovery:
             raise GatewayHttpFixtureError(
                 "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
             ) from exc
+
+    def _record_reconciliation(
+        self, *, claim_id: str, runtime_id: str, container_id: str | None
+    ) -> None:
+        occurred_at = _trusted_time(self._clock).isoformat().replace("+00:00", "Z")
+        with transaction(self._database_path) as connection:
+            append_audit_event(
+                connection,
+                action="gateway.fixture_cleanup_reconciled",
+                subject_type="gateway_fixture_execution_claim",
+                subject_id=claim_id,
+                actor_type="system",
+                actor_id="gateway-runtime-supervisor",
+                data={
+                    "claim_id": claim_id,
+                    "runtime_id": runtime_id,
+                    "container_id": container_id,
+                    "outcome": "removed" if container_id is not None else "already_absent",
+                    "execution_enabled": False,
+                },
+                occurred_at=occurred_at,
+            )
 
     def _container_identity(
         self,

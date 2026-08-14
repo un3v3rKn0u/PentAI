@@ -3441,10 +3441,42 @@ container name, immutable ID, image, and network attachment must agree with dura
 authority, and removal uses the verified ID rather than the discoverable name.
 
 **Limitations and deferred work:** OCI inspection remains a configured local trust boundary
-and is not independently attested within this recovery transaction. General gateway
+and is not independently attested within this recovery transaction. The follow-on audit
+slice now records verified cleanup outcome in the immutable audit chain. General gateway
 execution remains disabled pending stronger production runtime identity.
 
 **Residual risk accepted:** A compromised OCI runtime can forge the entire inspection
 document. Trusted executable checks, rootless containment, durable cross-binding, and
 subsequent independent conformance measurement remain defense layers. This review is
 self-authored and non-independent and cannot satisfy external independent assurance.
+
+## 2026-08-14 — Fixture cleanup audit trail
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Post-effect audit ordering, removed and already-absent outcomes,
+claim/runtime/container linkage, trusted timestamps, fixed actor and action, hash-chain
+serialization, failure rollback, repeated recovery semantics, compatibility, and
+fixture-only authority.
+
+**Evidence examined:** Verified ID-removal audit test; already-absent audit test; exact
+action/subject/actor/data assertions; mismatch safety-pause path without success; audit
+chain implementation; complete Python tests, Ruff, mypy, UI tests/build/typecheck, desktop
+Cargo check; complete diff; cleanup inspection and authorization recovery reviews.
+
+**Findings:** Crash cleanup is no longer operationally silent. Each successful durable
+reconciliation records whether a verified container was removed or already absent, and no
+success is written before absence is proven.
+
+**Limitations and deferred work:** Audit events are locally hash-chained but not externally
+anchored or independently timestamped. Repeated recovery before transactional claim
+abandonment records repeated truthful observations.
+
+**Residual risk accepted:** Full database replacement can replace both cleanup state and
+its audit chain. Local OS controls and future backup/export anchoring remain defense layers.
+This review is self-authored and non-independent and cannot satisfy external independent
+assurance.
