@@ -3410,10 +3410,41 @@ no longer authorize deletion. Cleanup requires the exact immutable runtime recor
 image, and managed network associated with that claim.
 
 **Limitations and deferred work:** Bindings are still reported by the configured OCI
-runtime and are not independently signed. The transport remains limited to internal
-TEST-NET proof and general gateway execution stays disabled.
+runtime and are not independently signed. The follow-on inspection-binding slice now
+cross-checks actual OCI name, container ID, image, and network state in addition to labels.
+The transport remains limited to internal TEST-NET proof and general execution stays disabled.
 
 **Residual risk accepted:** A compromised OCI runtime can forge labels and inspection
 output. Trusted executable checks, rootless containment, pinned images, durable identity,
 and subsequent conformance attestation remain defense layers. This review is self-authored
 and non-independent and cannot satisfy external independent assurance.
+
+## 2026-08-14 — Fixture cleanup OCI inspection binding
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Full OCI object parsing, canonical container ID and name, actual pinned
+image, exact managed-network set, complete durable-label matching, ID-based removal,
+post-removal absence verification, compatibility, and fixture-only authority.
+
+**Evidence examined:** Successful full-object inspection and ID-removal test; image-
+mismatch safety-pause test; fixed launch bindings; malformed identity, label, and discovery
+paths; complete Python tests, Ruff, mypy, UI tests/build/typecheck, desktop Cargo check;
+complete diff; runtime-binding and OCI lifecycle inspection reviews.
+
+**Findings:** Runtime-reported labels are no longer the only cleanup evidence. The actual
+container name, immutable ID, image, and network attachment must agree with durable
+authority, and removal uses the verified ID rather than the discoverable name.
+
+**Limitations and deferred work:** OCI inspection remains a configured local trust boundary
+and is not independently attested within this recovery transaction. General gateway
+execution remains disabled pending stronger production runtime identity.
+
+**Residual risk accepted:** A compromised OCI runtime can forge the entire inspection
+document. Trusted executable checks, rootless containment, durable cross-binding, and
+subsequent independent conformance measurement remain defense layers. This review is
+self-authored and non-independent and cannot satisfy external independent assurance.

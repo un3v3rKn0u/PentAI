@@ -21,3 +21,6 @@ binding set. Already-absent containers remain idempotent success.
 
 This remains an owned TEST-NET proof. General transports require equivalent durable
 runtime/effect binding and independently trustworthy runtime measurement before activation.
+
+The follow-on inspection-binding slice now verifies the actual OCI name, container ID,
+image, and sole network attachment and removes by the verified immutable ID.
