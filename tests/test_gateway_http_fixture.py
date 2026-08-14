@@ -104,7 +104,10 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     now = datetime.now(UTC)
     executor = FixtureExecutor(output())
     transport = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, executor=executor, clock=lambda: now
+        executable=RUNTIME,
+        executor=executor,
+        pause_safety=lambda _reason: None,
+        clock=lambda: now,
     )
 
     measurement = transport.execute(
@@ -146,8 +149,11 @@ def test_fixture_transport_maps_host_timeout_to_deadline_denial() -> None:
             return CommandResult(self.cleanup_returncode, b"")
 
     executor = TimeoutExecutor()
+    successful_cleanup_pauses: list[str] = []
     transport = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, executor=executor
+        executable=RUNTIME,
+        executor=executor,
+        pause_safety=successful_cleanup_pauses.append,
     )
     with pytest.raises(GatewayHttpFixtureError) as raised:
         transport.execute(claim=claim(), containment=containment())
@@ -162,13 +168,27 @@ def test_fixture_transport_maps_host_timeout_to_deadline_denial() -> None:
         2,
         4096,
     )
+    assert successful_cleanup_pauses == []
 
+    pauses: list[str] = []
     failed_cleanup = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, executor=TimeoutExecutor(cleanup_returncode=1)
+        executable=RUNTIME,
+        executor=TimeoutExecutor(cleanup_returncode=1),
+        pause_safety=pauses.append,
     )
     with pytest.raises(GatewayHttpFixtureError) as cleanup_failed:
         failed_cleanup.execute(claim=claim(), containment=containment())
     assert cleanup_failed.value.code == "HTTP_FIXTURE_CLEANUP_FAILED"
+    assert pauses == ["GATEWAY_FIXTURE_CLEANUP_FAILED"]
+
+    failed_pause = OciGatewayHttpFixtureTransport(
+        executable=RUNTIME,
+        executor=TimeoutExecutor(cleanup_returncode=1),
+        pause_safety=lambda _reason: (_ for _ in ()).throw(RuntimeError("private")),
+    )
+    with pytest.raises(GatewayHttpFixtureError) as pause_failed:
+        failed_pause.execute(claim=claim(), containment=containment())
+    assert pause_failed.value.code == "HTTP_FIXTURE_SAFETY_PAUSE_FAILED"
 
 
 def test_fixture_transport_reclassifies_completion_observed_after_deadline() -> None:
@@ -177,6 +197,7 @@ def test_fixture_transport_reclassifies_completion_observed_after_deadline() -> 
     transport = OciGatewayHttpFixtureTransport(
         executable=RUNTIME,
         executor=FixtureExecutor(output()),
+        pause_safety=lambda _reason: None,
         clock=lambda: next(observations),
     )
     measurement = transport.execute(
@@ -206,6 +227,7 @@ def test_fixture_transport_rejects_malformed_or_contradictory_output(
     transport = OciGatewayHttpFixtureTransport(
         executable=RUNTIME,
         executor=FixtureExecutor(document),
+        pause_safety=lambda _reason: None,
     )
     with pytest.raises(GatewayHttpFixtureError) as raised:
         transport.execute(
@@ -229,7 +251,9 @@ def test_fixture_transport_denies_unbounded_or_unsafe_inputs(
     claim_updates: dict[str, object], containment_updates: dict[str, object]
 ) -> None:
     transport = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, executor=FixtureExecutor(output())
+        executable=RUNTIME,
+        executor=FixtureExecutor(output()),
+        pause_safety=lambda _reason: None,
     )
     with pytest.raises(GatewayHttpFixtureError):
         transport.execute(
@@ -240,7 +264,9 @@ def test_fixture_transport_denies_unbounded_or_unsafe_inputs(
 
 def test_fixture_transport_requires_fresh_matching_containment() -> None:
     transport = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, executor=FixtureExecutor(output())
+        executable=RUNTIME,
+        executor=FixtureExecutor(output()),
+        pause_safety=lambda _reason: None,
     )
     for evidence in (
         containment(gateway_network_id="other-network"),
@@ -280,7 +306,9 @@ class FixtureAuthority:
 def test_fixture_execution_claims_before_transport_and_binds_finalization() -> None:
     authority = FixtureAuthority(claim())
     transport = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, executor=FixtureExecutor(output())
+        executable=RUNTIME,
+        executor=FixtureExecutor(output()),
+        pause_safety=lambda _reason: None,
     )
     execution = GatewayHttpFixtureExecution(authority=authority, transport=transport)
 

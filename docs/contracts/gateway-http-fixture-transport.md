@@ -40,7 +40,8 @@ completion observed at or after the boundary is reclassified as deadline exceede
 Every launch also receives a unique container name derived from the one-use execution
 claim. After a host timeout, the adapter must successfully force-remove that exact name
 within two seconds before returning the deadline denial. Failure to confirm removal is a
-distinct fail-closed cleanup error.
+distinct fail-closed cleanup error and must invoke the configured global safety pause.
+Failure to latch safety is reported separately with fixed non-sensitive diagnostics.
 
 ## Hosted containment proof
 

@@ -311,7 +311,13 @@ def _run_authorized_http_fixture(
                 execution=GatewayHttpFixtureExecution(
                     authority=authority,
                     transport=OciGatewayHttpFixtureTransport(
-                        executable=executable, executor=executor
+                        executable=executable,
+                        executor=executor,
+                        pause_safety=lambda reason: authority.set_global_safety(
+                            status="paused",
+                            reason=reason,
+                            actor_id="gateway-http-fixture",
+                        ),
                     ),
                 ),
                 start_id=str(start["start_id"]),

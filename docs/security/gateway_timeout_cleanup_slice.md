@@ -22,3 +22,6 @@ bounded-output executor.
 
 This remains limited to the owned TEST-NET fixture. General transports remain disabled
 and must define equivalent identity, interruption, cleanup, and safety-pause behavior.
+
+The follow-on cleanup safety-latch slice now requires every transport composition to
+provide a global safety callback and invokes it before returning any cleanup failure.

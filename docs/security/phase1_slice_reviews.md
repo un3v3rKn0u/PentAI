@@ -3283,12 +3283,42 @@ diff; fixture transport and deadline-interruption reviews.
 removal. Timeout handling identifies and force-removes the exact claim-bound container and
 fails closed unless the runtime reports successful cleanup.
 
-**Limitations and deferred work:** The adapter does not yet globally pause safety on cleanup
-failure because the fixture transport has no production composition or safety-control
-dependency. General gateway execution remains disabled and must make cleanup failure a
-latched safety event before activation.
+**Limitations and deferred work:** The follow-on cleanup safety-latch slice now requires a
+global safety callback for every fixture composition. General gateway execution remains
+disabled and must provide a durable latch and recovery workflow before activation.
 
 **Residual risk accepted:** A defective or malicious OCI runtime could falsely report
 successful removal. Hosted rootless containment and post-run conformance provide additional
 evidence, while the only enabled proof target remains internal TEST-NET. This review is
 self-authored and non-independent and cannot satisfy external independent assurance.
+
+## 2026-08-14 — Gateway cleanup safety latch
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Required safety dependency, cleanup exception and nonzero-result paths,
+fixed pause reason and actor, pause-failure handling, exception-detail suppression,
+composition completeness, compatibility, and fixture-only authority.
+
+**Evidence examined:** Cleanup-failure pause assertion, successful-cleanup no-pause test,
+pause-failure fixed-code test, required constructor updates, hosted proof composition;
+complete Python tests, Ruff, mypy, UI tests/build/typecheck, desktop Cargo check; complete
+diff; timeout cleanup and global safety-control reviews.
+
+**Findings:** Timeout cleanup can no longer fail as an isolated adapter error. Every
+transport composition supplies a safety dependency, and cleanup failure latches the core's
+global safety state before control returns. Pause failure remains fail closed and
+non-sensitive.
+
+**Limitations and deferred work:** The proof transport is not part of production startup,
+and the callback invocation is synchronous rather than a durable retry queue. General
+gateway transports remain disabled and require durable cleanup-recovery orchestration.
+
+**Residual risk accepted:** Process termination between cleanup failure and the synchronous
+pause call could prevent latching. The hosted proof remains internal TEST-NET only, and
+startup recovery keeps execution disabled. This review is self-authored and non-independent
+and cannot satisfy external independent assurance.
