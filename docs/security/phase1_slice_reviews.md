@@ -3197,3 +3197,35 @@ required gateway exit controls. Policies without schedules preserve legacy behav
 over-deny. Clock compromise and scheduler delay remain outside boundary calculation. This
 review is self-authored and non-independent and cannot satisfy an external independent-
 review requirement.
+
+## 2026-08-14 — Gateway clock health
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for local
+supervised development with synthetic data only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** UTC wall-clock and monotonic sampling, bounded drift tolerance,
+rollback and forward-jump detection, startup ordering, watchdog ordering, concurrency,
+fixed diagnostics, global safety pause behavior, compatibility, and absence of new
+execution capability.
+
+**Evidence examined:** Deterministic healthy-progress, rollback, and divergence tests;
+startup and watchdog fail-closed ordering tests; gateway runtime supervisor and composition
+tests; complete Python tests, Ruff, mypy, UI tests/build/typecheck, desktop Cargo check;
+complete diff; testing-window, gateway revalidation, and schedule-deadline reviews.
+
+**Findings:** Gateway recovery and runtime lifecycle checks can no longer proceed while
+the process observes invalid, backward, or materially divergent wall-clock progress. The
+existing global safety control is paused with fixed non-sensitive diagnostics.
+
+**Limitations and deferred work:** The baseline is process-local and is re-established
+after restart. This is a consistency check, not independent trusted-time attestation, and
+it does not actively interrupt transport at a committed deadline.
+
+**Residual risk accepted:** Coordinated compromise of wall and monotonic sources may evade
+detection, and scheduling delay can postpone a watchdog observation by its configured
+interval. Independent time attestation and active deadline interruption remain defense
+layers. This review is self-authored and non-independent and cannot satisfy an external
+independent-review requirement.

@@ -22,6 +22,10 @@ safety pause directly. Diagnostics expose only a fixed reason code, counts, watc
 state, and the constant non-executing flag. They do not expose runtime output,
 container identities, network identities, or local paths.
 
+Startup and every watchdog cycle also compare UTC wall-clock progress with monotonic
+elapsed time before lifecycle work. Invalid observations, rollback, or drift beyond one
+second degrade the supervisor and pause global safety.
+
 The authenticated shutdown path stops the watchdog, waits for a bounded interval, and
 re-runs durable termination recovery. Framework shutdown invokes the same idempotent
 operation. Startup and shutdown cleanup are safe to repeat after success.

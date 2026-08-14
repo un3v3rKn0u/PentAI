@@ -320,7 +320,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     testing schedule is revalidated inside that transaction, so a prepared session
     cannot start after its window closes or a blackout begins. The committed deadline
     is also capped at the active schedule union's end or the next blackout, so downstream
-    finalization cannot accept work beyond the reviewed boundary. A bounded
+    finalization cannot accept work beyond the reviewed boundary. The runtime watchdog
+    compares UTC wall-clock progress with monotonic elapsed time at startup and continuously,
+    globally pausing safety before runtime checks on rollback or excessive divergence. A bounded
     response reader and atomic finalizer now enforce the committed deadline,
     retain no more than the response ceiling, preserve immutable outcome/authorization
     linkage, and close concurrency exactly once using synthetic in-memory chunks.
