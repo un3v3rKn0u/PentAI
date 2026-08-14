@@ -37,6 +37,10 @@ The host adapter independently derives its OCI command timeout from the same abs
 deadline (still capped at five seconds). The bounded executor kills a command that remains
 active at that boundary, timeout is reported as a fixed fixture-deadline denial, and a
 completion observed at or after the boundary is reclassified as deadline exceeded.
+Every launch also receives a unique container name derived from the one-use execution
+claim. After a host timeout, the adapter must successfully force-remove that exact name
+within two seconds before returning the deadline denial. Failure to confirm removal is a
+distinct fail-closed cleanup error.
 
 ## Hosted containment proof
 

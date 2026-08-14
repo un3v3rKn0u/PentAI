@@ -78,6 +78,7 @@ class OciGatewayHttpFixtureTransport:
         effective_deadline = min(durable_deadline, now + timedelta(seconds=5))
         deadline_milliseconds = int(effective_deadline.timestamp() * 1_000)
         remaining_seconds = deadline_milliseconds / 1_000 - now.timestamp()
+        container_name = f"pentai-fixture-{claim['claim_id']}"
         if remaining_seconds <= 0:
             raise GatewayHttpFixtureError("HTTP_FIXTURE_DEADLINE", "fixture deadline expired")
         try:
@@ -85,6 +86,8 @@ class OciGatewayHttpFixtureTransport:
                 oci_run_command(
                     self._executable,
                     "--rm",
+                    "--name",
+                    container_name,
                     "--network",
                     network_id,
                     "--read-only",
@@ -107,6 +110,7 @@ class OciGatewayHttpFixtureTransport:
             )
         except SnapshotCollectionError as exc:
             if exc.code == "RUNTIME_COMMAND_TIMEOUT":
+                self._remove_timed_out_container(container_name)
                 raise GatewayHttpFixtureError(
                     "HTTP_FIXTURE_DEADLINE", "fixture deadline exceeded"
                 ) from exc
@@ -151,6 +155,22 @@ class OciGatewayHttpFixtureTransport:
         if completed_at >= effective_deadline:
             outcome = "deadline_exceeded"
         return GatewayResponseMeasurement(outcome, observed, retained, completed_at)
+
+    def _remove_timed_out_container(self, container_name: str) -> None:
+        try:
+            result = self._executor.execute(
+                (self._executable, "rm", "--force", container_name),
+                timeout_seconds=2,
+                max_output_bytes=4096,
+            )
+        except SnapshotCollectionError as exc:
+            raise GatewayHttpFixtureError(
+                "HTTP_FIXTURE_CLEANUP_FAILED", "fixture cleanup failed"
+            ) from exc
+        if result.returncode != 0:
+            raise GatewayHttpFixtureError(
+                "HTTP_FIXTURE_CLEANUP_FAILED", "fixture cleanup failed"
+            )
 
 
 class GatewayFixtureAuthority(Protocol):

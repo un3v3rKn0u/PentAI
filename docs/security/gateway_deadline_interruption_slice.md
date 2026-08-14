@@ -22,3 +22,6 @@ extend the timeout independently from the signed and committed authority.
 This applies only to the fixed TEST-NET fixture transport. General HTTP(S), redirect,
 worker, and external-target transports remain disabled and must adopt the same dual-layer
 deadline pattern before they can be enabled.
+
+The follow-on timeout-cleanup slice assigns each launch a claim-bound name and requires
+bounded force-removal after host timeout, closing the attached-command cleanup ambiguity.
