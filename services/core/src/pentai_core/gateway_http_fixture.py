@@ -53,32 +53,57 @@ class GatewayFixtureCleanupRecovery:
     def recover(self) -> int:
         try:
             with transaction(self._database_path) as connection:
-                claim_ids = tuple(
-                    str(row["claim_id"])
+                claims = tuple(
+                    row
                     for row in connection.execute(
-                        """SELECT claim_id FROM gateway_fixture_execution_claims
-                        WHERE status = 'claimed' ORDER BY claimed_at, claim_id"""
+                        """SELECT gfc.claim_id, gfc.runtime_id,
+                        gri.gateway_network_id, gri.image_digest
+                        FROM gateway_fixture_execution_claims gfc
+                        LEFT JOIN gateway_runtime_instances gri
+                          ON gri.runtime_id = gfc.runtime_id
+                        WHERE gfc.status = 'claimed'
+                        ORDER BY gfc.claimed_at, gfc.claim_id"""
                     )
                 )
-            for claim_id in claim_ids:
+            for claim in claims:
+                claim_id = str(claim["claim_id"])
+                runtime_id = str(claim["runtime_id"])
+                network_id = claim["gateway_network_id"]
+                image_digest = claim["image_digest"]
                 if str(UUID(claim_id)) != claim_id:
                     raise GatewayHttpFixtureError(
                         "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
                     )
+                if (
+                    not _IDENTIFIER.fullmatch(runtime_id)
+                    or not isinstance(network_id, str)
+                    or not _IDENTIFIER.fullmatch(network_id)
+                    or not isinstance(image_digest, str)
+                    or not _DIGEST.fullmatch(image_digest)
+                ):
+                    raise GatewayHttpFixtureError(
+                        "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
+                    )
+                expected_labels = _FIXTURE_LABELS | {
+                    "com.pentai.execution-claim": claim_id,
+                    "com.pentai.runtime-id": runtime_id,
+                    "com.pentai.gateway-network": network_id,
+                    "com.pentai.image-digest": image_digest,
+                }
                 container_name = f"pentai-fixture-{claim_id}"
-                if self._container_present(container_name, claim_id):
+                if self._container_present(container_name, expected_labels):
                     removed = self._executor.execute(
                         (self._executable, "rm", "--force", container_name),
                         timeout_seconds=2,
                         max_output_bytes=4096,
                     )
                     if removed.returncode != 0 or self._container_present(
-                        container_name, claim_id
+                        container_name, expected_labels
                     ):
                         raise GatewayHttpFixtureError(
                             "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
                         )
-            return len(claim_ids)
+            return len(claims)
         except (
             GatewayHttpFixtureError,
             SnapshotCollectionError,
@@ -97,7 +122,9 @@ class GatewayFixtureCleanupRecovery:
                 "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
             ) from exc
 
-    def _container_present(self, container_name: str, claim_id: str) -> bool:
+    def _container_present(
+        self, container_name: str, expected_labels: dict[str, str]
+    ) -> bool:
         result = self._executor.execute(
             (
                 self._executable,
@@ -140,7 +167,6 @@ class GatewayFixtureCleanupRecovery:
             raise GatewayHttpFixtureError(
                 "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
             ) from exc
-        expected_labels = _FIXTURE_LABELS | {"com.pentai.execution-claim": claim_id}
         if (
             inspected.returncode != 0
             or not isinstance(labels, dict)
@@ -218,6 +244,9 @@ class OciGatewayHttpFixtureTransport:
                     "--label=com.pentai.managed=true",
                     "--label=com.pentai.role=gateway-http-fixture",
                     f"--label=com.pentai.execution-claim={claim['claim_id']}",
+                    f"--label=com.pentai.runtime-id={claim['runtime_id']}",
+                    f"--label=com.pentai.gateway-network={network_id}",
+                    f"--label=com.pentai.image-digest={claim['image_digest']}",
                     "--network",
                     network_id,
                     "--read-only",

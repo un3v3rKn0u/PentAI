@@ -51,6 +51,10 @@ Every launch carries `com.pentai.managed=true`, the fixed
 `com.pentai.role=gateway-http-fixture`, and the exact execution-claim ID label. Recovery
 must inspect and match all three labels before a name can authorize force-removal. A
 matching name with missing or different ownership labels fails closed without deletion.
+Launches also label the durable runtime ID, pinned image digest, and managed gateway
+network. Recovery reloads those values through the claim-to-runtime ledger join and
+requires exact matches, so incomplete durable linkage or a partially matching container
+cannot authorize removal.
 
 ## Hosted containment proof
 

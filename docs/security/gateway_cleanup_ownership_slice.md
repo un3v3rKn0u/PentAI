@@ -20,3 +20,6 @@ must match exactly. Post-removal absence verification remains mandatory.
 
 This is defense in depth for the owned TEST-NET fixture. General transports must bind
 cleanup to independently verified durable identity and runtime ownership before activation.
+
+The follow-on cleanup runtime-binding slice now additionally requires the durable runtime
+ID, pinned image digest, and managed network to match labels on the cleanup target.

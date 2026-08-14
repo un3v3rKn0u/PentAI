@@ -148,6 +148,16 @@ class GatewayRuntimeCompositionTests(unittest.TestCase):
             with sqlite3.connect(database) as connection:
                 connection.execute("PRAGMA foreign_keys = OFF")
                 connection.execute(
+                    """INSERT INTO gateway_runtime_instances(
+                    runtime_id, session_id, containment_attestation_id, oci_runtime,
+                    oci_runtime_instance_id, gateway_network_id, image_digest,
+                    container_id, status, created_at, execution_enabled
+                    ) VALUES ('runtime', 'session', 'attestation', 'podman',
+                    'oci-runtime', 'fixture-network', ?, NULL, 'running',
+                    '2030-01-01T00:00:00Z', 0)""",
+                    ("sha256:" + "a" * 64,),
+                )
+                connection.execute(
                     """INSERT INTO gateway_fixture_execution_claims(
                     claim_id, start_id, runtime_id, containment_attestation_id,
                     status, claimed_at, finalized_at
@@ -162,6 +172,9 @@ class GatewayRuntimeCompositionTests(unittest.TestCase):
                     "com.pentai.managed": "true",
                     "com.pentai.role": "gateway-http-fixture",
                     "com.pentai.execution-claim": claim_id,
+                    "com.pentai.runtime-id": "runtime",
+                    "com.pentai.gateway-network": "fixture-network",
+                    "com.pentai.image-digest": "sha256:" + "a" * 64,
                 }).encode()),
                 CommandResult(0, b""),
                 CommandResult(0, b""),
