@@ -5,7 +5,7 @@ import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, NoReturn, Protocol
 
 from pentai_policy.document import contract_issues, parse_time
 
@@ -35,12 +35,14 @@ class OciGatewayHttpFixtureTransport:
         *,
         executable: Path,
         executor: BoundedCommandExecutor,
+        pause_safety: Callable[[str], Any],
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if not executable.is_absolute():
             raise GatewayHttpFixtureError("HTTP_FIXTURE_INVALID", "fixture is invalid")
         self._executable = str(executable)
         self._executor = executor
+        self._pause_safety = pause_safety
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def execute(
@@ -164,13 +166,23 @@ class OciGatewayHttpFixtureTransport:
                 max_output_bytes=4096,
             )
         except SnapshotCollectionError as exc:
-            raise GatewayHttpFixtureError(
-                "HTTP_FIXTURE_CLEANUP_FAILED", "fixture cleanup failed"
-            ) from exc
+            self._fail_cleanup(exc)
         if result.returncode != 0:
+            self._fail_cleanup()
+
+    def _fail_cleanup(self, cause: Exception | None = None) -> NoReturn:
+        try:
+            self._pause_safety("GATEWAY_FIXTURE_CLEANUP_FAILED")
+        except Exception as exc:
             raise GatewayHttpFixtureError(
-                "HTTP_FIXTURE_CLEANUP_FAILED", "fixture cleanup failed"
-            )
+                "HTTP_FIXTURE_SAFETY_PAUSE_FAILED", "fixture safety pause failed"
+            ) from exc
+        error = GatewayHttpFixtureError(
+            "HTTP_FIXTURE_CLEANUP_FAILED", "fixture cleanup failed"
+        )
+        if cause is not None:
+            raise error from cause
+        raise error
 
 
 class GatewayFixtureAuthority(Protocol):
