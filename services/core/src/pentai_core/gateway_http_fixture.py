@@ -22,6 +22,10 @@ from pentai_core.worker_containment import validate_containment_attestation
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
+_FIXTURE_LABELS = {
+    "com.pentai.managed": "true",
+    "com.pentai.role": "gateway-http-fixture",
+}
 
 
 class GatewayHttpFixtureError(ValueError):
@@ -62,13 +66,15 @@ class GatewayFixtureCleanupRecovery:
                         "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
                     )
                 container_name = f"pentai-fixture-{claim_id}"
-                if self._container_present(container_name):
+                if self._container_present(container_name, claim_id):
                     removed = self._executor.execute(
                         (self._executable, "rm", "--force", container_name),
                         timeout_seconds=2,
                         max_output_bytes=4096,
                     )
-                    if removed.returncode != 0 or self._container_present(container_name):
+                    if removed.returncode != 0 or self._container_present(
+                        container_name, claim_id
+                    ):
                         raise GatewayHttpFixtureError(
                             "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
                         )
@@ -91,7 +97,7 @@ class GatewayFixtureCleanupRecovery:
                 "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
             ) from exc
 
-    def _container_present(self, container_name: str) -> bool:
+    def _container_present(self, container_name: str, claim_id: str) -> bool:
         result = self._executor.execute(
             (
                 self._executable,
@@ -115,7 +121,35 @@ class GatewayFixtureCleanupRecovery:
             raise GatewayHttpFixtureError(
                 "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
             )
-        return bool(names)
+        if not names:
+            return False
+        inspected = self._executor.execute(
+            (
+                self._executable,
+                "inspect",
+                "--format",
+                "{{json .Config.Labels}}",
+                container_name,
+            ),
+            timeout_seconds=2,
+            max_output_bytes=4096,
+        )
+        try:
+            labels = json.loads(inspected.stdout)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise GatewayHttpFixtureError(
+                "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
+            ) from exc
+        expected_labels = _FIXTURE_LABELS | {"com.pentai.execution-claim": claim_id}
+        if (
+            inspected.returncode != 0
+            or not isinstance(labels, dict)
+            or any(labels.get(key) != value for key, value in expected_labels.items())
+        ):
+            raise GatewayHttpFixtureError(
+                "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
+            )
+        return True
 
 
 class OciGatewayHttpFixtureTransport:
@@ -181,6 +215,9 @@ class OciGatewayHttpFixtureTransport:
                     "--rm",
                     "--name",
                     container_name,
+                    "--label=com.pentai.managed=true",
+                    "--label=com.pentai.role=gateway-http-fixture",
+                    f"--label=com.pentai.execution-claim={claim['claim_id']}",
                     "--network",
                     network_id,
                     "--read-only",

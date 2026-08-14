@@ -121,6 +121,9 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     assert command[:4] == (str(RUNTIME), "run", "--log-driver=none", "--rm")
     assert "--name" in command
     assert f"pentai-fixture-{claim()['claim_id']}" in command
+    assert "--label=com.pentai.managed=true" in command
+    assert "--label=com.pentai.role=gateway-http-fixture" in command
+    assert f"--label=com.pentai.execution-claim={claim()['claim_id']}" in command
     assert "--network" in command
     assert NETWORK in command
     assert "--read-only" in command

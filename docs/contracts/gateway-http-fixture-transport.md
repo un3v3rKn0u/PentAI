@@ -47,6 +47,11 @@ state, checks its derived container name, force-removes any match, and verifies 
 before runtime recovery and containment attestation continue. Ambiguous queries, cleanup
 failure, or failed absence verification pause global safety.
 
+Every launch carries `com.pentai.managed=true`, the fixed
+`com.pentai.role=gateway-http-fixture`, and the exact execution-claim ID label. Recovery
+must inspect and match all three labels before a name can authorize force-removal. A
+matching name with missing or different ownership labels fails closed without deletion.
+
 ## Hosted containment proof
 
 The Linux rootless Podman workflow creates a unique internal network on the TEST-NET

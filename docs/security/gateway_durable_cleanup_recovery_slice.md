@@ -22,3 +22,6 @@ Running cleanup first preserves the identity needed to remove crash leftovers.
 
 This remains limited to the owned TEST-NET fixture. Future general transports require a
 durable effect identity and equivalent reconcile-before-ready behavior.
+
+The follow-on cleanup ownership-verification slice now requires PentAI ownership, fixed
+fixture-role, and exact execution-claim labels before recovery can remove a matching name.
