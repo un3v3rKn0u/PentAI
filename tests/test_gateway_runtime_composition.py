@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import tempfile
@@ -157,6 +158,11 @@ class GatewayRuntimeCompositionTests(unittest.TestCase):
             name = f"pentai-fixture-{claim_id}"
             executor = FixtureExecutor([
                 CommandResult(0, f"{name}\n".encode()),
+                CommandResult(0, json.dumps({
+                    "com.pentai.managed": "true",
+                    "com.pentai.role": "gateway-http-fixture",
+                    "com.pentai.execution-claim": claim_id,
+                }).encode()),
                 CommandResult(0, b""),
                 CommandResult(0, b""),
             ])
@@ -168,14 +174,17 @@ class GatewayRuntimeCompositionTests(unittest.TestCase):
                 pause_safety=pauses.append,
             ).recover()
             self.assertEqual(recovered, 1)
-            self.assertEqual(executor.calls[1], ("/bin/echo", "rm", "--force", name))
+            self.assertEqual(executor.calls[2], ("/bin/echo", "rm", "--force", name))
             self.assertEqual(pauses, [])
 
             failed_pauses: list[str] = []
             ambiguous = GatewayFixtureCleanupRecovery(
                 database_path=database,
                 executable=Path("/bin/echo"),
-                executor=FixtureExecutor([CommandResult(1, b"")]),
+                executor=FixtureExecutor([
+                    CommandResult(0, f"{name}\n".encode()),
+                    CommandResult(0, b"{}"),
+                ]),
                 pause_safety=failed_pauses.append,
             )
             with self.assertRaises(GatewayHttpFixtureError) as failed:

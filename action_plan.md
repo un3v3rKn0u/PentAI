@@ -332,7 +332,8 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     claim-bound container naming and bounded force-removal on timeout, strict HTTP
     framing, a mandatory global safety latch when cleanup fails, and a limit-plus-one
     body stop. Runtime startup/shutdown also reconciles unfinished durable fixture claims,
-    verifies claim-bound container absence, and pauses globally on ambiguity. A durable, one-use
+    verifies exact ownership/role/claim labels before removal, proves container absence,
+    and pauses globally on ambiguity. A durable, one-use
     execution claim now binds the fixed effect to the committed request start, grant,
     budget/rate reservations, destination decision, runtime image/network, fresh
     containment identity, response ceiling, and absolute deadline; finalization must

@@ -3351,6 +3351,37 @@ safe absence check. General gateway transports remain disabled and need their ow
 effect identities.
 
 **Residual risk accepted:** A defective or malicious OCI runtime could return a false empty
-listing. Rootless internal TEST-NET containment and subsequent conformance attestation are
-additional layers. This review is self-authored and non-independent and cannot satisfy
-external independent assurance.
+listing. The follow-on cleanup ownership slice now verifies exact PentAI role and claim
+labels before deletion; rootless internal TEST-NET containment and subsequent conformance
+attestation remain additional layers. This review is self-authored and non-independent and
+cannot satisfy external independent assurance.
+
+## 2026-08-14 — Fixture cleanup ownership verification
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Fixed launch labels, claim-to-container binding, exact-name discovery,
+bounded label inspection, required-label subset matching, mismatch denial before deletion,
+post-removal absence verification, compatibility, and fixture-only authority.
+
+**Evidence examined:** Fixed launch-argument label assertions; successful exact-label
+inspection, removal, and absence test; missing-label safety-pause test; malformed and
+ambiguous recovery paths; complete Python tests, Ruff, mypy, UI tests/build/typecheck,
+desktop Cargo check; complete diff; durable cleanup and managed-runtime ownership reviews.
+
+**Findings:** Container name equality is no longer sufficient deletion authority. Cleanup
+requires the runtime object to prove PentAI management, the fixed fixture role, and the
+exact immutable execution claim before issuing force-removal.
+
+**Limitations and deferred work:** OCI labels are runtime-reported rather than independently
+signed. The adapter remains an internal TEST-NET proof and general gateway execution stays
+disabled pending stronger production runtime identity.
+
+**Residual risk accepted:** A compromised OCI runtime can forge inspection output. Rootless
+containment, trusted executable checks, exact claim identity, and subsequent conformance
+attestation remain defense layers. This review is self-authored and non-independent and
+cannot satisfy external independent assurance.
