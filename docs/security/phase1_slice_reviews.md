@@ -3253,11 +3253,42 @@ The host bounded executor receives the same earlier boundary and kills an overlo
 command, while late success cannot be durably classified as completed.
 
 **Limitations and deferred work:** The slice is deliberately fixture-specific. General
-gateway transports remain disabled and require equivalent deadline interruption. The host
-timeout kills the attached OCI command; containment lifecycle recovery remains the cleanup
-backstop if an OCI implementation does not synchronously remove its `--rm` container.
+gateway transports remain disabled and require equivalent deadline interruption. The
+follow-on timeout-cleanup slice now explicitly removes the claim-bound fixture container
+instead of relying only on attached-command termination and `--rm` behavior.
 
 **Residual risk accepted:** Scheduler latency may delay observation or cleanup slightly,
 though the isolated client independently stops socket I/O at its monotonic boundary. OCI
 runtime defects remain bounded by internal TEST-NET-only containment. This review is
+self-authored and non-independent and cannot satisfy external independent assurance.
+
+## 2026-08-14 — Gateway timeout cleanup
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Claim-derived OCI naming, fixed launch arguments, timeout-only cleanup,
+bounded force-removal, cleanup exception and nonzero-result handling, fixed diagnostics,
+compatibility, and the fixture-only execution boundary.
+
+**Evidence examined:** Fixed named-launch assertions, host-timeout cleanup command and
+deadline-denial test, cleanup-failure denial test, malformed-output and containment tests;
+complete Python tests, Ruff, mypy, UI tests/build/typecheck, desktop Cargo check; complete
+diff; fixture transport and deadline-interruption reviews.
+
+**Findings:** A killed attached runtime command is no longer treated as proof of container
+removal. Timeout handling identifies and force-removes the exact claim-bound container and
+fails closed unless the runtime reports successful cleanup.
+
+**Limitations and deferred work:** The adapter does not yet globally pause safety on cleanup
+failure because the fixture transport has no production composition or safety-control
+dependency. General gateway execution remains disabled and must make cleanup failure a
+latched safety event before activation.
+
+**Residual risk accepted:** A defective or malicious OCI runtime could falsely report
+successful removal. Hosted rootless containment and post-run conformance provide additional
+evidence, while the only enabled proof target remains internal TEST-NET. This review is
 self-authored and non-independent and cannot satisfy external independent assurance.

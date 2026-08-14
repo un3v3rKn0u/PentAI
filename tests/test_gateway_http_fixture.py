@@ -116,6 +116,8 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     assert measurement.observed_response_bytes == 17
     command, timeout, output_limit = executor.calls[0]
     assert command[:4] == (str(RUNTIME), "run", "--log-driver=none", "--rm")
+    assert "--name" in command
+    assert f"pentai-fixture-{claim()['claim_id']}" in command
     assert "--network" in command
     assert NETWORK in command
     assert "--read-only" in command
@@ -132,17 +134,41 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
 def test_fixture_transport_maps_host_timeout_to_deadline_denial() -> None:
     @dataclass
     class TimeoutExecutor:
+        cleanup_returncode: int = 0
+        calls: list[tuple[tuple[str, ...], float, int]] = field(default_factory=list)
+
         def execute(
             self, argv: tuple[str, ...], *, timeout_seconds: float, max_output_bytes: int
         ) -> CommandResult:
-            raise SnapshotCollectionError("RUNTIME_COMMAND_TIMEOUT", "synthetic timeout")
+            self.calls.append((argv, timeout_seconds, max_output_bytes))
+            if len(self.calls) == 1:
+                raise SnapshotCollectionError("RUNTIME_COMMAND_TIMEOUT", "synthetic timeout")
+            return CommandResult(self.cleanup_returncode, b"")
 
+    executor = TimeoutExecutor()
     transport = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, executor=TimeoutExecutor()
+        executable=RUNTIME, executor=executor
     )
     with pytest.raises(GatewayHttpFixtureError) as raised:
         transport.execute(claim=claim(), containment=containment())
     assert raised.value.code == "HTTP_FIXTURE_DEADLINE"
+    assert executor.calls[1] == (
+        (
+            str(RUNTIME),
+            "rm",
+            "--force",
+            f"pentai-fixture-{claim()['claim_id']}",
+        ),
+        2,
+        4096,
+    )
+
+    failed_cleanup = OciGatewayHttpFixtureTransport(
+        executable=RUNTIME, executor=TimeoutExecutor(cleanup_returncode=1)
+    )
+    with pytest.raises(GatewayHttpFixtureError) as cleanup_failed:
+        failed_cleanup.execute(claim=claim(), containment=containment())
+    assert cleanup_failed.value.code == "HTTP_FIXTURE_CLEANUP_FAILED"
 
 
 def test_fixture_transport_reclassifies_completion_observed_after_deadline() -> None:

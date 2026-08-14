@@ -329,7 +329,8 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     The image-pinned Rust gateway now performs a fixed GET against an owned TEST-NET
     fixture inside the rootless internal network, with a monotonic connect/write/read
     deadline, a host-side OCI process timeout derived from the same durable boundary,
-    strict HTTP framing, and a limit-plus-one body stop. A durable, one-use
+    claim-bound container naming and bounded force-removal on timeout, strict HTTP
+    framing, and a limit-plus-one body stop. A durable, one-use
     execution claim now binds the fixed effect to the committed request start, grant,
     budget/rate reservations, destination decision, runtime image/network, fresh
     containment identity, response ceiling, and absolute deadline; finalization must
