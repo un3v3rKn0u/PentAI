@@ -1007,6 +1007,10 @@ class AuthorizationSliceTests(unittest.TestCase):
             contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json"), ()
         )
         self.assertEqual(claim["target_ip"], "192.0.2.20")
+        self.assertTrue(self.service.verify_gateway_fixture_execution_claim(claim))
+        altered_claim = dict(claim)
+        altered_claim["response_bytes_limit"] = int(claim["response_bytes_limit"]) + 1
+        self.assertFalse(self.service.verify_gateway_fixture_execution_claim(altered_claim))
         with self.assertRaises(DomainError) as replayed:
             self.service.claim_gateway_fixture_execution(
                 started["start_id"], containment=containment

@@ -30,7 +30,7 @@ from pentai_core.database import transaction
 from pentai_core.gateway_response import GatewayResponseMeasurement
 from pentai_core.network_attestation import AttestationError, NetworkAttestor
 from pentai_core.network_control import authorize_destination, validate_attestation
-from pentai_core.policy_signing import PolicySigner
+from pentai_core.policy_signing import PolicySigner, gateway_fixture_execution_claim_payload
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
 from pentai_core.storage_safety import StorageSafetyError, StorageSafetyLatch
 from pentai_core.worker_containment import validate_containment_attestation
@@ -3437,6 +3437,15 @@ class AuthorizationService:
                 "fixture_execution_enabled": True,
                 "external_execution_enabled": False,
             }
+            if self.policy_signer is None:
+                raise DomainError("GATEWAY_FIXTURE_DENIED", "claim signing is unavailable")
+            claim["signature"] = {
+                "algorithm": "Ed25519",
+                "key_id": self.policy_signer.key_id,
+                "value": self.policy_signer.sign(
+                    gateway_fixture_execution_claim_payload(claim)
+                ),
+            }
             if contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json"):
                 raise DomainError("GATEWAY_FIXTURE_DENIED", "execution claim is invalid")
             connection.execute(
@@ -3472,7 +3481,22 @@ class AuthorizationService:
                 },
                 occurred_at=claimed_at,
             )
-        return claim
+            return claim
+
+    def verify_gateway_fixture_execution_claim(self, claim: dict[str, Any]) -> bool:
+        self._require_storage_safe()
+        signature = claim.get("signature")
+        if (
+            self.policy_signer is None
+            or not isinstance(signature, dict)
+            or contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json")
+        ):
+            return False
+        return self.policy_signer.verify(
+            gateway_fixture_execution_claim_payload(claim),
+            str(signature.get("value", "")),
+            str(signature.get("key_id", "")),
+        )
 
     def abort_gateway_session(self, session_id: str, *, reason: str) -> dict[str, Any]:
         if not reason.strip():
