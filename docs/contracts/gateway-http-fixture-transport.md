@@ -56,6 +56,11 @@ network. Recovery reloads those values through the claim-to-runtime ledger join 
 requires exact matches, so incomplete durable linkage or a partially matching container
 cannot authorize removal.
 
+Recovery inspects the complete OCI object and also requires a canonical container ID, the
+exact claim-derived name, the pinned image as the actual runtime image, and exactly one
+network attachment matching the managed gateway network. Removal targets the verified
+container ID rather than its name, followed by another exact-name absence check.
+
 ## Hosted containment proof
 
 The Linux rootless Podman workflow creates a unique internal network on the TEST-NET

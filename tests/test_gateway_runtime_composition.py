@@ -166,16 +166,24 @@ class GatewayRuntimeCompositionTests(unittest.TestCase):
                     (claim_id,),
                 )
             name = f"pentai-fixture-{claim_id}"
-            executor = FixtureExecutor([
-                CommandResult(0, f"{name}\n".encode()),
-                CommandResult(0, json.dumps({
+            container_id = "b" * 64
+            inspected = {
+                "Id": container_id,
+                "Name": f"/{name}",
+                "Image": "sha256:" + "a" * 64,
+                "Config": {"Labels": {
                     "com.pentai.managed": "true",
                     "com.pentai.role": "gateway-http-fixture",
                     "com.pentai.execution-claim": claim_id,
                     "com.pentai.runtime-id": "runtime",
                     "com.pentai.gateway-network": "fixture-network",
                     "com.pentai.image-digest": "sha256:" + "a" * 64,
-                }).encode()),
+                }},
+                "NetworkSettings": {"Networks": {"fixture-network": {}}},
+            }
+            executor = FixtureExecutor([
+                CommandResult(0, f"{name}\n".encode()),
+                CommandResult(0, json.dumps(inspected).encode()),
                 CommandResult(0, b""),
                 CommandResult(0, b""),
             ])
@@ -187,7 +195,9 @@ class GatewayRuntimeCompositionTests(unittest.TestCase):
                 pause_safety=pauses.append,
             ).recover()
             self.assertEqual(recovered, 1)
-            self.assertEqual(executor.calls[2], ("/bin/echo", "rm", "--force", name))
+            self.assertEqual(
+                executor.calls[2], ("/bin/echo", "rm", "--force", container_id)
+            )
             self.assertEqual(pauses, [])
 
             failed_pauses: list[str] = []
@@ -196,7 +206,10 @@ class GatewayRuntimeCompositionTests(unittest.TestCase):
                 executable=Path("/bin/echo"),
                 executor=FixtureExecutor([
                     CommandResult(0, f"{name}\n".encode()),
-                    CommandResult(0, b"{}"),
+                    CommandResult(
+                        0,
+                        json.dumps({**inspected, "Image": "sha256:" + "c" * 64}).encode(),
+                    ),
                 ]),
                 pause_safety=failed_pauses.append,
             )

@@ -22,6 +22,7 @@ from pentai_core.worker_containment import validate_containment_attestation
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
+_CONTAINER_ID = re.compile(r"^[a-f0-9]{64}$")
 _FIXTURE_LABELS = {
     "com.pentai.managed": "true",
     "com.pentai.role": "gateway-http-fixture",
@@ -91,15 +92,25 @@ class GatewayFixtureCleanupRecovery:
                     "com.pentai.image-digest": image_digest,
                 }
                 container_name = f"pentai-fixture-{claim_id}"
-                if self._container_present(container_name, expected_labels):
+                container_id = self._container_identity(
+                    container_name,
+                    expected_labels=expected_labels,
+                    image_digest=image_digest,
+                    network_id=network_id,
+                )
+                if container_id is not None:
                     removed = self._executor.execute(
-                        (self._executable, "rm", "--force", container_name),
+                        (self._executable, "rm", "--force", container_id),
                         timeout_seconds=2,
                         max_output_bytes=4096,
                     )
-                    if removed.returncode != 0 or self._container_present(
-                        container_name, expected_labels
-                    ):
+                    remaining = self._container_identity(
+                        container_name,
+                        expected_labels=expected_labels,
+                        image_digest=image_digest,
+                        network_id=network_id,
+                    )
+                    if removed.returncode != 0 or remaining is not None:
                         raise GatewayHttpFixtureError(
                             "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
                         )
@@ -122,9 +133,14 @@ class GatewayFixtureCleanupRecovery:
                 "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
             ) from exc
 
-    def _container_present(
-        self, container_name: str, expected_labels: dict[str, str]
-    ) -> bool:
+    def _container_identity(
+        self,
+        container_name: str,
+        *,
+        expected_labels: dict[str, str],
+        image_digest: str,
+        network_id: str,
+    ) -> str | None:
         result = self._executor.execute(
             (
                 self._executable,
@@ -149,33 +165,50 @@ class GatewayFixtureCleanupRecovery:
                 "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
             )
         if not names:
-            return False
+            return None
         inspected = self._executor.execute(
             (
                 self._executable,
                 "inspect",
                 "--format",
-                "{{json .Config.Labels}}",
+                "{{json .}}",
                 container_name,
             ),
             timeout_seconds=2,
             max_output_bytes=4096,
         )
         try:
-            labels = json.loads(inspected.stdout)
+            document = json.loads(inspected.stdout)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise GatewayHttpFixtureError(
                 "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
             ) from exc
-        if (
+        config = document.get("Config") if isinstance(document, dict) else None
+        labels = config.get("Labels") if isinstance(config, dict) else None
+        network_settings = document.get("NetworkSettings") if isinstance(document, dict) else None
+        networks = (
+            network_settings.get("Networks")
+            if isinstance(network_settings, dict)
+            else None
+        )
+        container_id = document.get("Id") if isinstance(document, dict) else None
+        name = document.get("Name") if isinstance(document, dict) else None
+        invalid = (
             inspected.returncode != 0
+            or not isinstance(container_id, str)
+            or not _CONTAINER_ID.fullmatch(container_id)
+            or name not in {container_name, f"/{container_name}"}
+            or document.get("Image") != image_digest
+            or not isinstance(networks, dict)
+            or set(networks) != {network_id}
             or not isinstance(labels, dict)
             or any(labels.get(key) != value for key, value in expected_labels.items())
-        ):
+        )
+        if invalid:
             raise GatewayHttpFixtureError(
                 "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
             )
-        return True
+        return container_id
 
 
 class OciGatewayHttpFixtureTransport:
