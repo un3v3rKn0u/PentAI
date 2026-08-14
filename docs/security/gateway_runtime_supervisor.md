@@ -9,6 +9,11 @@ managed internal network, and pinned conformance-probe image. It then runs bound
 repeat checks until shutdown. Neither recovery nor monitoring enables execution or
 resumes an assessment.
 
+Before sentinel recovery, the configured supervisor also enumerates unfinished durable
+fixture claims and verifies that each claim-derived container name is absent, force-removing
+an exact match when necessary. Ambiguous runtime output or failed cleanup pauses global
+safety and prevents readiness.
+
 When no OCI supervisor is configured, startup queries the durable runtime ledger. An
 empty ledger is reported as `disabled`; any record that may still own a container is
 reported as `degraded`, global safety remains paused, readiness returns HTTP 503, and

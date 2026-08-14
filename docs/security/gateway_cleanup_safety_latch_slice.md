@@ -20,3 +20,6 @@ fixture callback, preventing new compositions from accidentally omitting the lat
 
 This remains limited to the owned TEST-NET proof path. Any future general transport must
 use a durable safety latch and recovery workflow rather than an optional callback.
+
+The follow-on durable cleanup-recovery slice now replays unfinished claim-bound cleanup
+before gateway runtime recovery and containment attestation on every supervisor restart.

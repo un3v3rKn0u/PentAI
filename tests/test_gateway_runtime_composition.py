@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import tempfile
 import unittest
 from dataclasses import dataclass, field
@@ -10,11 +11,16 @@ from typing import Any
 from unittest.mock import patch
 
 from pentai_core.config import Settings
+from pentai_core.gateway_http_fixture import (
+    GatewayFixtureCleanupRecovery,
+    GatewayHttpFixtureError,
+)
 from pentai_core.gateway_runtime_composition import (
     VerifiedGatewayRuntimeLifecycle,
     compose_gateway_runtime_supervisor,
 )
 from pentai_core.migrate import migrate
+from pentai_core.runtime_snapshot_collector import CommandResult
 
 
 @dataclass
@@ -57,6 +63,18 @@ class FixtureController:
 
     def terminate(self, runtime_id: str, container_id: str | None) -> None:
         return
+
+
+@dataclass
+class FixtureExecutor:
+    responses: list[CommandResult]
+    calls: list[tuple[str, ...]] = field(default_factory=list)
+
+    def execute(
+        self, argv: tuple[str, ...], *, timeout_seconds: float, max_output_bytes: int
+    ) -> CommandResult:
+        self.calls.append(argv)
+        return self.responses.pop(0)
 
 
 def configured_settings(database: Path, executable: Path = Path("/bin/echo")) -> Settings:
@@ -110,11 +128,60 @@ class GatewayRuntimeCompositionTests(unittest.TestCase):
                 events.append("attest")
                 return {}
 
+        class Cleanup:
+            def recover(self) -> int:
+                events.append("cleanup")
+                return 0
+
         recovered = VerifiedGatewayRuntimeLifecycle(
-            lifecycle=Lifecycle(), attestor=Attestor()
+            lifecycle=Lifecycle(), attestor=Attestor(), fixture_cleanup=Cleanup()
         ).recover()
         self.assertEqual(recovered, 1)
-        self.assertEqual(events, ["recover", "attest"])
+        self.assertEqual(events, ["cleanup", "recover", "attest"])
+
+    def test_claimed_fixture_container_is_removed_and_absence_verified(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            database = Path(temporary) / "pentai.db"
+            migrate(database)
+            claim_id = "22222222-2222-4222-8222-222222222222"
+            with sqlite3.connect(database) as connection:
+                connection.execute("PRAGMA foreign_keys = OFF")
+                connection.execute(
+                    """INSERT INTO gateway_fixture_execution_claims(
+                    claim_id, start_id, runtime_id, containment_attestation_id,
+                    status, claimed_at, finalized_at
+                    ) VALUES (?, 'start', 'runtime', 'attestation', 'claimed',
+                    '2030-01-01T00:00:00Z', NULL)""",
+                    (claim_id,),
+                )
+            name = f"pentai-fixture-{claim_id}"
+            executor = FixtureExecutor([
+                CommandResult(0, f"{name}\n".encode()),
+                CommandResult(0, b""),
+                CommandResult(0, b""),
+            ])
+            pauses: list[str] = []
+            recovered = GatewayFixtureCleanupRecovery(
+                database_path=database,
+                executable=Path("/bin/echo"),
+                executor=executor,
+                pause_safety=pauses.append,
+            ).recover()
+            self.assertEqual(recovered, 1)
+            self.assertEqual(executor.calls[1], ("/bin/echo", "rm", "--force", name))
+            self.assertEqual(pauses, [])
+
+            failed_pauses: list[str] = []
+            ambiguous = GatewayFixtureCleanupRecovery(
+                database_path=database,
+                executable=Path("/bin/echo"),
+                executor=FixtureExecutor([CommandResult(1, b"")]),
+                pause_safety=failed_pauses.append,
+            )
+            with self.assertRaises(GatewayHttpFixtureError) as failed:
+                ambiguous.recover()
+            self.assertEqual(failed.exception.code, "HTTP_FIXTURE_RECOVERY_FAILED")
+            self.assertEqual(failed_pauses, ["GATEWAY_FIXTURE_RECOVERY_FAILED"])
 
     def test_disabled_configuration_rejects_ambiguous_runtime_fields(self) -> None:
         with self.assertRaisesRegex(ValueError, "explicit enablement"):

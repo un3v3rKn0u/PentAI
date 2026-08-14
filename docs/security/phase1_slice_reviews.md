@@ -3314,11 +3314,43 @@ transport composition supplies a safety dependency, and cleanup failure latches 
 global safety state before control returns. Pause failure remains fail closed and
 non-sensitive.
 
-**Limitations and deferred work:** The proof transport is not part of production startup,
-and the callback invocation is synchronous rather than a durable retry queue. General
-gateway transports remain disabled and require durable cleanup-recovery orchestration.
+**Limitations and deferred work:** The follow-on durable cleanup-recovery slice now uses
+unfinished claim records as a restart-safe cleanup queue before supervisor readiness.
+General gateway transports remain disabled and require the same reconciliation pattern.
 
 **Residual risk accepted:** Process termination between cleanup failure and the synchronous
 pause call could prevent latching. The hosted proof remains internal TEST-NET only, and
 startup recovery keeps execution disabled. This review is self-authored and non-independent
 and cannot satisfy external independent assurance.
+
+## 2026-08-14 — Durable fixture cleanup recovery
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Durable claimed-state discovery, deterministic ordering, claim-derived
+container identity, exact-name bounded queries, idempotent absence, force-removal and
+post-removal verification, recovery ordering, global safety pause, compatibility, and the
+fixture-only authority boundary.
+
+**Evidence examined:** Present-container removal and verified-absence test; ambiguous-query
+pause test; verified lifecycle ordering and composed supervisor tests; timeout cleanup and
+safety-latch tests; complete Python tests, Ruff, mypy, UI tests/build/typecheck, desktop
+Cargo check; complete diff; runtime supervisor and fixture claim contracts.
+
+**Findings:** Process restart can no longer abandon durable fixture claims while assuming
+their OCI effects disappeared. Claim-bound cleanup completes and proves absence before
+runtime recovery and containment attestation can report readiness.
+
+**Limitations and deferred work:** Authorization startup performs the later transactional
+claim abandonment, so an abrupt crash between verified cleanup and abandonment repeats a
+safe absence check. General gateway transports remain disabled and need their own durable
+effect identities.
+
+**Residual risk accepted:** A defective or malicious OCI runtime could return a false empty
+listing. Rootless internal TEST-NET containment and subsequent conformance attestation are
+additional layers. This review is self-authored and non-independent and cannot satisfy
+external independent assurance.

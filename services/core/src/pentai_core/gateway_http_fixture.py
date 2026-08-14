@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NoReturn, Protocol
+from uuid import UUID
 
 from pentai_policy.document import contract_issues, parse_time
 
+from pentai_core.database import transaction
 from pentai_core.gateway_response import GatewayResponseMeasurement
 from pentai_core.oci_runtime_command import oci_run_command
 from pentai_core.runtime_snapshot_collector import (
@@ -25,6 +28,94 @@ class GatewayHttpFixtureError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+class GatewayFixtureCleanupRecovery:
+    def __init__(
+        self,
+        *,
+        database_path: Path,
+        executable: Path,
+        executor: BoundedCommandExecutor,
+        pause_safety: Callable[[str], Any],
+    ) -> None:
+        if not executable.is_absolute():
+            raise GatewayHttpFixtureError("HTTP_FIXTURE_INVALID", "fixture is invalid")
+        self._database_path = database_path
+        self._executable = str(executable)
+        self._executor = executor
+        self._pause_safety = pause_safety
+
+    def recover(self) -> int:
+        try:
+            with transaction(self._database_path) as connection:
+                claim_ids = tuple(
+                    str(row["claim_id"])
+                    for row in connection.execute(
+                        """SELECT claim_id FROM gateway_fixture_execution_claims
+                        WHERE status = 'claimed' ORDER BY claimed_at, claim_id"""
+                    )
+                )
+            for claim_id in claim_ids:
+                if str(UUID(claim_id)) != claim_id:
+                    raise GatewayHttpFixtureError(
+                        "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
+                    )
+                container_name = f"pentai-fixture-{claim_id}"
+                if self._container_present(container_name):
+                    removed = self._executor.execute(
+                        (self._executable, "rm", "--force", container_name),
+                        timeout_seconds=2,
+                        max_output_bytes=4096,
+                    )
+                    if removed.returncode != 0 or self._container_present(container_name):
+                        raise GatewayHttpFixtureError(
+                            "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
+                        )
+            return len(claim_ids)
+        except (
+            GatewayHttpFixtureError,
+            SnapshotCollectionError,
+            sqlite3.Error,
+            ValueError,
+        ) as exc:
+            try:
+                self._pause_safety("GATEWAY_FIXTURE_RECOVERY_FAILED")
+            except Exception as pause_exc:
+                raise GatewayHttpFixtureError(
+                    "HTTP_FIXTURE_SAFETY_PAUSE_FAILED", "fixture safety pause failed"
+                ) from pause_exc
+            if isinstance(exc, GatewayHttpFixtureError):
+                raise
+            raise GatewayHttpFixtureError(
+                "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
+            ) from exc
+
+    def _container_present(self, container_name: str) -> bool:
+        result = self._executor.execute(
+            (
+                self._executable,
+                "ps",
+                "--all",
+                "--filter",
+                f"name=^{container_name}$",
+                "--format",
+                "{{.Names}}",
+            ),
+            timeout_seconds=2,
+            max_output_bytes=4096,
+        )
+        try:
+            names = result.stdout.decode(errors="strict").splitlines()
+        except UnicodeDecodeError as exc:
+            raise GatewayHttpFixtureError(
+                "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
+            ) from exc
+        if result.returncode != 0 or any(name != container_name for name in names):
+            raise GatewayHttpFixtureError(
+                "HTTP_FIXTURE_RECOVERY_FAILED", "fixture recovery failed"
+            )
+        return bool(names)
 
 
 class OciGatewayHttpFixtureTransport:
