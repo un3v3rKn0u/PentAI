@@ -3108,7 +3108,16 @@ class AuthorizationService:
                 raise DomainError(
                     "GATEWAY_ACCOUNTING_INVALID", "response limit proof is invalid"
                 )
-            if measurement.outcome != "response_limit_exceeded" and retained != observed:
+            deadline_with_limit_proof = (
+                measurement.outcome == "deadline_exceeded"
+                and observed == limit + 1
+                and retained == limit
+            )
+            if (
+                measurement.outcome != "response_limit_exceeded"
+                and retained != observed
+                and not deadline_with_limit_proof
+            ):
                 raise DomainError(
                     "GATEWAY_ACCOUNTING_INVALID", "response accounting is incomplete"
                 )

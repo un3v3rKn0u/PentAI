@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
@@ -10,7 +11,10 @@ from pentai_policy.document import contract_issues, parse_time
 
 from pentai_core.gateway_response import GatewayResponseMeasurement
 from pentai_core.oci_runtime_command import oci_run_command
-from pentai_core.runtime_snapshot_collector import BoundedCommandExecutor
+from pentai_core.runtime_snapshot_collector import (
+    BoundedCommandExecutor,
+    SnapshotCollectionError,
+)
 from pentai_core.worker_containment import validate_containment_attestation
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -31,11 +35,13 @@ class OciGatewayHttpFixtureTransport:
         *,
         executable: Path,
         executor: BoundedCommandExecutor,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if not executable.is_absolute():
             raise GatewayHttpFixtureError("HTTP_FIXTURE_INVALID", "fixture is invalid")
         self._executable = str(executable)
         self._executor = executor
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def execute(
         self,
@@ -67,36 +73,44 @@ class OciGatewayHttpFixtureTransport:
             raise GatewayHttpFixtureError(
                 "HTTP_FIXTURE_CONTAINMENT_DENIED", "fixture attestation is not claimed"
             )
-        now = datetime.now(UTC)
+        now = _trusted_time(self._clock)
         durable_deadline = parse_time(claim["deadline_at"])
         effective_deadline = min(durable_deadline, now + timedelta(seconds=5))
         deadline_milliseconds = int(effective_deadline.timestamp() * 1_000)
-        if deadline_milliseconds <= int(now.timestamp() * 1_000):
+        remaining_seconds = deadline_milliseconds / 1_000 - now.timestamp()
+        if remaining_seconds <= 0:
             raise GatewayHttpFixtureError("HTTP_FIXTURE_DEADLINE", "fixture deadline expired")
-        result = self._executor.execute(
-            oci_run_command(
-                self._executable,
-                "--rm",
-                "--network",
-                network_id,
-                "--read-only",
-                "--cap-drop=ALL",
-                "--security-opt=no-new-privileges",
-                "--pids-limit=16",
-                "--memory=32m",
-                "--cpus=0.25",
-                "--entrypoint=/pentai-network-probe",
-                str(claim["image_digest"]),
-                "--mode=http-fixture-client",
-                "--target=192.0.2.20:8080",
-                "--host=example.test",
-                "--path=/fixture",
-                f"--maximum-response-bytes={maximum_response_bytes}",
-                f"--deadline-unix-milliseconds={deadline_milliseconds}",
-            ),
-            timeout_seconds=7,
-            max_output_bytes=4096,
-        )
+        try:
+            result = self._executor.execute(
+                oci_run_command(
+                    self._executable,
+                    "--rm",
+                    "--network",
+                    network_id,
+                    "--read-only",
+                    "--cap-drop=ALL",
+                    "--security-opt=no-new-privileges",
+                    "--pids-limit=16",
+                    "--memory=32m",
+                    "--cpus=0.25",
+                    "--entrypoint=/pentai-network-probe",
+                    str(claim["image_digest"]),
+                    "--mode=http-fixture-client",
+                    "--target=192.0.2.20:8080",
+                    "--host=example.test",
+                    "--path=/fixture",
+                    f"--maximum-response-bytes={maximum_response_bytes}",
+                    f"--deadline-unix-milliseconds={deadline_milliseconds}",
+                ),
+                timeout_seconds=remaining_seconds,
+                max_output_bytes=4096,
+            )
+        except SnapshotCollectionError as exc:
+            if exc.code == "RUNTIME_COMMAND_TIMEOUT":
+                raise GatewayHttpFixtureError(
+                    "HTTP_FIXTURE_DEADLINE", "fixture deadline exceeded"
+                ) from exc
+            raise
         if result.returncode != 0 or len(result.stdout) > 4096:
             raise GatewayHttpFixtureError("HTTP_FIXTURE_FAILED", "fixture request failed")
         try:
@@ -133,9 +147,10 @@ class OciGatewayHttpFixtureTransport:
             or (outcome != "response_limit_exceeded" and retained != observed)
         ):
             raise GatewayHttpFixtureError("HTTP_FIXTURE_INVALID", "fixture output is invalid")
-        return GatewayResponseMeasurement(
-            outcome, observed, retained, datetime.now(UTC)
-        )
+        completed_at = _trusted_time(self._clock)
+        if completed_at >= effective_deadline:
+            outcome = "deadline_exceeded"
+        return GatewayResponseMeasurement(outcome, observed, retained, completed_at)
 
 
 class GatewayFixtureAuthority(Protocol):
@@ -172,3 +187,10 @@ class GatewayHttpFixtureExecution:
         return self._authority.finalize_gateway_request(
             start_id, measurement, execution_claim_id=str(claim["claim_id"])
         )
+
+
+def _trusted_time(clock: Callable[[], datetime]) -> datetime:
+    value = clock()
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise GatewayHttpFixtureError("HTTP_FIXTURE_CLOCK", "fixture clock is invalid")
+    return value.astimezone(UTC)

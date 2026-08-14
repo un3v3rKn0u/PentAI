@@ -11,7 +11,7 @@ from pentai_core.gateway_http_fixture import (
     GatewayHttpFixtureExecution,
     OciGatewayHttpFixtureTransport,
 )
-from pentai_core.runtime_snapshot_collector import CommandResult
+from pentai_core.runtime_snapshot_collector import CommandResult, SnapshotCollectionError
 
 RUNTIME = Path("/usr/local/bin/podman")
 IMAGE = "sha256:" + "a" * 64
@@ -101,13 +101,14 @@ def output(
 
 
 def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
+    now = datetime.now(UTC)
     executor = FixtureExecutor(output())
     transport = OciGatewayHttpFixtureTransport(
-        executable=RUNTIME, executor=executor
+        executable=RUNTIME, executor=executor, clock=lambda: now
     )
 
     measurement = transport.execute(
-        claim=claim(),
+        claim=claim(deadline_at=(now + timedelta(seconds=2)).isoformat()),
         containment=containment(),
     )
 
@@ -124,7 +125,39 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     assert "--host=example.test" in command
     assert "--path=/fixture" in command
     assert any(item.startswith("--deadline-unix-milliseconds=") for item in command)
-    assert (timeout, output_limit) == (7, 4096)
+    assert timeout == pytest.approx(2, abs=0.001)
+    assert output_limit == 4096
+
+
+def test_fixture_transport_maps_host_timeout_to_deadline_denial() -> None:
+    @dataclass
+    class TimeoutExecutor:
+        def execute(
+            self, argv: tuple[str, ...], *, timeout_seconds: float, max_output_bytes: int
+        ) -> CommandResult:
+            raise SnapshotCollectionError("RUNTIME_COMMAND_TIMEOUT", "synthetic timeout")
+
+    transport = OciGatewayHttpFixtureTransport(
+        executable=RUNTIME, executor=TimeoutExecutor()
+    )
+    with pytest.raises(GatewayHttpFixtureError) as raised:
+        transport.execute(claim=claim(), containment=containment())
+    assert raised.value.code == "HTTP_FIXTURE_DEADLINE"
+
+
+def test_fixture_transport_reclassifies_completion_observed_after_deadline() -> None:
+    now = datetime.now(UTC)
+    observations = iter((now, now + timedelta(seconds=2)))
+    transport = OciGatewayHttpFixtureTransport(
+        executable=RUNTIME,
+        executor=FixtureExecutor(output()),
+        clock=lambda: next(observations),
+    )
+    measurement = transport.execute(
+        claim=claim(deadline_at=(now + timedelta(seconds=1)).isoformat()),
+        containment=containment(),
+    )
+    assert measurement.outcome == "deadline_exceeded"
 
 
 @pytest.mark.parametrize(

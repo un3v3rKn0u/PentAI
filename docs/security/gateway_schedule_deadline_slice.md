@@ -21,4 +21,5 @@ The policy package owns schedule matching and boundary calculation, preventing d
 and gateway paths from drifting apart. The follow-on clock-health slice now continuously
 compares wall and monotonic progress and pauses global safety on uncertainty. This slice
 adds no socket, worker, destination, or external effect. Active interruption when a
-committed deadline arrives remains a separate Phase 1 exit-gate control.
+committed deadline arrives is now independently enforced for the isolated HTTP fixture;
+general gateway transports remain a separate Phase 1 exit-gate control.
