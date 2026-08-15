@@ -15,6 +15,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 const CLAIM_VERIFIER_PATH: &str = "/pentai-claim-verifier.pub";
 const CLAIM_PAYLOAD_PREFIX: &[u8] = b"pentai-gateway-fixture-execution-claim-v2:";
+const CLAIM_PAYLOAD_CHUNK_CHARACTERS: usize = 238;
+const MAXIMUM_CLAIM_PAYLOAD_CHUNKS: usize = 5;
 
 struct Arguments {
     network_id: String,
@@ -132,7 +134,10 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
     let mut path = false;
     let mut maximum_response_bytes = None;
     let mut deadline_unix_milliseconds = None;
-    let mut claim_payload = None;
+    let mut claim_payload_parts: [Option<String>; MAXIMUM_CLAIM_PAYLOAD_CHUNKS] =
+        std::array::from_fn(|_| None);
+    let mut claim_payload_total = None;
+    let mut next_claim_payload_index = 0;
     let mut claim_signature = None;
     for argument in arguments {
         match argument.as_str() {
@@ -158,14 +163,32 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
                     .and_then(|raw| raw.parse::<u128>().ok())
                     .filter(|value| *value > 0);
             }
-            value if value.starts_with("--claim-payload=") => {
-                if claim_payload.is_some() {
-                    return Err("duplicate claim payload");
+            value if value.starts_with("--claim-part=") => {
+                let raw = value
+                    .strip_prefix("--claim-part=")
+                    .ok_or("claim payload part is invalid")?;
+                let (position, chunk) =
+                    raw.split_once(':').ok_or("claim payload part is invalid")?;
+                let (index, total) = position
+                    .split_once('/')
+                    .ok_or("claim payload part is invalid")?;
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|_| "claim payload part is invalid")?;
+                let total = total
+                    .parse::<usize>()
+                    .map_err(|_| "claim payload part is invalid")?;
+                if !(1..=MAXIMUM_CLAIM_PAYLOAD_CHUNKS).contains(&total)
+                    || index != next_claim_payload_index
+                    || index >= total
+                    || claim_payload_total.is_some_and(|expected| expected != total)
+                    || !(1..=CLAIM_PAYLOAD_CHUNK_CHARACTERS).contains(&chunk.len())
+                {
+                    return Err("claim payload part is invalid");
                 }
-                claim_payload = value
-                    .strip_prefix("--claim-payload=")
-                    .filter(|raw| (1..=4096).contains(&raw.len()))
-                    .map(str::to_owned);
+                claim_payload_total = Some(total);
+                claim_payload_parts[index] = Some(chunk.to_owned());
+                next_claim_payload_index += 1;
             }
             value if value.starts_with("--claim-signature=") => {
                 if claim_signature.is_some() {
@@ -179,6 +202,17 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
             _ => return Err("unsupported or duplicate HTTP fixture argument"),
         }
     }
+    let claim_payload = match claim_payload_total {
+        Some(total) if next_claim_payload_index == total => {
+            let mut payload = String::new();
+            for part in claim_payload_parts.iter().take(total) {
+                payload.push_str(part.as_deref().ok_or("claim payload part is missing")?);
+            }
+            Some(payload)
+        }
+        Some(_) => return Err("claim payload part is missing"),
+        None => None,
+    };
     match (
         target,
         mode,
@@ -678,22 +712,32 @@ mod tests {
         let payload = [CLAIM_PAYLOAD_PREFIX, claim.as_bytes()].concat();
         let signing_key = SigningKey::from_bytes(&[7u8; 32]);
         let signature = signing_key.sign(&payload);
-        (
-            vec![
-                "--mode=http-fixture-client".to_owned(),
-                "--target=192.0.2.20:8080".to_owned(),
-                "--host=example.test".to_owned(),
-                "--path=/fixture".to_owned(),
-                format!("--maximum-response-bytes={maximum_response_bytes}"),
-                format!("--deadline-unix-milliseconds={deadline}"),
-                format!("--claim-payload={}", URL_SAFE_NO_PAD.encode(payload)),
-                format!(
-                    "--claim-signature={}",
-                    URL_SAFE_NO_PAD.encode(signature.to_bytes())
-                ),
-            ],
-            signing_key.verifying_key().to_bytes(),
-        )
+        let encoded_payload = URL_SAFE_NO_PAD.encode(payload);
+        let payload_chunks = encoded_payload
+            .as_bytes()
+            .chunks(CLAIM_PAYLOAD_CHUNK_CHARACTERS)
+            .map(|chunk| String::from_utf8(chunk.to_vec()).expect("base64 claim payload"))
+            .collect::<Vec<_>>();
+        let payload_total = payload_chunks.len();
+        let mut arguments = vec![
+            "--mode=http-fixture-client".to_owned(),
+            "--target=192.0.2.20:8080".to_owned(),
+            "--host=example.test".to_owned(),
+            "--path=/fixture".to_owned(),
+            format!("--maximum-response-bytes={maximum_response_bytes}"),
+            format!("--deadline-unix-milliseconds={deadline}"),
+            format!(
+                "--claim-signature={}",
+                URL_SAFE_NO_PAD.encode(signature.to_bytes())
+            ),
+        ];
+        arguments.extend(
+            payload_chunks
+                .into_iter()
+                .enumerate()
+                .map(|(index, chunk)| format!("--claim-part={index}/{payload_total}:{chunk}")),
+        );
+        (arguments, signing_key.verifying_key().to_bytes())
     }
 
     #[test]
@@ -798,22 +842,106 @@ mod tests {
         assert!(parse_http_fixture_client(&unknown).is_err());
         assert!(verify_fixture_claim(&parsed, &[8u8; 32]).is_err());
 
-        for denied in ["--claim-payload=invalid", "--claim-signature=invalid"] {
-            let prefix = denied.split('=').next().expect("claim argument prefix");
-            let changed = approved
-                .iter()
-                .map(|value| {
-                    if value.starts_with(prefix) {
-                        denied.to_owned()
-                    } else {
-                        value.clone()
-                    }
-                })
-                .collect::<Vec<_>>();
-            let changed = parse_http_fixture_client(&changed)
-                .expect("bounded malformed claim fixture request");
-            assert!(verify_fixture_claim(&changed, &public_key).is_err());
-        }
+        let invalid_payload = approved
+            .iter()
+            .map(|value| {
+                if value.starts_with("--claim-part=0/") {
+                    let prefix = value.split_once(':').expect("payload part").0;
+                    format!("{prefix}:invalid")
+                } else {
+                    value.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        let invalid_payload = parse_http_fixture_client(&invalid_payload)
+            .expect("bounded malformed claim fixture request");
+        assert!(verify_fixture_claim(&invalid_payload, &public_key).is_err());
+
+        let invalid_signature = approved
+            .iter()
+            .map(|value| {
+                if value.starts_with("--claim-signature=") {
+                    "--claim-signature=invalid".to_owned()
+                } else {
+                    value.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        let invalid_signature = parse_http_fixture_client(&invalid_signature)
+            .expect("bounded malformed claim signature");
+        assert!(verify_fixture_claim(&invalid_signature, &public_key).is_err());
+
+        let mut missing_part = approved.clone();
+        let missing_index = missing_part
+            .iter()
+            .position(|value| value.starts_with("--claim-part=1/"))
+            .expect("second payload part");
+        missing_part.remove(missing_index);
+        assert!(parse_http_fixture_client(&missing_part).is_err());
+
+        let mut duplicated_part = approved.clone();
+        let first_part = duplicated_part
+            .iter()
+            .find(|value| value.starts_with("--claim-part=0/"))
+            .expect("first payload part")
+            .clone();
+        let first_index = duplicated_part
+            .iter()
+            .position(|value| value.starts_with("--claim-part=0/"))
+            .expect("first payload part");
+        duplicated_part.insert(first_index + 1, first_part);
+        assert!(parse_http_fixture_client(&duplicated_part).is_err());
+
+        let mut reordered_parts = approved.clone();
+        let first_index = reordered_parts
+            .iter()
+            .position(|value| value.starts_with("--claim-part=0/"))
+            .expect("first payload part");
+        let second_index = reordered_parts
+            .iter()
+            .position(|value| value.starts_with("--claim-part=1/"))
+            .expect("second payload part");
+        reordered_parts.swap(first_index, second_index);
+        assert!(parse_http_fixture_client(&reordered_parts).is_err());
+
+        let inconsistent_total = approved
+            .iter()
+            .map(|value| {
+                if value.starts_with("--claim-part=1/5:") {
+                    value.replacen("1/5:", "1/4:", 1)
+                } else {
+                    value.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        assert!(parse_http_fixture_client(&inconsistent_total).is_err());
+
+        let excessive_total = approved
+            .iter()
+            .map(|value| {
+                if value.starts_with("--claim-part=0/5:") {
+                    value.replacen("0/5:", "0/6:", 1)
+                } else {
+                    value.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        assert!(parse_http_fixture_client(&excessive_total).is_err());
+
+        let oversized_part = approved
+            .iter()
+            .map(|value| {
+                if value.starts_with("--claim-part=0/5:") {
+                    format!(
+                        "--claim-part=0/5:{}",
+                        "a".repeat(CLAIM_PAYLOAD_CHUNK_CHARACTERS + 1)
+                    )
+                } else {
+                    value.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        assert!(parse_http_fixture_client(&oversized_part).is_err());
 
         let changed_limit = approved
             .iter()

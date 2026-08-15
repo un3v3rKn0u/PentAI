@@ -18,8 +18,11 @@ fail before connection.
 ## Safety and compatibility
 
 The v2 schema and durable database ledger are unchanged, so no contract version or migration
-is required. The additional command arguments carry synthetic authorization metadata and a
-public signature, not secrets or response data. The new Rust dependencies are lockfile-pinned
+is required. The canonical payload is split into at most five ordered, numbered chunks; each
+argument remains within 256 characters and the complete OCI vector remains within 32 items.
+The probe rejects missing, duplicate, reordered, inconsistent, excessive, or oversized chunks.
+These arguments carry synthetic authorization metadata and a public signature, not secrets or
+response data. The new Rust dependencies are lockfile-pinned
 and used only for base64 decoding, strict JSON parsing, RFC 3339 time comparison, and Ed25519
 verification.
 

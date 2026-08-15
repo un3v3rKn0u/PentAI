@@ -3584,14 +3584,15 @@ cross-checks, deadline non-extension, pre-socket ordering, malformed/wrong-key/d
 paths, dependency lockfile, compatibility, privacy, rollback, and fixture-only authority.
 
 **Evidence examined:** Rust valid-signature, wrong-key, malformed payload/signature, changed
-bound, and deadline tests; host command assertions; public-key export tests; locked Cargo
+bound, deadline, and ordered-chunk tests; host command assertions covering executor argument
+and item ceilings including the maximum network identifier; public-key export tests; locked Cargo
 build/test/clippy; Python and contract checks; complete diff; claim v2 and host verifier
 reviews.
 
 **Findings:** A host-side mutation can no longer cause the probe to open its fixture socket
 unless the command still carries a valid authority-signed v2 claim whose effect bounds agree.
 The image contains only public verification material, and its digest is measured after the
-key is embedded.
+key is embedded. The payload transport now satisfies the unchanged bounded-executor contract.
 
 **Limitations and deferred work:** The hosted conformance builder currently creates the
 ephemeral key/image pairing; production image-key provisioning and rotation are not defined.

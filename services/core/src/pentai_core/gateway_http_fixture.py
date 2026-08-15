@@ -29,6 +29,8 @@ from pentai_core.worker_containment import validate_containment_attestation
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
 _CONTAINER_ID = re.compile(r"^[a-f0-9]{64}$")
+_CLAIM_PAYLOAD_CHUNK_CHARACTERS = 238
+_MAXIMUM_CLAIM_PAYLOAD_CHUNKS = 5
 _FIXTURE_LABELS = {
     "com.pentai.managed": "true",
     "com.pentai.role": "gateway-http-fixture",
@@ -39,6 +41,21 @@ class GatewayHttpFixtureError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+def _claim_payload_arguments(payload: bytes) -> tuple[str, ...]:
+    encoded = urlsafe_b64encode(payload).rstrip(b"=").decode("ascii")
+    chunks = tuple(
+        encoded[offset : offset + _CLAIM_PAYLOAD_CHUNK_CHARACTERS]
+        for offset in range(0, len(encoded), _CLAIM_PAYLOAD_CHUNK_CHARACTERS)
+    )
+    if not 1 <= len(chunks) <= _MAXIMUM_CLAIM_PAYLOAD_CHUNKS:
+        raise GatewayHttpFixtureError("HTTP_FIXTURE_DENIED", "fixture claim is invalid")
+    total = len(chunks)
+    return tuple(
+        f"--claim-part={index}/{total}:{chunk}"
+        for index, chunk in enumerate(chunks)
+    )
 
 
 class GatewayFixtureCleanupRecovery:
@@ -314,21 +331,20 @@ class OciGatewayHttpFixtureTransport:
         container_name = f"pentai-fixture-{claim['claim_id']}"
         if remaining_seconds <= 0:
             raise GatewayHttpFixtureError("HTTP_FIXTURE_DEADLINE", "fixture deadline expired")
+        claim_payload_arguments = _claim_payload_arguments(claim_payload)
         try:
             result = self._executor.execute(
                 oci_run_command(
                     self._executable,
                     "--rm",
-                    "--name",
-                    container_name,
+                    f"--name={container_name}",
                     "--label=com.pentai.managed=true",
                     "--label=com.pentai.role=gateway-http-fixture",
                     f"--label=com.pentai.execution-claim={claim['claim_id']}",
                     f"--label=com.pentai.runtime-id={claim['runtime_id']}",
                     f"--label=com.pentai.gateway-network={network_id}",
                     f"--label=com.pentai.image-digest={claim['image_digest']}",
-                    "--network",
-                    network_id,
+                    f"--network={network_id}",
                     "--read-only",
                     "--cap-drop=ALL",
                     "--security-opt=no-new-privileges",
@@ -343,8 +359,7 @@ class OciGatewayHttpFixtureTransport:
                     "--path=/fixture",
                     f"--maximum-response-bytes={maximum_response_bytes}",
                     f"--deadline-unix-milliseconds={deadline_milliseconds}",
-                    "--claim-payload="
-                    + urlsafe_b64encode(claim_payload).rstrip(b"=").decode("ascii"),
+                    *claim_payload_arguments,
                     f"--claim-signature={signature['value']}",
                 ),
                 timeout_seconds=remaining_seconds,

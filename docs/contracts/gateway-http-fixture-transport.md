@@ -34,8 +34,12 @@ measurement and never returns or logs the response body.
 
 The same public key is embedded in the probe image before its immutable digest is measured.
 At launch the adapter passes the domain-separated canonical unsigned v2 payload and its
-Ed25519 signature, never the private key. Before reading the clock or opening a socket, the
-probe loads the embedded key, verifies the signature, parses an exact no-unknown-field claim,
+Ed25519 signature, never the private key. The payload uses no oversized argument: it is split
+into no more than five strictly ordered chunks while the full command remains inside the
+executor's existing 32-item and 256-character-per-item ceilings. Missing, duplicate,
+reordered, inconsistent, excessive, or oversized chunks deny. Before reading the clock or
+opening a socket, the probe loads the embedded key, verifies the signature, parses an exact
+no-unknown-field claim,
 rechecks the fixed method/address/port/host/path and execution flags, requires the command
 response ceiling to equal the signed ceiling, and rejects a command deadline later than the
 signed durable deadline. Missing, malformed, wrong-key, altered, or contradictory claim
