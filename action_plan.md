@@ -370,6 +370,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     also passed on PR #47. Controlled DNS, outbound gateway networking, and HTTP effects
     remain required.
 - [ ] Create an isolated HTTP/browser worker with no direct outbound route.
+  - A digest-pinned non-executing worker sentinel now launches with no network attachment,
+    fixed resource limits, no host mounts, a read-only root, private namespaces, all
+    capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies
+    identity, image, label, network, or isolation drift. A distinct internal
+    worker-to-gateway channel, hosted rootless bypass proof, and the HTTP/browser worker
+    remain required before this item is complete.
 - [ ] Implement source-IP attestation and approved-IP comparison.
   - The production-composable attestor now supports two-to-four bounded HTTPS source
     observers, per-family agreement, TLS/response validation, and exact OS-derived
