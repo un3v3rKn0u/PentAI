@@ -1004,7 +1004,7 @@ class AuthorizationSliceTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json"), ()
+            contract_issues(claim, "gateway-fixture-execution-claim-v2.schema.json"), ()
         )
         self.assertEqual(claim["target_ip"], "192.0.2.20")
         self.assertTrue(self.service.verify_gateway_fixture_execution_claim(claim))

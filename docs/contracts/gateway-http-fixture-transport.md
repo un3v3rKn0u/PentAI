@@ -89,8 +89,9 @@ claim live containment.
 ## Compatibility and rollback
 
 The additive `0017` migration preserves immutable claim history and has no downgrade
-mutation. The v1 contract now requires its Ed25519 signature and remains intentionally
-fixture-specific; widening its tuple or
+mutation. The historical unsigned v1 contract remains unchanged for compatibility. The
+active producer and transport require signed v2; unsigned v1 claims deny before launch.
+Both contracts remain intentionally fixture-specific; widening their tuple or
 authority semantics requires a new major version. The transport remains unreachable
 from the public API, UI, agents, and plugins. Rollback disables the coordinator and
 leaves claim, authorization, commitment, result, runtime, and audit records readable.

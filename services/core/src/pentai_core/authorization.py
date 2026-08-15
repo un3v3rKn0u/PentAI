@@ -30,7 +30,7 @@ from pentai_core.database import transaction
 from pentai_core.gateway_response import GatewayResponseMeasurement
 from pentai_core.network_attestation import AttestationError, NetworkAttestor
 from pentai_core.network_control import authorize_destination, validate_attestation
-from pentai_core.policy_signing import PolicySigner, gateway_fixture_execution_claim_payload
+from pentai_core.policy_signing import PolicySigner, gateway_fixture_execution_claim_v2_payload
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
 from pentai_core.storage_safety import StorageSafetyError, StorageSafetyLatch
 from pentai_core.worker_containment import validate_containment_attestation
@@ -3417,7 +3417,7 @@ class AuthorizationService:
                 raise DomainError("GATEWAY_FIXTURE_DENIED", "runtime authority is inactive")
             claim_id = str(uuid4())
             claim = {
-                "schema_version": "1.0.0",
+                "schema_version": "2.0.0",
                 "claim_id": claim_id,
                 "start_id": start_id,
                 "session_id": row["session_id"],
@@ -3443,10 +3443,10 @@ class AuthorizationService:
                 "algorithm": "Ed25519",
                 "key_id": self.policy_signer.key_id,
                 "value": self.policy_signer.sign(
-                    gateway_fixture_execution_claim_payload(claim)
+                    gateway_fixture_execution_claim_v2_payload(claim)
                 ),
             }
-            if contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json"):
+            if contract_issues(claim, "gateway-fixture-execution-claim-v2.schema.json"):
                 raise DomainError("GATEWAY_FIXTURE_DENIED", "execution claim is invalid")
             connection.execute(
                 """
@@ -3489,11 +3489,11 @@ class AuthorizationService:
         if (
             self.policy_signer is None
             or not isinstance(signature, dict)
-            or contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json")
+            or contract_issues(claim, "gateway-fixture-execution-claim-v2.schema.json")
         ):
             return False
         return self.policy_signer.verify(
-            gateway_fixture_execution_claim_payload(claim),
+            gateway_fixture_execution_claim_v2_payload(claim),
             str(signature.get("value", "")),
             str(signature.get("key_id", "")),
         )

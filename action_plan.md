@@ -335,7 +335,7 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     verifies exact ownership, claim, runtime, pinned-image, and managed-network labels
     plus actual OCI name/image/network/container identity before ID-based removal, proves
     container absence, appends a hash-chained reconciliation audit event, and pauses
-    globally on ambiguity. A durable, one-use execution claim is signed by the core
+    globally on ambiguity. A durable, one-use v2 execution claim is signed by the core
     authority and verified immediately before transport launch, so mutation of any
     claim field denies before an OCI command is issued. The claim binds the fixed effect
     to the committed request start, grant,

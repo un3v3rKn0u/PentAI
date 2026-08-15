@@ -268,7 +268,7 @@ class OciGatewayHttpFixtureTransport:
         containment: dict[str, object],
     ) -> GatewayResponseMeasurement:
         if (
-            contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json")
+            contract_issues(claim, "gateway-fixture-execution-claim-v2.schema.json")
             or not self._verify_claim(claim)
         ):
             raise GatewayHttpFixtureError("HTTP_FIXTURE_DENIED", "fixture claim is invalid")
