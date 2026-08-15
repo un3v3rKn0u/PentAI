@@ -336,8 +336,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     plus actual OCI name/image/network/container identity before ID-based removal, proves
     container absence, appends a hash-chained reconciliation audit event, and pauses
     globally on ambiguity. A durable, one-use v2 execution claim is signed by the core
-    authority and verified immediately before transport launch, so mutation of any
-    claim field denies before an OCI command is issued. The claim binds the fixed effect
+    authority and verified immediately before transport launch by a public-key-only
+    verifier, so mutation of any claim field or use of an untrusted key denies before an
+    OCI command is issued. The claim binds the fixed effect
     to the committed request start, grant,
     budget/rate reservations, destination decision, runtime image/network, fresh
     containment identity, response ceiling, and absolute deadline; finalization must

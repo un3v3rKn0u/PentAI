@@ -18,7 +18,7 @@ from pentai_core.database import transaction
 from pentai_core.gateway_response import GatewayResponseMeasurement
 from pentai_core.migrate import migrate
 from pentai_core.network_attestation import NetworkAttestor, RouteSnapshot, SourceObservation
-from pentai_core.policy_signing import PolicySigner
+from pentai_core.policy_signing import PolicySigner, gateway_fixture_execution_claim_v2_payload
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_policy import canonicalize_url, content_hash, evaluate
 from pentai_policy.document import contract_issues, parse_time
@@ -1007,10 +1007,24 @@ class AuthorizationSliceTests(unittest.TestCase):
             contract_issues(claim, "gateway-fixture-execution-claim-v2.schema.json"), ()
         )
         self.assertEqual(claim["target_ip"], "192.0.2.20")
-        self.assertTrue(self.service.verify_gateway_fixture_execution_claim(claim))
+        signature = claim["signature"]
+        verifier = self.service.gateway_fixture_execution_claim_verifier()
+        self.assertTrue(
+            verifier.verify(
+                gateway_fixture_execution_claim_v2_payload(claim),
+                signature["value"],
+                signature["key_id"],
+            )
+        )
         altered_claim = dict(claim)
         altered_claim["response_bytes_limit"] = int(claim["response_bytes_limit"]) + 1
-        self.assertFalse(self.service.verify_gateway_fixture_execution_claim(altered_claim))
+        self.assertFalse(
+            verifier.verify(
+                gateway_fixture_execution_claim_v2_payload(altered_claim),
+                signature["value"],
+                signature["key_id"],
+            )
+        )
         with self.assertRaises(DomainError) as replayed:
             self.service.claim_gateway_fixture_execution(
                 started["start_id"], containment=containment

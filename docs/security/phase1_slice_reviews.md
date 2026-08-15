@@ -3539,3 +3539,33 @@ deferred.
 future consumer must select v2 explicitly for execution. Centralized schema constants may
 be added when another consumer exists. This review is self-authored and non-independent
 and cannot satisfy external independent assurance.
+
+## 2026-08-15 — Public-only fixture claim verifier
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Private/public key separation, verifier construction and key identity,
+transport ownership of verification, missing and mismatched key denial, mutation denial,
+pre-launch ordering, compatibility, persistence impact, rollback, and fixture-only scope.
+
+**Evidence examined:** Verification-only API tests; absence of a signing method; wrong-key
+transport regression proving no executor call; existing mutation regression; authority
+composition; complete local checks; complete diff; signed-v2 contract and claim-integrity
+reviews.
+
+**Findings:** The transport can validate claims without retaining signing capability or
+calling the private-key-owning authority during launch. Tampered claims and claims from an
+untrusted public key deny before any runtime process is invoked.
+
+**Limitations and deferred work:** Python process compromise can still replace objects in
+memory, and verification remains outside the isolated probe. Public-key rotation and trust-set
+versioning are not implemented.
+
+**Residual risk accepted:** The signer and verifier currently exist in the same core host
+process even though capability objects are separated. Strong process isolation and probe-side
+verification remain production work. This review is self-authored and non-independent and
+cannot satisfy external independent assurance.

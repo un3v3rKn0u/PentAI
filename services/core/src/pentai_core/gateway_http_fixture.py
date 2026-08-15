@@ -15,6 +15,10 @@ from pentai_core.audit import append_audit_event
 from pentai_core.database import transaction
 from pentai_core.gateway_response import GatewayResponseMeasurement
 from pentai_core.oci_runtime_command import oci_run_command
+from pentai_core.policy_signing import (
+    PolicyVerifier,
+    gateway_fixture_execution_claim_v2_payload,
+)
 from pentai_core.runtime_snapshot_collector import (
     BoundedCommandExecutor,
     SnapshotCollectionError,
@@ -250,7 +254,7 @@ class OciGatewayHttpFixtureTransport:
         executable: Path,
         executor: BoundedCommandExecutor,
         pause_safety: Callable[[str], Any],
-        verify_claim: Callable[[dict[str, Any]], bool],
+        claim_verifier: PolicyVerifier,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if not executable.is_absolute():
@@ -258,7 +262,7 @@ class OciGatewayHttpFixtureTransport:
         self._executable = str(executable)
         self._executor = executor
         self._pause_safety = pause_safety
-        self._verify_claim = verify_claim
+        self._claim_verifier = claim_verifier
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def execute(
@@ -267,9 +271,14 @@ class OciGatewayHttpFixtureTransport:
         claim: dict[str, Any],
         containment: dict[str, object],
     ) -> GatewayResponseMeasurement:
-        if (
-            contract_issues(claim, "gateway-fixture-execution-claim-v2.schema.json")
-            or not self._verify_claim(claim)
+        signature = claim.get("signature")
+        if contract_issues(claim, "gateway-fixture-execution-claim-v2.schema.json") or not (
+            isinstance(signature, dict)
+            and self._claim_verifier.verify(
+                gateway_fixture_execution_claim_v2_payload(claim),
+                str(signature.get("value", "")),
+                str(signature.get("key_id", "")),
+            )
         ):
             raise GatewayHttpFixtureError("HTTP_FIXTURE_DENIED", "fixture claim is invalid")
         network_id = str(claim["gateway_network_id"])

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from pentai_core.policy_signing import PolicySigner
+from pentai_core.policy_signing import PolicySigner, PolicyVerifier
 
 
 class PolicySigningTests(unittest.TestCase):
@@ -11,16 +11,24 @@ class PolicySigningTests(unittest.TestCase):
         other = PolicySigner(b"b" * 32)
         payload = b"synthetic-policy-hash"
         signature = signer.sign(payload)
+        verifier = signer.verifier()
         self.assertEqual(signature, signer.sign(payload))
-        self.assertTrue(signer.verify(payload, signature, signer.key_id))
-        self.assertFalse(signer.verify(payload + b"x", signature, signer.key_id))
-        self.assertFalse(other.verify(payload, signature, signer.key_id))
-        self.assertFalse(signer.verify(payload, "malformed", signer.key_id))
+        self.assertFalse(hasattr(verifier, "sign"))
+        self.assertEqual(verifier.key_id, signer.key_id)
+        self.assertTrue(verifier.verify(payload, signature, signer.key_id))
+        self.assertFalse(verifier.verify(payload + b"x", signature, signer.key_id))
+        self.assertFalse(other.verifier().verify(payload, signature, signer.key_id))
+        self.assertFalse(verifier.verify(payload, "malformed", signer.key_id))
 
     def test_seed_must_be_exactly_256_bits(self) -> None:
         for seed in (b"", b"a" * 31, b"a" * 33):
             with self.assertRaises(ValueError):
                 PolicySigner(seed)
+
+    def test_public_verification_key_must_be_exactly_256_bits(self) -> None:
+        for public_key in (b"", b"a" * 31, b"a" * 33):
+            with self.assertRaises(ValueError):
+                PolicyVerifier(public_key)
 
 
 if __name__ == "__main__":
