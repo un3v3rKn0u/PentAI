@@ -20,7 +20,11 @@ one committed `GatewayRequestStart`. The claim binds the exact fixture tuple, re
 ceiling, absolute deadline, image digest, managed network, runtime instance, and fresh
 containment attestation. Claims cannot be replayed; finalization must present the same
 claim identifier and completes it in the result transaction. Startup and safety recovery
-abandon unfinalized claims before cancelling their starts. The adapter also requires a
+abandon unfinalized claims before cancelling their starts. The authority signs the entire
+canonical claim with its Ed25519 policy key using a claim-specific domain separator. The
+adapter validates the exact claim schema and requires authority signature verification
+before deriving any OCI argument; any missing, malformed, or altered field denies without
+launching a process. The signing key remains inside the authority. The adapter also requires a
 fresh complete containment attestation for the exact network. It constructs a fixed argument vector,
 uses the managed internal network, a read-only root, no capabilities,
 no-new-privileges, and strict CPU/memory/PID limits. It parses only an exact typed JSON
@@ -85,7 +89,8 @@ claim live containment.
 ## Compatibility and rollback
 
 The additive `0017` migration preserves immutable claim history and has no downgrade
-mutation. The new v1 contract is intentionally fixture-specific; widening its tuple or
+mutation. The v1 contract now requires its Ed25519 signature and remains intentionally
+fixture-specific; widening its tuple or
 authority semantics requires a new major version. The transport remains unreachable
 from the public API, UI, agents, and plugins. Rollback disables the coordinator and
 leaves claim, authorization, commitment, result, runtime, and audit records readable.

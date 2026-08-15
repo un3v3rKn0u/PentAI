@@ -2,10 +2,18 @@ from __future__ import annotations
 
 import hashlib
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from typing import Any
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from pentai_policy import canonical_json
+
+
+def gateway_fixture_execution_claim_payload(document: dict[str, Any]) -> bytes:
+    """Return the domain-separated canonical payload for a fixture claim signature."""
+    unsigned = {key: value for key, value in document.items() if key != "signature"}
+    return b"pentai-gateway-fixture-execution-claim-v1:" + canonical_json(unsigned).encode()
 
 
 class PolicySigner:

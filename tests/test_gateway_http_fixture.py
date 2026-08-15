@@ -11,11 +11,25 @@ from pentai_core.gateway_http_fixture import (
     GatewayHttpFixtureExecution,
     OciGatewayHttpFixtureTransport,
 )
+from pentai_core.policy_signing import (
+    PolicySigner,
+    gateway_fixture_execution_claim_payload,
+)
 from pentai_core.runtime_snapshot_collector import CommandResult, SnapshotCollectionError
 
 RUNTIME = Path("/usr/local/bin/podman")
 IMAGE = "sha256:" + "a" * 64
 NETWORK = "fixture-network"
+SIGNER = PolicySigner(b"f" * 32)
+
+
+def verify_claim(document: dict[str, object]) -> bool:
+    signature = document.get("signature")
+    return isinstance(signature, dict) and SIGNER.verify(
+        gateway_fixture_execution_claim_payload(document),
+        str(signature.get("value", "")),
+        str(signature.get("key_id", "")),
+    )
 
 
 def containment(**updates: object) -> dict[str, object]:
@@ -70,6 +84,11 @@ def claim(**updates: object) -> dict[str, object]:
         "external_execution_enabled": False,
     }
     document.update(updates)
+    document["signature"] = {
+        "algorithm": "Ed25519",
+        "key_id": SIGNER.key_id,
+        "value": SIGNER.sign(gateway_fixture_execution_claim_payload(document)),
+    }
     return document
 
 
@@ -107,6 +126,7 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
         executable=RUNTIME,
         executor=executor,
         pause_safety=lambda _reason: None,
+        verify_claim=verify_claim,
         clock=lambda: now,
     )
 
@@ -160,6 +180,7 @@ def test_fixture_transport_maps_host_timeout_to_deadline_denial() -> None:
         executable=RUNTIME,
         executor=executor,
         pause_safety=successful_cleanup_pauses.append,
+        verify_claim=verify_claim,
     )
     with pytest.raises(GatewayHttpFixtureError) as raised:
         transport.execute(claim=claim(), containment=containment())
@@ -181,6 +202,7 @@ def test_fixture_transport_maps_host_timeout_to_deadline_denial() -> None:
         executable=RUNTIME,
         executor=TimeoutExecutor(cleanup_returncode=1),
         pause_safety=pauses.append,
+        verify_claim=verify_claim,
     )
     with pytest.raises(GatewayHttpFixtureError) as cleanup_failed:
         failed_cleanup.execute(claim=claim(), containment=containment())
@@ -191,6 +213,7 @@ def test_fixture_transport_maps_host_timeout_to_deadline_denial() -> None:
         executable=RUNTIME,
         executor=TimeoutExecutor(cleanup_returncode=1),
         pause_safety=lambda _reason: (_ for _ in ()).throw(RuntimeError("private")),
+        verify_claim=verify_claim,
     )
     with pytest.raises(GatewayHttpFixtureError) as pause_failed:
         failed_pause.execute(claim=claim(), containment=containment())
@@ -204,6 +227,7 @@ def test_fixture_transport_reclassifies_completion_observed_after_deadline() -> 
         executable=RUNTIME,
         executor=FixtureExecutor(output()),
         pause_safety=lambda _reason: None,
+        verify_claim=verify_claim,
         clock=lambda: next(observations),
     )
     measurement = transport.execute(
@@ -234,6 +258,7 @@ def test_fixture_transport_rejects_malformed_or_contradictory_output(
         executable=RUNTIME,
         executor=FixtureExecutor(document),
         pause_safety=lambda _reason: None,
+        verify_claim=verify_claim,
     )
     with pytest.raises(GatewayHttpFixtureError) as raised:
         transport.execute(
@@ -260,6 +285,7 @@ def test_fixture_transport_denies_unbounded_or_unsafe_inputs(
         executable=RUNTIME,
         executor=FixtureExecutor(output()),
         pause_safety=lambda _reason: None,
+        verify_claim=verify_claim,
     )
     with pytest.raises(GatewayHttpFixtureError):
         transport.execute(
@@ -273,6 +299,7 @@ def test_fixture_transport_requires_fresh_matching_containment() -> None:
         executable=RUNTIME,
         executor=FixtureExecutor(output()),
         pause_safety=lambda _reason: None,
+        verify_claim=verify_claim,
     )
     for evidence in (
         containment(gateway_network_id="other-network"),
@@ -285,6 +312,24 @@ def test_fixture_transport_requires_fresh_matching_containment() -> None:
                 containment=evidence,
             )
         assert raised.value.code == "HTTP_FIXTURE_CONTAINMENT_DENIED"
+
+
+def test_fixture_transport_denies_claim_mutation_before_runtime_launch() -> None:
+    executor = FixtureExecutor(output())
+    transport = OciGatewayHttpFixtureTransport(
+        executable=RUNTIME,
+        executor=executor,
+        pause_safety=lambda _reason: None,
+        verify_claim=verify_claim,
+    )
+    issued_claim = claim()
+    issued_claim["response_bytes_limit"] = 64
+
+    with pytest.raises(GatewayHttpFixtureError) as raised:
+        transport.execute(claim=issued_claim, containment=containment())
+
+    assert raised.value.code == "HTTP_FIXTURE_DENIED"
+    assert executor.calls == []
 
 
 @dataclass
@@ -315,6 +360,7 @@ def test_fixture_execution_claims_before_transport_and_binds_finalization() -> N
         executable=RUNTIME,
         executor=FixtureExecutor(output()),
         pause_safety=lambda _reason: None,
+        verify_claim=verify_claim,
     )
     execution = GatewayHttpFixtureExecution(authority=authority, transport=transport)
 

@@ -318,6 +318,7 @@ def _run_authorized_http_fixture(
                             reason=reason,
                             actor_id="gateway-http-fixture",
                         ),
+                        verify_claim=authority.verify_gateway_fixture_execution_claim,
                     ),
                 ),
                 start_id=str(start["start_id"]),

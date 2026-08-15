@@ -3480,3 +3480,33 @@ abandonment records repeated truthful observations.
 its audit chain. Local OS controls and future backup/export anchoring remain defense layers.
 This review is self-authored and non-independent and cannot satisfy external independent
 assurance.
+
+## 2026-08-14 — Gateway fixture execution claim integrity
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Canonical claim coverage, signature domain separation, key identity,
+missing-key denial, schema ordering, pre-launch verification, mutation rejection, verifier
+composition, single-use semantics, compatibility, and fixture-only authority.
+
+**Evidence examined:** Authority issuance and mutation-verification assertions; transport
+mutation test proving no executor call; schema contract; shared canonical payload helper;
+hosted harness composition; complete Python tests, Ruff, mypy, UI tests/build/typecheck,
+desktop Cargo check; complete diff and preceding fixture authority reviews.
+
+**Findings:** Claim data can no longer be changed between atomic issuance and transport
+launch without invalidating the authority signature. Verification happens before any claim
+value becomes a runtime argument, and signing configuration fails closed.
+
+**Limitations and deferred work:** Verification occurs in the host adapter, not independently
+inside the isolated probe image. Key rotation and multi-key verification are not implemented
+for this fixture-only proof.
+
+**Residual risk accepted:** A compromised core process with signing-key access can issue a
+new valid claim. Process isolation, protected key storage, and independent execution-broker
+verification remain production work. This review is self-authored and non-independent and
+cannot satisfy external independent assurance.

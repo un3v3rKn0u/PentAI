@@ -250,6 +250,7 @@ class OciGatewayHttpFixtureTransport:
         executable: Path,
         executor: BoundedCommandExecutor,
         pause_safety: Callable[[str], Any],
+        verify_claim: Callable[[dict[str, Any]], bool],
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if not executable.is_absolute():
@@ -257,6 +258,7 @@ class OciGatewayHttpFixtureTransport:
         self._executable = str(executable)
         self._executor = executor
         self._pause_safety = pause_safety
+        self._verify_claim = verify_claim
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def execute(
@@ -265,7 +267,10 @@ class OciGatewayHttpFixtureTransport:
         claim: dict[str, Any],
         containment: dict[str, object],
     ) -> GatewayResponseMeasurement:
-        if contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json"):
+        if (
+            contract_issues(claim, "gateway-fixture-execution-claim-v1.schema.json")
+            or not self._verify_claim(claim)
+        ):
             raise GatewayHttpFixtureError("HTTP_FIXTURE_DENIED", "fixture claim is invalid")
         network_id = str(claim["gateway_network_id"])
         maximum_response_bytes = int(claim["response_bytes_limit"])
