@@ -3510,3 +3510,32 @@ for this fixture-only proof.
 new valid claim. Process isolation, protected key storage, and independent execution-broker
 verification remain production work. This review is self-authored and non-independent and
 cannot satisfy external independent assurance.
+
+## 2026-08-15 — Signed gateway fixture claim contract v2
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Required-field compatibility, major-version selection, schema IDs and
+constants, v1 restoration, v2 producer/consumer agreement, signature domain separation,
+cross-version denial, persistence impact, rollback, and fixture-only authority.
+
+**Evidence examined:** Contract compatibility regression for valid unsigned v1 and signed
+v2 documents; cross-version rejection assertions; authority and transport schema calls;
+canonical signature payload; contract validator; complete local checks and complete diff.
+
+**Findings:** The newly required signature is no longer retrofitted onto v1. Historical v1
+documents remain valid under their original contract, while the active execution path
+defaults-deny every claim other than signed v2 before launching a process.
+
+**Limitations and deferred work:** v1 remains available for historical validation but is
+not accepted for execution. Key rotation and verification inside the isolated probe remain
+deferred.
+
+**Residual risk accepted:** Local code still carries two fixture contract schemas, so every
+future consumer must select v2 explicitly for execution. Centralized schema constants may
+be added when another consumer exists. This review is self-authored and non-independent
+and cannot satisfy external independent assurance.

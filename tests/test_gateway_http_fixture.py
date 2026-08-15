@@ -13,9 +13,10 @@ from pentai_core.gateway_http_fixture import (
 )
 from pentai_core.policy_signing import (
     PolicySigner,
-    gateway_fixture_execution_claim_payload,
+    gateway_fixture_execution_claim_v2_payload,
 )
 from pentai_core.runtime_snapshot_collector import CommandResult, SnapshotCollectionError
+from pentai_policy.document import contract_issues
 
 RUNTIME = Path("/usr/local/bin/podman")
 IMAGE = "sha256:" + "a" * 64
@@ -26,7 +27,7 @@ SIGNER = PolicySigner(b"f" * 32)
 def verify_claim(document: dict[str, object]) -> bool:
     signature = document.get("signature")
     return isinstance(signature, dict) and SIGNER.verify(
-        gateway_fixture_execution_claim_payload(document),
+        gateway_fixture_execution_claim_v2_payload(document),
         str(signature.get("value", "")),
         str(signature.get("key_id", "")),
     )
@@ -63,7 +64,7 @@ def containment(**updates: object) -> dict[str, object]:
 def claim(**updates: object) -> dict[str, object]:
     now = datetime.now(UTC)
     document: dict[str, object] = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "claim_id": "22222222-2222-4222-8222-222222222222",
         "start_id": "33333333-3333-4333-8333-333333333333",
         "session_id": "44444444-4444-4444-8444-444444444444",
@@ -87,7 +88,7 @@ def claim(**updates: object) -> dict[str, object]:
     document["signature"] = {
         "algorithm": "Ed25519",
         "key_id": SIGNER.key_id,
-        "value": SIGNER.sign(gateway_fixture_execution_claim_payload(document)),
+        "value": SIGNER.sign(gateway_fixture_execution_claim_v2_payload(document)),
     }
     return document
 
@@ -117,6 +118,17 @@ def output(
             }
         ).encode(),
     )
+
+
+def test_signed_claim_uses_v2_without_breaking_unsigned_v1_contract() -> None:
+    signed_v2 = claim()
+    assert contract_issues(signed_v2, "gateway-fixture-execution-claim-v2.schema.json") == ()
+    assert contract_issues(signed_v2, "gateway-fixture-execution-claim-v1.schema.json")
+
+    unsigned_v1 = {key: value for key, value in signed_v2.items() if key != "signature"}
+    unsigned_v1["schema_version"] = "1.0.0"
+    assert contract_issues(unsigned_v1, "gateway-fixture-execution-claim-v1.schema.json") == ()
+    assert contract_issues(unsigned_v1, "gateway-fixture-execution-claim-v2.schema.json")
 
 
 def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
