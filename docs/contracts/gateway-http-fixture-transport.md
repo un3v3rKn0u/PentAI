@@ -24,7 +24,9 @@ abandon unfinalized claims before cancelling their starts. The authority signs t
 canonical claim with its Ed25519 policy key using a claim-specific domain separator. The
 adapter validates the exact claim schema and requires authority signature verification
 before deriving any OCI argument; any missing, malformed, or altered field denies without
-launching a process. The signing key remains inside the authority. The adapter also requires a
+launching a process. The signing key remains inside the authority. The adapter receives a
+dedicated Ed25519 verifier containing only the public key and performs verification locally;
+it cannot sign or call back into private signing authority. The adapter also requires a
 fresh complete containment attestation for the exact network. It constructs a fixed argument vector,
 uses the managed internal network, a read-only root, no capabilities,
 no-new-privileges, and strict CPU/memory/PID limits. It parses only an exact typed JSON

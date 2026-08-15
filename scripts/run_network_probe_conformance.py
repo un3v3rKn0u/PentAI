@@ -318,7 +318,7 @@ def _run_authorized_http_fixture(
                             reason=reason,
                             actor_id="gateway-http-fixture",
                         ),
-                        verify_claim=authority.verify_gateway_fixture_execution_claim,
+                        claim_verifier=authority.gateway_fixture_execution_claim_verifier(),
                     ),
                 ),
                 start_id=str(start["start_id"]),

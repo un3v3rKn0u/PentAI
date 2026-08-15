@@ -30,7 +30,11 @@ from pentai_core.database import transaction
 from pentai_core.gateway_response import GatewayResponseMeasurement
 from pentai_core.network_attestation import AttestationError, NetworkAttestor
 from pentai_core.network_control import authorize_destination, validate_attestation
-from pentai_core.policy_signing import PolicySigner, gateway_fixture_execution_claim_v2_payload
+from pentai_core.policy_signing import (
+    PolicySigner,
+    PolicyVerifier,
+    gateway_fixture_execution_claim_v2_payload,
+)
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
 from pentai_core.storage_safety import StorageSafetyError, StorageSafetyLatch
 from pentai_core.worker_containment import validate_containment_attestation
@@ -3483,20 +3487,11 @@ class AuthorizationService:
             )
             return claim
 
-    def verify_gateway_fixture_execution_claim(self, claim: dict[str, Any]) -> bool:
+    def gateway_fixture_execution_claim_verifier(self) -> PolicyVerifier:
         self._require_storage_safe()
-        signature = claim.get("signature")
-        if (
-            self.policy_signer is None
-            or not isinstance(signature, dict)
-            or contract_issues(claim, "gateway-fixture-execution-claim-v2.schema.json")
-        ):
-            return False
-        return self.policy_signer.verify(
-            gateway_fixture_execution_claim_v2_payload(claim),
-            str(signature.get("value", "")),
-            str(signature.get("key_id", "")),
-        )
+        if self.policy_signer is None:
+            raise DomainError("GATEWAY_FIXTURE_DENIED", "claim verification is unavailable")
+        return self.policy_signer.verifier()
 
     def abort_gateway_session(self, session_id: str, *, reason: str) -> dict[str, Any]:
         if not reason.strip():
