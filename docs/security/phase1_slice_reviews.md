@@ -3661,3 +3661,14 @@ job must pass; a failed, skipped, or cancelled result supplies no evidence.
 **Residual risk accepted:** Podman and `/proc` remain trusted local measurement boundaries,
 and review is self-authored and non-independent. This slice does not authorize worker
 networking or target execution.
+
+### Hosted inspection compatibility correction
+
+The first PR #159 hosted run failed closed because the synthetic fixture placed immutable
+image identity under Docker's configuration shape, while Podman reports the container's
+canonical image ID at the top level and may omit the `sha256:` prefix. The correction uses
+the existing strict OCI digest normalizer on that canonical field, continues to reject tags,
+malformed values, and mismatches, and adds representative prefixed and raw-digest tests.
+Containment denials now report only a sorted bounded set of control names, making future
+hosted failures actionable without exposing raw runtime output. The live result remains
+unverified until the replacement hosted job passes.

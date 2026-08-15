@@ -5,8 +5,12 @@ import re
 from pathlib import Path
 from typing import Protocol
 
+from pentai_core.managed_gateway_network import normalize_oci_image_digest
 from pentai_core.oci_runtime_command import oci_run_command
-from pentai_core.runtime_snapshot_collector import BoundedCommandExecutor
+from pentai_core.runtime_snapshot_collector import (
+    BoundedCommandExecutor,
+    SnapshotCollectionError,
+)
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _CONTAINER_ID = re.compile(r"^[a-f0-9]{12,64}$")
@@ -132,31 +136,41 @@ class OciWorkerIsolationController:
             if podman
             else isinstance(cap_drop, list) and any(str(v).lower() == "all" for v in cap_drop)
         )
-        checks = (
-            document.get("Id") == container_id,
-            isinstance(state, dict) and state.get("Running") is True,
-            config_doc.get("Image") == image_digest,
-            host_doc.get("NetworkMode") == "none",
-            isinstance(networks, dict) and not networks,
-            host_doc.get("ReadonlyRootfs") is True,
-            host_doc.get("Privileged") is False,
-            host_doc.get("PidMode") in ("", "private", None),
-            host_doc.get("IpcMode") in ("", "private", None),
-            host_doc.get("PidsLimit") == 16,
-            host_doc.get("Memory") == 33_554_432,
-            cpu_limited,
-            capabilities_dropped,
-            isinstance(security, list)
+        observed_image = document.get("Image")
+        try:
+            image_identity = (
+                isinstance(observed_image, str)
+                and normalize_oci_image_digest(observed_image) == image_digest
+            )
+        except SnapshotCollectionError:
+            image_identity = False
+        checks = {
+            "container_identity": document.get("Id") == container_id,
+            "running": isinstance(state, dict) and state.get("Running") is True,
+            "image_identity": image_identity,
+            "network_mode": host_doc.get("NetworkMode") == "none",
+            "network_attachments": isinstance(networks, dict) and not networks,
+            "read_only_root": host_doc.get("ReadonlyRootfs") is True,
+            "non_privileged": host_doc.get("Privileged") is False,
+            "private_pid": host_doc.get("PidMode") in ("", "private", None),
+            "private_ipc": host_doc.get("IpcMode") in ("", "private", None),
+            "pid_limit": host_doc.get("PidsLimit") == 16,
+            "memory_limit": host_doc.get("Memory") == 33_554_432,
+            "cpu_limit": cpu_limited,
+            "capabilities_dropped": capabilities_dropped,
+            "no_new_privileges": isinstance(security, list)
             and any("no-new-privileges" in str(v).lower() for v in security),
-            host_doc.get("Binds") in (None, []),
-            isinstance(labels, dict)
+            "no_binds": host_doc.get("Binds") in (None, []),
+            "ownership_labels": isinstance(labels, dict)
             and labels.get("com.pentai.managed") == "true"
             and labels.get("com.pentai.runtime-role") == "worker-isolation"
             and labels.get("com.pentai.worker-id") == worker_id,
-        )
-        if not all(checks):
+        }
+        failed = sorted(name for name, passed in checks.items() if not passed)
+        if failed:
             raise WorkerRuntimeError(
-                "WORKER_CONTAINMENT_INVALID", "worker containment verification failed"
+                "WORKER_CONTAINMENT_INVALID",
+                "worker containment changed: " + ",".join(failed),
             )
 
     def terminate(self, container_id: str) -> None:

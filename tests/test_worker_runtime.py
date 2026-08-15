@@ -16,9 +16,9 @@ WORKER, CONTAINER, IMAGE = "worker-fixture", "b" * 64, "sha256:" + "a" * 64
 def inspection() -> dict[str, object]:
     return {
         "Id": CONTAINER,
+        "Image": IMAGE,
         "State": {"Running": True},
         "Config": {
-            "Image": IMAGE,
             "Labels": {
                 "com.pentai.managed": "true",
                 "com.pentai.runtime-role": "worker-isolation",
@@ -91,6 +91,7 @@ class WorkerRuntimeTests(unittest.TestCase):
 
     def test_podman_uses_live_process_capabilities_and_bounded_termination(self) -> None:
         document = inspection()
+        document["Image"] = "a" * 64
         state = document["State"]
         assert isinstance(state, dict)
         state["Pid"] = 1234
@@ -125,25 +126,30 @@ class WorkerRuntimeTests(unittest.TestCase):
 
     def test_each_network_or_identity_drift_denies(self) -> None:
         cases = (
-            ("HostConfig", "NetworkMode", "bridge"),
-            ("NetworkSettings", "Networks", {"bridge": {}}),
-            ("Config", "Image", "sha256:" + "c" * 64),
-            ("Config", "Labels", {}),
-            ("HostConfig", "Privileged", True),
-            ("HostConfig", "Binds", ["/host-data:/worker-data"]),
+            ("HostConfig", "NetworkMode", "bridge", "network_mode"),
+            ("NetworkSettings", "Networks", {"bridge": {}}, "network_attachments"),
+            ("root", "Image", "sha256:" + "c" * 64, "image_identity"),
+            ("root", "Image", "latest", "image_identity"),
+            ("Config", "Labels", {}, "ownership_labels"),
+            ("HostConfig", "Privileged", True, "non_privileged"),
+            ("HostConfig", "Binds", ["/host-data:/worker-data"], "no_binds"),
         )
-        for section, key, value in cases:
+        for section, key, value, failed_control in cases:
             with self.subTest(key=key):
                 document = copy.deepcopy(inspection())
-                parent = document[section]
-                assert isinstance(parent, dict)
-                parent[key] = value
+                if section == "root":
+                    document[key] = value
+                else:
+                    parent = document[section]
+                    assert isinstance(parent, dict)
+                    parent[key] = value
                 runtime_controller = controller(
                     Executor([CommandResult(0, json.dumps(document).encode())])
                 )
                 with self.assertRaises(WorkerRuntimeError) as raised:
                     runtime_controller.verify(WORKER, CONTAINER, IMAGE)
                 self.assertEqual(raised.exception.code, "WORKER_CONTAINMENT_INVALID")
+                self.assertIn(failed_control, str(raised.exception))
 
     def test_invalid_inputs_and_subprocess_failures_deny(self) -> None:
         runtime_controller = controller(Executor([CommandResult(1, b"")]))
