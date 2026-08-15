@@ -3569,3 +3569,36 @@ versioning are not implemented.
 process even though capability objects are separated. Strong process isolation and probe-side
 verification remain production work. This review is self-authored and non-independent and
 cannot satisfy external independent assurance.
+
+## 2026-08-15 — Probe-side fixture claim verification
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Image trust-anchor ordering, public/private key separation, digest
+binding, signed payload transport, strict parsing, signature verification, tuple and bound
+cross-checks, deadline non-extension, pre-socket ordering, malformed/wrong-key/default-deny
+paths, dependency lockfile, compatibility, privacy, rollback, and fixture-only authority.
+
+**Evidence examined:** Rust valid-signature, wrong-key, malformed payload/signature, changed
+bound, deadline, and ordered-chunk tests; host command assertions covering executor argument
+and item ceilings including the maximum network identifier; public-key export tests; locked Cargo
+build/test/clippy; Python and contract checks; complete diff; claim v2 and host verifier
+reviews.
+
+**Findings:** A host-side mutation can no longer cause the probe to open its fixture socket
+unless the command still carries a valid authority-signed v2 claim whose effect bounds agree.
+The image contains only public verification material, and its digest is measured after the
+key is embedded. The payload transport now satisfies the unchanged bounded-executor contract.
+
+**Limitations and deferred work:** The hosted conformance builder currently creates the
+ephemeral key/image pairing; production image-key provisioning and rotation are not defined.
+The probe validates the signed claim rather than independently loading the durable ledger.
+
+**Residual risk accepted:** A compromised image build step can replace both probe and trust
+anchor before digest approval. Reproducible builds, provenance, independent digest approval,
+and production key lifecycle remain required. This review is self-authored and
+non-independent and cannot satisfy external independent assurance.

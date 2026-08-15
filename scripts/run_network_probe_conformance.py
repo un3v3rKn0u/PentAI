@@ -7,6 +7,7 @@ import argparse
 import json
 import multiprocessing
 import os
+import secrets
 import shutil
 import sqlite3
 import sys
@@ -38,6 +39,7 @@ from pentai_core.managed_gateway_network import (
 )
 from pentai_core.migrate import migrate
 from pentai_core.oci_runtime_command import oci_run_command
+from pentai_core.policy_signing import PolicySigner
 from pentai_core.runtime_containment import RuntimeContainmentAttestor
 from pentai_core.runtime_snapshot_collector import (
     LocalBoundedCommandExecutor,
@@ -93,6 +95,7 @@ def main() -> int:
     )
 
     suffix = uuid.uuid4().hex
+    policy_signer = PolicySigner(secrets.token_bytes(32))
     image_tag = f"pentai-network-probe:{suffix}"
     network_name = f"pentai-probe-{suffix}"
     network_created = False
@@ -102,6 +105,9 @@ def main() -> int:
             context = Path(temporary)
             shutil.copy2(probe_binary, context / "pentai-network-probe")
             shutil.copy2(_ROOT / "tools/network-probe/Containerfile", context / "Containerfile")
+            (context / "claim-verifier.pub").write_bytes(
+                policy_signer.verifier().public_key_bytes()
+            )
             build = executor.execute(
                 (
                     str(executable),
@@ -171,6 +177,7 @@ def main() -> int:
             executor=executor,
             network_id=network.network_id,
             image_digest=digest,
+            policy_signer=policy_signer,
         )
         print(json.dumps({"image_digest": digest, "network_id": network.network_id, "safe": True}))
         return 0
@@ -272,6 +279,7 @@ def _run_authorized_http_fixture(
     executable: Path,
     executor: LocalBoundedCommandExecutor,
     image_digest: str,
+    policy_signer: PolicySigner,
     attestor: RuntimeContainmentAttestor,
     controller: OciGatewayFixtureController,
     maximum_response_bytes: int,
@@ -287,6 +295,7 @@ def _run_authorized_http_fixture(
             database_path=database,
             source_store_path=root / "sources",
             maximum_response_bytes=maximum_response_bytes,
+            policy_signer=policy_signer,
         )
         safety = HarnessSafety()
         lifecycle = GatewayRuntimeLifecycle(
@@ -368,6 +377,7 @@ def _run_gateway_lifecycle(
     executor: LocalBoundedCommandExecutor,
     network_id: str,
     image_digest: str,
+    policy_signer: PolicySigner,
 ) -> None:
     info = executor.execute(
         (str(executable), "info", "--format", "json" if runtime == "podman" else "{{json .}}"),
@@ -405,6 +415,7 @@ def _run_gateway_lifecycle(
         executable=executable,
         executor=executor,
         image_digest=image_digest,
+        policy_signer=policy_signer,
         attestor=attestor,
         controller=controller,
         maximum_response_bytes=32,
@@ -417,6 +428,7 @@ def _run_gateway_lifecycle(
         executable=executable,
         executor=executor,
         image_digest=image_digest,
+        policy_signer=policy_signer,
         attestor=attestor,
         controller=controller,
         maximum_response_bytes=8,

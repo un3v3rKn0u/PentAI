@@ -32,6 +32,19 @@ uses the managed internal network, a read-only root, no capabilities,
 no-new-privileges, and strict CPU/memory/PID limits. It parses only an exact typed JSON
 measurement and never returns or logs the response body.
 
+The same public key is embedded in the probe image before its immutable digest is measured.
+At launch the adapter passes the domain-separated canonical unsigned v2 payload and its
+Ed25519 signature, never the private key. The payload uses no oversized argument: it is split
+into no more than five strictly ordered chunks while the full command remains inside the
+executor's existing 32-item and 256-character-per-item ceilings. Missing, duplicate,
+reordered, inconsistent, excessive, or oversized chunks deny. Before reading the clock or
+opening a socket, the probe loads the embedded key, verifies the signature, parses an exact
+no-unknown-field claim,
+rechecks the fixed method/address/port/host/path and execution flags, requires the command
+response ceiling to equal the signed ceiling, and rejects a command deadline later than the
+signed durable deadline. Missing, malformed, wrong-key, altered, or contradictory claim
+material terminates the probe without network activity.
+
 The client validates the supplied wall-clock deadline once, converts it to one monotonic deadline,
 and uses that deadline across connection retries, request write,
 header parsing, and body reads. Headers are read with an 8 KiB ceiling. Only HTTP/1.1
@@ -101,7 +114,7 @@ leaves claim, authorization, commitment, result, runtime, and audit records read
 ## Deferred enforcement
 
 This is not general gateway authority. HTTPS/TLS, policy-derived destinations,
-controlled live DNS, independent grant/start verification inside the isolated process, redirect execution,
+controlled live DNS, full grant/start ledger verification inside the isolated process, redirect execution,
 response evidence, a dual-homed attested gateway route, general active-session kill switches,
 and worker-to-gateway traffic remain deferred. Public, customer, bug-bounty, and other
 external targets remain prohibited.

@@ -143,16 +143,14 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     assert measurement.observed_response_bytes == 17
     command, timeout, output_limit = executor.calls[0]
     assert command[:4] == (str(RUNTIME), "run", "--log-driver=none", "--rm")
-    assert "--name" in command
-    assert f"pentai-fixture-{claim()['claim_id']}" in command
+    assert f"--name=pentai-fixture-{claim()['claim_id']}" in command
     assert "--label=com.pentai.managed=true" in command
     assert "--label=com.pentai.role=gateway-http-fixture" in command
     assert f"--label=com.pentai.execution-claim={claim()['claim_id']}" in command
     assert f"--label=com.pentai.runtime-id={claim()['runtime_id']}" in command
     assert f"--label=com.pentai.gateway-network={NETWORK}" in command
     assert f"--label=com.pentai.image-digest={IMAGE}" in command
-    assert "--network" in command
-    assert NETWORK in command
+    assert f"--network={NETWORK}" in command
     assert "--read-only" in command
     assert "--cap-drop=ALL" in command
     assert "--security-opt=no-new-privileges" in command
@@ -160,8 +158,45 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     assert "--host=example.test" in command
     assert "--path=/fixture" in command
     assert any(item.startswith("--deadline-unix-milliseconds=") for item in command)
+    payload_parts = tuple(item for item in command if item.startswith("--claim-part="))
+    assert len(payload_parts) == 5
+    assert tuple(part.split("=", 1)[1].split(":", 1)[0] for part in payload_parts) == (
+        "0/5",
+        "1/5",
+        "2/5",
+        "3/5",
+        "4/5",
+    )
+    assert any(item.startswith("--claim-signature=") for item in command)
+    assert len(command) <= 32
+    assert max(map(len, command)) <= 256
     assert timeout == pytest.approx(2, abs=0.001)
     assert output_limit == 4096
+
+
+def test_fixture_transport_keeps_maximum_network_claim_within_executor_bounds() -> None:
+    now = datetime.now(UTC)
+    maximum_network_id = "n" * 128
+    executor = FixtureExecutor(output())
+    transport = OciGatewayHttpFixtureTransport(
+        executable=RUNTIME,
+        executor=executor,
+        pause_safety=lambda _reason: None,
+        claim_verifier=VERIFIER,
+        clock=lambda: now,
+    )
+
+    transport.execute(
+        claim=claim(
+            gateway_network_id=maximum_network_id,
+            deadline_at=(now + timedelta(seconds=2)).isoformat(),
+        ),
+        containment=containment(gateway_network_id=maximum_network_id),
+    )
+
+    command = executor.calls[0][0]
+    assert len(command) <= 32
+    assert max(map(len, command)) <= 256
 
 
 def test_fixture_transport_maps_host_timeout_to_deadline_denial() -> None:

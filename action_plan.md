@@ -338,7 +338,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     globally on ambiguity. A durable, one-use v2 execution claim is signed by the core
     authority and verified immediately before transport launch by a public-key-only
     verifier, so mutation of any claim field or use of an untrusted key denies before an
-    OCI command is issued. The claim binds the fixed effect
+    OCI command is issued. The digest-pinned probe image also embeds only that public key
+    and independently verifies the signed v2 payload, fixed tuple, response ceiling, and
+    non-extended deadline before opening its socket. The claim binds the fixed effect
     to the committed request start, grant,
     budget/rate reservations, destination decision, runtime image/network, fresh
     containment identity, response ceiling, and absolute deadline; finalization must
