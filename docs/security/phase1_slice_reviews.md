@@ -3602,3 +3602,32 @@ The probe validates the signed claim rather than independently loading the durab
 anchor before digest approval. Reproducible builds, provenance, independent digest approval,
 and production key lifecycle remain required. This review is self-authored and
 non-independent and cannot satisfy external independent assurance.
+
+## 2026-08-15 — Worker isolation sentinel
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-executing
+local boundary only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Fixed OCI command construction, immutable image identity, empty network
+attachment, ownership labels, namespace and privilege restrictions, resource ceilings, host
+bind denial, bounded inspection, termination identity, compatibility, rollback, and absence
+of execution authority.
+
+**Evidence examined:** Launch-command assertions; successful exact inspection; network-mode,
+network-attachment, image, ownership, privilege, and bind-mount negative tests; invalid input
+and subprocess failure tests; complete local checks and complete diff.
+
+**Findings:** The core no longer treats a launch specification alone as proof of worker
+isolation. The adapter starts only a fixed non-executing sentinel with no network and requires
+the live OCI object to match every security-relevant launch property.
+
+**Limitations and deferred work:** No hosted runtime evidence exists for this adapter. The
+sentinel cannot contact a gateway and is not an HTTP/browser worker. A distinct internal
+worker-to-gateway channel, continuous re-attestation, recovery, and bypass tests remain open.
+
+**Residual risk accepted:** The OCI runtime and inspection response remain local trusted
+boundaries, and no independent reviewer challenged this implementation. This review does not
+authorize worker networking or target execution.
