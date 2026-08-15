@@ -37,9 +37,60 @@ def inspection() -> dict[str, object]:
             "CapDrop": ["ALL"],
             "SecurityOpt": ["no-new-privileges"],
             "Binds": None,
+            "PortBindings": {},
+            "PublishAllPorts": False,
         },
-        "NetworkSettings": {"Networks": {}},
+        "NetworkSettings": {
+            "Bridge": "",
+            "Gateway": "",
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "HairpinMode": False,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "MacAddress": "",
+            "Ports": {},
+            "SecondaryIPAddresses": None,
+            "SecondaryIPv6Addresses": None,
+            "Networks": {},
+        },
     }
+
+
+def podman_inspection() -> dict[str, object]:
+    document = inspection()
+    document["Image"] = "a" * 64
+    state = document["State"]
+    host = document["HostConfig"]
+    network = document["NetworkSettings"]
+    assert isinstance(state, dict)
+    assert isinstance(host, dict)
+    assert isinstance(network, dict)
+    state["Pid"] = 1234
+    host["CapDrop"] = []
+    network["Networks"] = {
+        "none": {
+            "IPAMConfig": None,
+            "Links": None,
+            "Aliases": None,
+            "MacAddress": "",
+            "DriverOpts": None,
+            "GwPriority": 0,
+            "NetworkID": "none",
+            "EndpointID": "",
+            "Gateway": "",
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "DNSNames": None,
+        }
+    }
+    return document
 
 
 @dataclass
@@ -90,14 +141,7 @@ class WorkerRuntimeTests(unittest.TestCase):
         controller(executor).verify(WORKER, CONTAINER, IMAGE)
 
     def test_podman_uses_live_process_capabilities_and_bounded_termination(self) -> None:
-        document = inspection()
-        document["Image"] = "a" * 64
-        state = document["State"]
-        assert isinstance(state, dict)
-        state["Pid"] = 1234
-        host = document["HostConfig"]
-        assert isinstance(host, dict)
-        host["CapDrop"] = []
+        document = podman_inspection()
         monitor = CapabilityMonitor()
         executor = Executor(
             [CommandResult(0, json.dumps(document).encode()), CommandResult(0, b"")]
@@ -123,6 +167,58 @@ class WorkerRuntimeTests(unittest.TestCase):
         with self.assertRaises(WorkerRuntimeError) as raised:
             denied.verify(WORKER, CONTAINER, IMAGE)
         self.assertEqual(raised.exception.code, "WORKER_CONTAINMENT_INVALID")
+
+    def test_podman_none_pseudo_network_rejects_connectivity_and_ambiguity(self) -> None:
+        cases = (
+            ("additional attachment", ("Networks", "bridge"), {}),
+            ("assigned address", ("Networks", "none", "IPAddress"), "10.0.0.2"),
+            ("assigned gateway", ("Networks", "none", "Gateway"), "10.0.0.1"),
+            (
+                "assigned interface",
+                ("Networks", "none", "MacAddress"),
+                "02:00:00:00:00:01",
+            ),
+            ("real network identity", ("Networks", "none", "NetworkID"), "c" * 64),
+            ("network alias", ("Networks", "none", "Aliases"), ["worker"]),
+            ("unknown runtime field", ("Networks", "none", "InterfaceName"), "eth0"),
+            ("published port", ("Ports", "80/tcp"), [{"HostPort": "8080"}]),
+            ("hairpin enabled", ("HairpinMode",), True),
+            ("secondary address", ("SecondaryIPAddresses",), [{"Addr": "10.0.0.3"}]),
+        )
+        for name, path, value in cases:
+            with self.subTest(name=name):
+                document = podman_inspection()
+                network = document["NetworkSettings"]
+                assert isinstance(network, dict)
+                target = network
+                for key in path[:-1]:
+                    child = target[key]
+                    assert isinstance(child, dict)
+                    target = child
+                target[path[-1]] = value
+                runtime_controller = OciWorkerIsolationController(
+                    runtime="podman",
+                    executable=Path("/usr/bin/podman"),
+                    executor=Executor([CommandResult(0, json.dumps(document).encode())]),
+                    capability_monitor=CapabilityMonitor(),
+                )
+                with self.assertRaises(WorkerRuntimeError) as raised:
+                    runtime_controller.verify(WORKER, CONTAINER, IMAGE)
+                self.assertIn("network_attachments", str(raised.exception))
+
+        document = podman_inspection()
+        host = document["HostConfig"]
+        assert isinstance(host, dict)
+        host["PortBindings"] = {"80/tcp": [{"HostPort": "8080"}]}
+        runtime_controller = OciWorkerIsolationController(
+            runtime="podman",
+            executable=Path("/usr/bin/podman"),
+            executor=Executor([CommandResult(0, json.dumps(document).encode())]),
+            capability_monitor=CapabilityMonitor(),
+        )
+        with self.assertRaises(WorkerRuntimeError) as raised:
+            runtime_controller.verify(WORKER, CONTAINER, IMAGE)
+        self.assertIn("network_attachments", str(raised.exception))
 
     def test_each_network_or_identity_drift_denies(self) -> None:
         cases = (

@@ -3672,3 +3672,13 @@ malformed values, and mismatches, and adds representative prefixed and raw-diges
 Containment denials now report only a sorted bounded set of control names, making future
 hosted failures actionable without exposing raw runtime output. The live result remains
 unverified until the replacement hosted job passes.
+
+### Hosted no-network representation correction
+
+The replacement PR #159 run accepted the canonical image identity and failed closed only on
+`network_attachments`. Rootless Podman represents `--network=none` with a sole inert `none`
+pseudo-network rather than Docker's empty network map. The runtime-specific parser now
+accepts that Podman representation only when all connectivity-bearing fields are empty and
+there are no additional networks, addresses, gateways, interfaces, aliases, options, or
+published ports. Representative success and disguised-attachment regressions preserve the
+default-deny boundary. The live result remains unverified until the next hosted job passes.

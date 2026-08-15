@@ -15,6 +15,83 @@ from pentai_core.runtime_snapshot_collector import (
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _CONTAINER_ID = re.compile(r"^[a-f0-9]{12,64}$")
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
+_EMPTY_NETWORK_TEXT_FIELDS = frozenset(
+    {
+        "Bridge",
+        "EndpointID",
+        "Gateway",
+        "GlobalIPv6Address",
+        "IPAddress",
+        "IPv6Gateway",
+        "LinkLocalIPv6Address",
+        "MacAddress",
+        "SandboxID",
+        "SandboxKey",
+    }
+)
+_EMPTY_NETWORK_PREFIX_FIELDS = frozenset(
+    {"GlobalIPv6PrefixLen", "GwPriority", "IPPrefixLen", "LinkLocalIPv6PrefixLen"}
+)
+_EMPTY_NETWORK_COLLECTION_FIELDS = frozenset(
+    {
+        "Aliases",
+        "DNSNames",
+        "DriverOpts",
+        "IPAMConfig",
+        "Links",
+        "Options",
+        "SecondaryIPAddresses",
+        "SecondaryIPv6Addresses",
+    }
+)
+_FALSE_NETWORK_FIELDS = frozenset({"HairpinMode"})
+
+
+def _has_no_connectivity(
+    values: dict[str, object], *, allow_network_identity: bool = False
+) -> bool:
+    allowed = (
+        _EMPTY_NETWORK_TEXT_FIELDS
+        | _EMPTY_NETWORK_PREFIX_FIELDS
+        | _EMPTY_NETWORK_COLLECTION_FIELDS
+        | _FALSE_NETWORK_FIELDS
+        | {"Networks", "Ports"}
+    )
+    if allow_network_identity:
+        allowed = allowed | {"NetworkID"}
+    return (
+        not (values.keys() - allowed)
+        and all(values.get(key) in (None, "") for key in _EMPTY_NETWORK_TEXT_FIELDS)
+        and all(values.get(key) in (None, 0) for key in _EMPTY_NETWORK_PREFIX_FIELDS)
+        and all(values.get(key) in (None, [], {}) for key in _EMPTY_NETWORK_COLLECTION_FIELDS)
+        and all(values.get(key) in (None, False) for key in _FALSE_NETWORK_FIELDS)
+        and values.get("Ports") in (None, {})
+    )
+
+
+def _has_no_network_attachment(runtime: str, host: dict[str, object], network: object) -> bool:
+    if not isinstance(network, dict) or not _has_no_connectivity(network):
+        return False
+    if host.get("PortBindings") not in (None, {}) or host.get("PublishAllPorts") not in (
+        None,
+        False,
+    ):
+        return False
+    networks = network.get("Networks")
+    if not isinstance(networks, dict):
+        return False
+    if runtime == "docker":
+        return not networks
+    if set(networks) != {"none"}:
+        return False
+    none_network = networks["none"]
+    return (
+        isinstance(none_network, dict)
+        and _has_no_connectivity(none_network, allow_network_identity=True)
+        and none_network.get("NetworkID") in (None, "", "none")
+        and "Networks" not in none_network
+        and "Ports" not in none_network
+    )
 
 
 class WorkerRuntimeError(ValueError):
@@ -113,7 +190,6 @@ class OciWorkerIsolationController:
         )
         config_doc = config if isinstance(config, dict) else {}
         host_doc = host if isinstance(host, dict) else {}
-        networks = network.get("Networks") if isinstance(network, dict) else None
         labels, security, cap_drop = (
             config_doc.get("Labels"),
             host_doc.get("SecurityOpt"),
@@ -149,7 +225,7 @@ class OciWorkerIsolationController:
             "running": isinstance(state, dict) and state.get("Running") is True,
             "image_identity": image_identity,
             "network_mode": host_doc.get("NetworkMode") == "none",
-            "network_attachments": isinstance(networks, dict) and not networks,
+            "network_attachments": _has_no_network_attachment(self._runtime, host_doc, network),
             "read_only_root": host_doc.get("ReadonlyRootfs") is True,
             "non_privileged": host_doc.get("Privileged") is False,
             "private_pid": host_doc.get("PidMode") in ("", "private", None),
