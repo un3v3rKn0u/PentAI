@@ -54,3 +54,6 @@ class PolicyVerifier:
         except (InvalidSignature, ValueError, UnicodeEncodeError):
             return False
         return True
+
+    def public_key_bytes(self) -> bytes:
+        return self._public_key.public_bytes(Encoding.Raw, PublicFormat.Raw)

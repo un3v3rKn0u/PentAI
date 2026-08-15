@@ -1,3 +1,8 @@
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
+use chrono::DateTime;
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use serde::Deserialize;
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
@@ -8,6 +13,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
+const CLAIM_VERIFIER_PATH: &str = "/pentai-claim-verifier.pub";
+const CLAIM_PAYLOAD_PREFIX: &[u8] = b"pentai-gateway-fixture-execution-claim-v2:";
 
 struct Arguments {
     network_id: String,
@@ -84,6 +91,32 @@ fn main() {
 struct HttpFixtureArguments {
     maximum_response_bytes: usize,
     deadline_unix_milliseconds: u128,
+    claim_payload: String,
+    claim_signature: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FixtureClaim {
+    schema_version: String,
+    claim_id: String,
+    start_id: String,
+    session_id: String,
+    runtime_id: String,
+    containment_attestation_id: String,
+    gateway_network_id: String,
+    image_digest: String,
+    method: String,
+    target_ip: String,
+    port: u16,
+    host: String,
+    path: String,
+    response_bytes_limit: usize,
+    deadline_at: String,
+    claimed_at: String,
+    status: String,
+    fixture_execution_enabled: bool,
+    external_execution_enabled: bool,
 }
 
 struct HttpFixtureResult {
@@ -99,6 +132,8 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
     let mut path = false;
     let mut maximum_response_bytes = None;
     let mut deadline_unix_milliseconds = None;
+    let mut claim_payload = None;
+    let mut claim_signature = None;
     for argument in arguments {
         match argument.as_str() {
             "--mode=http-fixture-client" if !mode => mode = true,
@@ -123,6 +158,24 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
                     .and_then(|raw| raw.parse::<u128>().ok())
                     .filter(|value| *value > 0);
             }
+            value if value.starts_with("--claim-payload=") => {
+                if claim_payload.is_some() {
+                    return Err("duplicate claim payload");
+                }
+                claim_payload = value
+                    .strip_prefix("--claim-payload=")
+                    .filter(|raw| (1..=4096).contains(&raw.len()))
+                    .map(str::to_owned);
+            }
+            value if value.starts_with("--claim-signature=") => {
+                if claim_signature.is_some() {
+                    return Err("duplicate claim signature");
+                }
+                claim_signature = value
+                    .strip_prefix("--claim-signature=")
+                    .filter(|raw| (1..=128).contains(&raw.len()))
+                    .map(str::to_owned);
+            }
             _ => return Err("unsupported or duplicate HTTP fixture argument"),
         }
     }
@@ -133,11 +186,17 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
         path,
         maximum_response_bytes,
         deadline_unix_milliseconds,
+        claim_payload,
+        claim_signature,
     ) {
-        (true, true, true, true, Some(limit), Some(deadline)) => Ok(HttpFixtureArguments {
-            maximum_response_bytes: limit,
-            deadline_unix_milliseconds: deadline,
-        }),
+        (true, true, true, true, Some(limit), Some(deadline), Some(payload), Some(signature)) => {
+            Ok(HttpFixtureArguments {
+                maximum_response_bytes: limit,
+                deadline_unix_milliseconds: deadline,
+                claim_payload: payload,
+                claim_signature: signature,
+            })
+        }
         _ => Err("required HTTP fixture argument is missing or invalid"),
     }
 }
@@ -145,6 +204,16 @@ fn parse_http_fixture_client(arguments: &[String]) -> Result<HttpFixtureArgument
 fn run_http_fixture_client(
     arguments: HttpFixtureArguments,
 ) -> Result<HttpFixtureResult, &'static str> {
+    let verification_key = fs::read(CLAIM_VERIFIER_PATH)
+        .map_err(|_| "fixture claim verification key is unavailable")?;
+    run_http_fixture_client_with_key(arguments, &verification_key)
+}
+
+fn run_http_fixture_client_with_key(
+    arguments: HttpFixtureArguments,
+    verification_key: &[u8],
+) -> Result<HttpFixtureResult, &'static str> {
+    verify_fixture_claim(&arguments, verification_key)?;
     let wall_now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "HTTP fixture clock is invalid")?
@@ -263,6 +332,66 @@ fn run_http_fixture_client(
         observed: body_seen,
         retained: body_retained,
     })
+}
+
+fn verify_fixture_claim(
+    arguments: &HttpFixtureArguments,
+    public_key: &[u8],
+) -> Result<(), &'static str> {
+    let public_key: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| "fixture claim verification key is invalid")?;
+    let verifier = VerifyingKey::from_bytes(&public_key)
+        .map_err(|_| "fixture claim verification key is invalid")?;
+    let payload = URL_SAFE_NO_PAD
+        .decode(arguments.claim_payload.as_bytes())
+        .map_err(|_| "fixture claim payload is invalid")?;
+    let signature_bytes = URL_SAFE_NO_PAD
+        .decode(arguments.claim_signature.as_bytes())
+        .map_err(|_| "fixture claim signature is invalid")?;
+    let signature = Signature::from_slice(&signature_bytes)
+        .map_err(|_| "fixture claim signature is invalid")?;
+    verifier
+        .verify(&payload, &signature)
+        .map_err(|_| "fixture claim signature is invalid")?;
+    let claim_json = payload
+        .strip_prefix(CLAIM_PAYLOAD_PREFIX)
+        .ok_or("fixture claim payload is invalid")?;
+    let claim: FixtureClaim =
+        serde_json::from_slice(claim_json).map_err(|_| "fixture claim payload is invalid")?;
+    let identifiers_are_present = [
+        &claim.claim_id,
+        &claim.start_id,
+        &claim.session_id,
+        &claim.runtime_id,
+        &claim.containment_attestation_id,
+        &claim.gateway_network_id,
+        &claim.image_digest,
+        &claim.deadline_at,
+        &claim.claimed_at,
+    ]
+    .iter()
+    .all(|value| !value.is_empty());
+    let claim_deadline = DateTime::parse_from_rfc3339(&claim.deadline_at)
+        .ok()
+        .and_then(|value| value.timestamp_millis().try_into().ok());
+    if claim.schema_version != "2.0.0"
+        || claim.method != "GET"
+        || claim.target_ip != "192.0.2.20"
+        || claim.port != 8080
+        || claim.host != "example.test"
+        || claim.path != "/fixture"
+        || claim.response_bytes_limit != arguments.maximum_response_bytes
+        || claim_deadline
+            .is_none_or(|deadline: u128| arguments.deadline_unix_milliseconds > deadline)
+        || claim.status != "claimed"
+        || !claim.fixture_execution_enabled
+        || claim.external_execution_enabled
+        || !identifiers_are_present
+    {
+        return Err("fixture claim authority is invalid");
+    }
+    Ok(())
 }
 
 fn remaining(deadline: Instant) -> Result<Duration, &'static str> {
@@ -505,6 +634,7 @@ fn read_trimmed(path: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ed25519_dalek::{Signer, SigningKey};
 
     fn approved_arguments() -> impl Iterator<Item = String> {
         [
@@ -516,6 +646,54 @@ mod tests {
         ]
         .into_iter()
         .map(str::to_owned)
+    }
+
+    fn approved_fixture_arguments(
+        deadline: u128,
+        maximum_response_bytes: usize,
+    ) -> (Vec<String>, [u8; 32]) {
+        let claim_deadline = DateTime::from_timestamp_millis(
+            deadline.try_into().expect("test deadline must fit i64"),
+        )
+        .expect("test deadline")
+        .to_rfc3339();
+        let claim = format!(
+            concat!(
+                "{{\"claim_id\":\"22222222-2222-4222-8222-222222222222\",",
+                "\"claimed_at\":\"2026-08-15T00:00:00Z\",",
+                "\"containment_attestation_id\":\"11111111-1111-4111-8111-111111111111\",",
+                "\"deadline_at\":\"{}\",\"external_execution_enabled\":false,",
+                "\"fixture_execution_enabled\":true,\"gateway_network_id\":\"fixture-network\",",
+                "\"host\":\"example.test\",\"image_digest\":\"sha256:{}\",",
+                "\"method\":\"GET\",\"path\":\"/fixture\",\"port\":8080,",
+                "\"response_bytes_limit\":{},\"runtime_id\":\"55555555-5555-4555-8555-555555555555\",",
+                "\"schema_version\":\"2.0.0\",\"session_id\":\"44444444-4444-4444-8444-444444444444\",",
+                "\"start_id\":\"33333333-3333-4333-8333-333333333333\",",
+                "\"status\":\"claimed\",\"target_ip\":\"192.0.2.20\"}}"
+            ),
+            claim_deadline,
+            "a".repeat(64),
+            maximum_response_bytes,
+        );
+        let payload = [CLAIM_PAYLOAD_PREFIX, claim.as_bytes()].concat();
+        let signing_key = SigningKey::from_bytes(&[7u8; 32]);
+        let signature = signing_key.sign(&payload);
+        (
+            vec![
+                "--mode=http-fixture-client".to_owned(),
+                "--target=192.0.2.20:8080".to_owned(),
+                "--host=example.test".to_owned(),
+                "--path=/fixture".to_owned(),
+                format!("--maximum-response-bytes={maximum_response_bytes}"),
+                format!("--deadline-unix-milliseconds={deadline}"),
+                format!("--claim-payload={}", URL_SAFE_NO_PAD.encode(payload)),
+                format!(
+                    "--claim-signature={}",
+                    URL_SAFE_NO_PAD.encode(signature.to_bytes())
+                ),
+            ],
+            signing_key.verifying_key().to_bytes(),
+        )
     }
 
     #[test]
@@ -578,21 +756,13 @@ mod tests {
             .expect("wall clock")
             .as_millis()
             + 1_000;
-        let approved = vec![
-            "--mode=http-fixture-client".to_owned(),
-            "--target=192.0.2.20:8080".to_owned(),
-            "--host=example.test".to_owned(),
-            "--path=/fixture".to_owned(),
-            "--maximum-response-bytes=1024".to_owned(),
-            format!("--deadline-unix-milliseconds={deadline}"),
-        ];
+        let (approved, public_key) = approved_fixture_arguments(deadline, 1024);
         let parsed = parse_http_fixture_client(&approved).expect("approved fixture request");
         assert_eq!(parsed.maximum_response_bytes, 1024);
-        assert!(run_http_fixture_client(HttpFixtureArguments {
-            maximum_response_bytes: 1024,
-            deadline_unix_milliseconds: deadline + 6_000,
-        })
-        .is_err());
+        assert!(verify_fixture_claim(&parsed, &public_key).is_ok());
+        let (late, late_public_key) = approved_fixture_arguments(deadline + 6_000, 1024);
+        let late = parse_http_fixture_client(&late).expect("signed late fixture request");
+        assert!(run_http_fixture_client_with_key(late, &late_public_key).is_err());
         for denied in [
             "--target=127.0.0.1:8080",
             "--target=192.0.2.21:8080",
@@ -626,6 +796,52 @@ mod tests {
             .chain(["--other=value".to_owned()])
             .collect::<Vec<_>>();
         assert!(parse_http_fixture_client(&unknown).is_err());
+        assert!(verify_fixture_claim(&parsed, &[8u8; 32]).is_err());
+
+        for denied in ["--claim-payload=invalid", "--claim-signature=invalid"] {
+            let prefix = denied.split('=').next().expect("claim argument prefix");
+            let changed = approved
+                .iter()
+                .map(|value| {
+                    if value.starts_with(prefix) {
+                        denied.to_owned()
+                    } else {
+                        value.clone()
+                    }
+                })
+                .collect::<Vec<_>>();
+            let changed = parse_http_fixture_client(&changed)
+                .expect("bounded malformed claim fixture request");
+            assert!(verify_fixture_claim(&changed, &public_key).is_err());
+        }
+
+        let changed_limit = approved
+            .iter()
+            .map(|value| {
+                if value.starts_with("--maximum-response-bytes=") {
+                    "--maximum-response-bytes=1023".to_owned()
+                } else {
+                    value.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        let changed_limit =
+            parse_http_fixture_client(&changed_limit).expect("bounded changed fixture request");
+        assert!(verify_fixture_claim(&changed_limit, &public_key).is_err());
+
+        let extended_deadline = approved
+            .iter()
+            .map(|value| {
+                if value.starts_with("--deadline-unix-milliseconds=") {
+                    format!("--deadline-unix-milliseconds={}", deadline + 1)
+                } else {
+                    value.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        let extended_deadline = parse_http_fixture_client(&extended_deadline)
+            .expect("bounded extended-deadline fixture request");
+        assert!(verify_fixture_claim(&extended_deadline, &public_key).is_err());
     }
 
     #[test]

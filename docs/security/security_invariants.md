@@ -163,7 +163,9 @@ binary to one owned TEST-NET fixture tuple and runs on the managed internal netw
 The core atomically issues signed v2 one-use execution claims only for committed, unexpired
 starts whose consumed grant, budget, rate reservation, destination decision, running
 runtime, image, network, and fresh containment identity all match. Claim-bound
-finalization or fail-closed recovery prevents reuse. The core has no socket transport.
+finalization or fail-closed recovery prevents reuse. The digest-pinned probe independently
+verifies the signed v2 claim with an embedded public key before opening its fixed socket.
+The core has no socket transport.
 Hosted rootless evidence must show the fixed request
 succeeds while direct egress, external DNS, IPv6, runtime sockets, host mounts, host
 namespaces, and unconstrained resources remain blocked. The hosted proof must derive

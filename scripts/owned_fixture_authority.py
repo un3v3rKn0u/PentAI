@@ -54,7 +54,11 @@ class OwnedFixtureResolverProvider:
 
 
 def prepare_owned_fixture_session(
-    *, database_path: Path, source_store_path: Path, maximum_response_bytes: int = 32
+    *,
+    database_path: Path,
+    source_store_path: Path,
+    maximum_response_bytes: int = 32,
+    policy_signer: PolicySigner | None = None,
 ) -> tuple[AuthorizationService, dict[str, Any]]:
     """Create one approved, budgeted, still non-executing owned-fixture session."""
     if not 1 <= maximum_response_bytes <= 1_048_576:
@@ -62,7 +66,7 @@ def prepare_owned_fixture_session(
     service = AuthorizationService(
         database_path,
         source_store=EncryptedSourceStore(source_store_path, secrets.token_bytes(32)),
-        policy_signer=PolicySigner(secrets.token_bytes(32)),
+        policy_signer=policy_signer or PolicySigner(secrets.token_bytes(32)),
     )
     program = service.create_program("Owned TEST-NET fixture")
     engagement = service.create_engagement(

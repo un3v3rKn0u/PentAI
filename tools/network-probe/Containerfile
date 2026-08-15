@@ -1,5 +1,6 @@
 FROM scratch
 
 COPY --chown=65532:65532 pentai-network-probe /pentai-network-probe
+COPY --chown=65532:65532 claim-verifier.pub /pentai-claim-verifier.pub
 USER 65532:65532
 ENTRYPOINT ["/pentai-network-probe"]

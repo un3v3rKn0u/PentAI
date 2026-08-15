@@ -15,6 +15,7 @@ class PolicySigningTests(unittest.TestCase):
         self.assertEqual(signature, signer.sign(payload))
         self.assertFalse(hasattr(verifier, "sign"))
         self.assertEqual(verifier.key_id, signer.key_id)
+        self.assertEqual(len(verifier.public_key_bytes()), 32)
         self.assertTrue(verifier.verify(payload, signature, signer.key_id))
         self.assertFalse(verifier.verify(payload + b"x", signature, signer.key_id))
         self.assertFalse(other.verifier().verify(payload, signature, signer.key_id))

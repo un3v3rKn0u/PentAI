@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from base64 import urlsafe_b64encode
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -272,13 +273,15 @@ class OciGatewayHttpFixtureTransport:
         containment: dict[str, object],
     ) -> GatewayResponseMeasurement:
         signature = claim.get("signature")
-        if contract_issues(claim, "gateway-fixture-execution-claim-v2.schema.json") or not (
-            isinstance(signature, dict)
-            and self._claim_verifier.verify(
-                gateway_fixture_execution_claim_v2_payload(claim),
-                str(signature.get("value", "")),
-                str(signature.get("key_id", "")),
-            )
+        if contract_issues(
+            claim, "gateway-fixture-execution-claim-v2.schema.json"
+        ) or not isinstance(signature, dict):
+            raise GatewayHttpFixtureError("HTTP_FIXTURE_DENIED", "fixture claim is invalid")
+        claim_payload = gateway_fixture_execution_claim_v2_payload(claim)
+        if not self._claim_verifier.verify(
+            claim_payload,
+            str(signature.get("value", "")),
+            str(signature.get("key_id", "")),
         ):
             raise GatewayHttpFixtureError("HTTP_FIXTURE_DENIED", "fixture claim is invalid")
         network_id = str(claim["gateway_network_id"])
@@ -340,6 +343,9 @@ class OciGatewayHttpFixtureTransport:
                     "--path=/fixture",
                     f"--maximum-response-bytes={maximum_response_bytes}",
                     f"--deadline-unix-milliseconds={deadline_milliseconds}",
+                    "--claim-payload="
+                    + urlsafe_b64encode(claim_payload).rstrip(b"=").decode("ascii"),
+                    f"--claim-signature={signature['value']}",
                 ),
                 timeout_seconds=remaining_seconds,
                 max_output_bytes=4096,

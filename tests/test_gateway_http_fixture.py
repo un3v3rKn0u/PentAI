@@ -160,6 +160,8 @@ def test_fixture_transport_uses_only_fixed_contained_http_arguments() -> None:
     assert "--host=example.test" in command
     assert "--path=/fixture" in command
     assert any(item.startswith("--deadline-unix-milliseconds=") for item in command)
+    assert any(item.startswith("--claim-payload=") for item in command)
+    assert any(item.startswith("--claim-signature=") for item in command)
     assert timeout == pytest.approx(2, abs=0.001)
     assert output_limit == 4096
 
