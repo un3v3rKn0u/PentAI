@@ -47,6 +47,7 @@ from pentai_core.runtime_snapshot_collector import (
     SnapshotCollectionError,
     runtime_instance_identity,
 )
+from pentai_core.worker_runtime import OciWorkerIsolationController
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -171,6 +172,12 @@ def main() -> int:
             raise SnapshotCollectionError(
                 "NETWORK_CONFORMANCE_UNSAFE", "one or more containment probes failed"
             )
+        _run_worker_isolation(
+            runtime=arguments.runtime,
+            executable=executable,
+            executor=executor,
+            image_digest=digest,
+        )
         _run_gateway_lifecycle(
             runtime=arguments.runtime,
             executable=executable,
@@ -179,7 +186,16 @@ def main() -> int:
             image_digest=digest,
             policy_signer=policy_signer,
         )
-        print(json.dumps({"image_digest": digest, "network_id": network.network_id, "safe": True}))
+        print(
+            json.dumps(
+                {
+                    "image_digest": digest,
+                    "network_id": network.network_id,
+                    "safe": True,
+                    "worker_isolation_safe": True,
+                }
+            )
+        )
         return 0
     finally:
         if network_created:
@@ -194,6 +210,27 @@ def main() -> int:
                 timeout_seconds=10,
                 max_output_bytes=4096,
             )
+
+
+def _run_worker_isolation(
+    *,
+    runtime: str,
+    executable: Path,
+    executor: LocalBoundedCommandExecutor,
+    image_digest: str,
+) -> None:
+    worker_id = f"worker-{uuid.uuid4().hex}"
+    controller = OciWorkerIsolationController(
+        runtime=runtime,
+        executable=executable,
+        executor=executor,
+        capability_monitor=LinuxProcCapabilityMonitor() if runtime == "podman" else None,
+    )
+    container_id = controller.launch(worker_id, image_digest)
+    try:
+        controller.verify(worker_id, container_id, image_digest)
+    finally:
+        controller.terminate(container_id)
 
 
 def _run_http_fixture(

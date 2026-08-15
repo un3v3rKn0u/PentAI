@@ -57,8 +57,10 @@ The repository-owned probe and hosted Linux rootless Podman harness are implemen
 but their live result is not evidence until the hosted job passes. A fixed non-executing
 worker sentinel can now launch with `network=none` and requires exact post-launch OCI
 verification of its immutable image, empty network set, ownership, resource limits,
-namespaces, privilege controls, and absence of host binds. This adapter has not yet been
-exercised by a hosted rootless job. Rootless Docker, cross-platform verification, a
+namespaces, privilege controls, and absence of host binds. The hosted rootless Podman harness
+now exercises launch, live process-capability verification, exact inspection, and bounded
+termination; the result becomes evidence only after the protected job passes. Rootless
+Docker, cross-platform verification, a
 distinct worker-to-gateway network, gateway attachment, host firewall
 enforcement, runtime re-attestation, worker termination, and the remaining
 platform-specific escape/bypass probes remain deferred. Until

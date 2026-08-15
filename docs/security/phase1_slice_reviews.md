@@ -3631,3 +3631,33 @@ worker-to-gateway channel, continuous re-attestation, recovery, and bypass tests
 **Residual risk accepted:** The OCI runtime and inspection response remain local trusted
 boundaries, and no independent reviewer challenged this implementation. This review does not
 authorize worker networking or target execution.
+
+## 2026-08-15 — Hosted worker isolation sentinel proof
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for hosted
+verification subject to the protected workflow passing<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Explicit Docker/Podman selection, mandatory Podman process-capability
+monitoring, immutable image and worker identity, empty network attachment, resource and
+privilege inspection, bounded termination, hosted harness sequencing and cleanup, workflow
+path coverage, compatibility, rollback, and non-executing authority.
+
+**Evidence examined:** Docker inspection regressions; Podman live-PID capability success and
+denial tests; Podman immediate termination command; missing monitor denial; full local checks;
+complete diff; hosted workflow definition. The live hosted result is not claimed here and
+must pass before it becomes evidence.
+
+**Findings:** Worker-adapter changes can no longer skip the rootless containment job. The
+harness launches the exact digest-pinned sentinel with no network, verifies the running OCI
+object and live Podman process capabilities, and always performs bounded ID-based cleanup.
+
+**Limitations and deferred work:** Rootless Docker and cross-platform evidence remain absent.
+The sentinel has no gateway channel and is not an HTTP/browser worker. The protected hosted
+job must pass; a failed, skipped, or cancelled result supplies no evidence.
+
+**Residual risk accepted:** Podman and `/proc` remain trusted local measurement boundaries,
+and review is self-authored and non-independent. This slice does not authorize worker
+networking or target execution.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Protocol
 
 from pentai_core.oci_runtime_command import oci_run_command
 from pentai_core.runtime_snapshot_collector import BoundedCommandExecutor
@@ -18,14 +19,33 @@ class WorkerRuntimeError(ValueError):
         self.code = code
 
 
+class CapabilityMonitor(Protocol):
+    def all_dropped(self, pid: int) -> bool: ...
+
+
 class OciWorkerIsolationController:
     """Launch and verify a non-executing worker with no network attachment."""
 
-    def __init__(self, *, executable: Path, executor: BoundedCommandExecutor) -> None:
+    def __init__(
+        self,
+        *,
+        runtime: str,
+        executable: Path,
+        executor: BoundedCommandExecutor,
+        capability_monitor: CapabilityMonitor | None = None,
+    ) -> None:
+        if runtime not in {"docker", "podman"}:
+            raise WorkerRuntimeError("WORKER_RUNTIME_UNSUPPORTED", "runtime is unsupported")
         if not executable.is_absolute():
             raise WorkerRuntimeError("WORKER_RUNTIME_UNTRUSTED", "runtime is untrusted")
+        if runtime == "podman" and capability_monitor is None:
+            raise WorkerRuntimeError(
+                "WORKER_CAPABILITY_MONITOR_REQUIRED", "capability monitor is required"
+            )
+        self._runtime = runtime
         self._executable = str(executable)
         self._executor = executor
+        self._capability_monitor = capability_monitor
 
     def launch(self, worker_id: str, image_digest: str) -> str:
         self._validate(worker_id, image_digest)
@@ -103,6 +123,15 @@ class OciWorkerIsolationController:
             and cpu_period > 0
             and cpu_quota * 4 <= cpu_period
         )
+        podman = self._runtime == "podman"
+        capabilities_dropped = (
+            isinstance(state, dict)
+            and type(state.get("Pid")) is int
+            and self._capability_monitor is not None
+            and self._capability_monitor.all_dropped(state["Pid"])
+            if podman
+            else isinstance(cap_drop, list) and any(str(v).lower() == "all" for v in cap_drop)
+        )
         checks = (
             document.get("Id") == container_id,
             isinstance(state, dict) and state.get("Running") is True,
@@ -116,7 +145,7 @@ class OciWorkerIsolationController:
             host_doc.get("PidsLimit") == 16,
             host_doc.get("Memory") == 33_554_432,
             cpu_limited,
-            isinstance(cap_drop, list) and any(str(v).lower() == "all" for v in cap_drop),
+            capabilities_dropped,
             isinstance(security, list)
             and any("no-new-privileges" in str(v).lower() for v in security),
             host_doc.get("Binds") in (None, []),
@@ -133,8 +162,12 @@ class OciWorkerIsolationController:
     def terminate(self, container_id: str) -> None:
         if not _CONTAINER_ID.fullmatch(container_id):
             raise WorkerRuntimeError("WORKER_RUNTIME_INVALID", "worker identity is invalid")
+        command = [self._executable, "rm", "--force"]
+        if self._runtime == "podman":
+            command.append("--time=0")
+        command.append(container_id)
         result = self._executor.execute(
-            (self._executable, "rm", "--force", container_id),
+            tuple(command),
             timeout_seconds=5,
             max_output_bytes=4096,
         )

@@ -373,7 +373,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies
-    identity, image, label, network, or isolation drift. A distinct internal
+    identity, image, label, network, or isolation drift. The hosted rootless Podman harness
+    now exercises sentinel launch, live capability verification, inspection, and bounded
+    termination; evidence is valid only after that workflow passes. A distinct internal
     worker-to-gateway channel, hosted rootless bypass proof, and the HTTP/browser worker
     remain required before this item is complete.
 - [ ] Implement source-IP attestation and approved-IP comparison.

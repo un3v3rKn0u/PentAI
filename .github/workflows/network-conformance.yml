@@ -14,6 +14,7 @@ on:
       - "services/core/src/pentai_core/gateway_runtime_lifecycle.py"
       - "services/core/src/pentai_core/gateway_runtime_composition.py"
       - "services/core/src/pentai_core/gateway_runtime_supervisor.py"
+      - "services/core/src/pentai_core/worker_runtime.py"
       - "services/core/src/pentai_core/config.py"
       - "services/core/src/pentai_core/main.py"
       - "migrations/0011_gateway_runtime_lifecycle.sql"

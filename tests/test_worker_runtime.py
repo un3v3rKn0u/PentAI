@@ -54,11 +54,25 @@ class Executor:
         return self.responses.pop(0)
 
 
+@dataclass
+class CapabilityMonitor:
+    result: bool = True
+    pids: list[int] = field(default_factory=list)
+
+    def all_dropped(self, pid: int) -> bool:
+        self.pids.append(pid)
+        return self.result
+
+
+def controller(executor: Executor) -> OciWorkerIsolationController:
+    return OciWorkerIsolationController(runtime="docker", executable=OCI, executor=executor)
+
+
 class WorkerRuntimeTests(unittest.TestCase):
     def test_launches_digest_pinned_sentinel_without_network(self) -> None:
         executor = Executor([CommandResult(0, CONTAINER.encode())])
         self.assertEqual(
-            OciWorkerIsolationController(executable=OCI, executor=executor).launch(WORKER, IMAGE),
+            controller(executor).launch(WORKER, IMAGE),
             CONTAINER,
         )
         command = executor.calls[0]
@@ -73,9 +87,41 @@ class WorkerRuntimeTests(unittest.TestCase):
 
     def test_verifies_exact_runtime_identity_and_no_networks(self) -> None:
         executor = Executor([CommandResult(0, json.dumps(inspection()).encode())])
-        OciWorkerIsolationController(executable=OCI, executor=executor).verify(
-            WORKER, CONTAINER, IMAGE
+        controller(executor).verify(WORKER, CONTAINER, IMAGE)
+
+    def test_podman_uses_live_process_capabilities_and_bounded_termination(self) -> None:
+        document = inspection()
+        state = document["State"]
+        assert isinstance(state, dict)
+        state["Pid"] = 1234
+        host = document["HostConfig"]
+        assert isinstance(host, dict)
+        host["CapDrop"] = []
+        monitor = CapabilityMonitor()
+        executor = Executor(
+            [CommandResult(0, json.dumps(document).encode()), CommandResult(0, b"")]
         )
+        podman = OciWorkerIsolationController(
+            runtime="podman",
+            executable=Path("/usr/bin/podman"),
+            executor=executor,
+            capability_monitor=monitor,
+        )
+        podman.verify(WORKER, CONTAINER, IMAGE)
+        podman.terminate(CONTAINER)
+        self.assertEqual(monitor.pids, [1234])
+        self.assertEqual(executor.calls[1][-2:], ("--time=0", CONTAINER))
+
+        monitor.result = False
+        denied = OciWorkerIsolationController(
+            runtime="podman",
+            executable=Path("/usr/bin/podman"),
+            executor=Executor([CommandResult(0, json.dumps(document).encode())]),
+            capability_monitor=monitor,
+        )
+        with self.assertRaises(WorkerRuntimeError) as raised:
+            denied.verify(WORKER, CONTAINER, IMAGE)
+        self.assertEqual(raised.exception.code, "WORKER_CONTAINMENT_INVALID")
 
     def test_each_network_or_identity_drift_denies(self) -> None:
         cases = (
@@ -92,31 +138,33 @@ class WorkerRuntimeTests(unittest.TestCase):
                 parent = document[section]
                 assert isinstance(parent, dict)
                 parent[key] = value
-                controller = OciWorkerIsolationController(
-                    executable=OCI,
-                    executor=Executor([CommandResult(0, json.dumps(document).encode())]),
+                runtime_controller = controller(
+                    Executor([CommandResult(0, json.dumps(document).encode())])
                 )
                 with self.assertRaises(WorkerRuntimeError) as raised:
-                    controller.verify(WORKER, CONTAINER, IMAGE)
+                    runtime_controller.verify(WORKER, CONTAINER, IMAGE)
                 self.assertEqual(raised.exception.code, "WORKER_CONTAINMENT_INVALID")
 
     def test_invalid_inputs_and_subprocess_failures_deny(self) -> None:
-        controller = OciWorkerIsolationController(
-            executable=OCI, executor=Executor([CommandResult(1, b"")])
-        )
+        runtime_controller = controller(Executor([CommandResult(1, b"")]))
         with self.assertRaises(WorkerRuntimeError):
-            controller.launch("bad worker", IMAGE)
+            runtime_controller.launch("bad worker", IMAGE)
         with self.assertRaises(WorkerRuntimeError) as raised:
-            controller.launch(WORKER, IMAGE)
+            runtime_controller.launch(WORKER, IMAGE)
         self.assertEqual(raised.exception.code, "WORKER_LAUNCH_FAILED")
+
+        with self.assertRaises(WorkerRuntimeError):
+            OciWorkerIsolationController(
+                runtime="podman", executable=Path("/usr/bin/podman"), executor=Executor([])
+            )
 
     def test_termination_is_id_bound(self) -> None:
         executor = Executor([CommandResult(0, b"")])
-        controller = OciWorkerIsolationController(executable=OCI, executor=executor)
-        controller.terminate(CONTAINER)
+        runtime_controller = controller(executor)
+        runtime_controller.terminate(CONTAINER)
         self.assertEqual(executor.calls[0], (str(OCI), "rm", "--force", CONTAINER))
         with self.assertRaises(WorkerRuntimeError):
-            controller.terminate("not-a-container")
+            runtime_controller.terminate("not-a-container")
 
 
 if __name__ == "__main__":
