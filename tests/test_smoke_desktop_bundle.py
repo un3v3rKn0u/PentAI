@@ -61,7 +61,13 @@ def test_run_bootstrap_terminates_process_tree_after_timeout(
     monkeypatch.setattr(smoke_desktop_bundle, "terminate_process_tree", terminate)
     monkeypatch.setattr(smoke_desktop_bundle.tempfile, "TemporaryFile", lambda: output)
 
-    with pytest.raises(RuntimeError, match="timed out after 30 seconds: stopped diagnostic"):
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            rf"timed out after {smoke_desktop_bundle.BOOTSTRAP_TIMEOUT_SECONDS} "
+            r"seconds: stopped diagnostic"
+        ),
+    ):
         smoke_desktop_bundle.run_bootstrap(Path("desktop"))
 
     terminate.assert_called_once_with(process)

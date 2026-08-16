@@ -10,7 +10,9 @@ from typing import Any, BinaryIO
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE = ROOT / "apps" / "desktop" / "target" / "release"
-BOOTSTRAP_TIMEOUT_SECONDS = 30
+# Keep the harness deadline above the smoke build's bounded 30-second core
+# readiness deadline so the application can report the more useful failure.
+BOOTSTRAP_TIMEOUT_SECONDS = 45
 SHUTDOWN_TIMEOUT_SECONDS = 5
 MAX_DIAGNOSTIC_BYTES = 4_000
 

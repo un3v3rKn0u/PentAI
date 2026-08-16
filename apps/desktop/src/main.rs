@@ -21,7 +21,16 @@ use std::{
 use tauri::{Manager, State};
 use zeroize::Zeroizing;
 
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(12);
+const PRODUCTION_STARTUP_TIMEOUT: Duration = Duration::from_secs(12);
+const BOOTSTRAP_SMOKE_STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn startup_timeout() -> Duration {
+    if cfg!(feature = "bootstrap-smoke") {
+        BOOTSTRAP_SMOKE_STARTUP_TIMEOUT
+    } else {
+        PRODUCTION_STARTUP_TIMEOUT
+    }
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -299,7 +308,8 @@ fn readiness_request(address: SocketAddr, credential: &str) -> bool {
 }
 
 fn wait_until_ready(child: &mut Child, port: u16, credential: &str) -> Result<(), String> {
-    let deadline = Instant::now() + STARTUP_TIMEOUT;
+    let timeout = startup_timeout();
+    let deadline = Instant::now() + timeout;
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     while Instant::now() < deadline {
         if child
@@ -314,7 +324,10 @@ fn wait_until_ready(child: &mut Child, port: u16, credential: &str) -> Result<()
         }
         thread::sleep(Duration::from_millis(100));
     }
-    Err("core readiness timed out".to_string())
+    Err(format!(
+        "core readiness timed out after {} seconds",
+        timeout.as_secs()
+    ))
 }
 
 #[cfg(feature = "bootstrap-smoke")]
@@ -437,5 +450,15 @@ mod tests {
             file_sha256(&sidecar).expect("sidecar digest"),
             env!("PENTAI_CORE_SIDECAR_SHA256")
         );
+    }
+
+    #[test]
+    fn startup_timeout_matches_the_build_mode() {
+        let expected = if cfg!(feature = "bootstrap-smoke") {
+            BOOTSTRAP_SMOKE_STARTUP_TIMEOUT
+        } else {
+            PRODUCTION_STARTUP_TIMEOUT
+        };
+        assert_eq!(startup_timeout(), expected);
     }
 }
