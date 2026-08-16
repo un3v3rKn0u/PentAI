@@ -33,10 +33,10 @@ _MAX_ARGV_ITEMS = 64
 _MAX_ARG_LENGTH = 4096
 
 
-def validate_containment_attestation(
-    attestation: dict[str, Any], *, now: datetime | None = None
+def _validate_containment_attestation(
+    attestation: dict[str, Any], *, schema: str, now: datetime | None = None
 ) -> None:
-    if contract_issues(attestation, "worker-containment-attestation-v1.schema.json"):
+    if contract_issues(attestation, schema):
         raise ContainmentError("CONTAINMENT_ATTESTATION_INVALID", "attestation is malformed")
     instant = now or datetime.now(UTC)
     observed_at = parse_time(attestation["observed_at"])
@@ -56,6 +56,28 @@ def validate_containment_attestation(
         raise ContainmentError("CONTAINMENT_RUNTIME_SOCKET", "runtime socket access is denied")
 
 
+def validate_containment_attestation(
+    attestation: dict[str, Any], *, now: datetime | None = None
+) -> None:
+    """Validate the historical v1 gateway-fixture containment measurement."""
+    _validate_containment_attestation(
+        attestation,
+        schema="worker-containment-attestation-v1.schema.json",
+        now=now,
+    )
+
+
+def validate_worker_containment_attestation(
+    attestation: dict[str, Any], *, now: datetime | None = None
+) -> None:
+    """Validate worker-specific containment bound to its gateway-only network."""
+    _validate_containment_attestation(
+        attestation,
+        schema="worker-containment-attestation-v2.schema.json",
+        now=now,
+    )
+
+
 def prepare_worker_launch(
     *,
     session: dict[str, Any],
@@ -67,7 +89,7 @@ def prepare_worker_launch(
     cpu_quota: float = 1.0,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    validate_containment_attestation(containment_attestation, now=now)
+    validate_worker_containment_attestation(containment_attestation, now=now)
     if contract_issues(session, "gateway-session-v1.schema.json"):
         raise ContainmentError("GATEWAY_SESSION_INVALID", "gateway session is malformed")
     if session.get("status") != "prepared" or session.get("execution_enabled") is not False:
@@ -76,10 +98,7 @@ def prepare_worker_launch(
         not argv
         or len(argv) > _MAX_ARGV_ITEMS
         or any(
-            not isinstance(item, str)
-            or not item
-            or len(item) > _MAX_ARG_LENGTH
-            or "\x00" in item
+            not isinstance(item, str) or not item or len(item) > _MAX_ARG_LENGTH or "\x00" in item
             for item in argv
         )
     ):
@@ -92,7 +111,7 @@ def prepare_worker_launch(
         "image_digest": image_digest,
         "argv": argv,
         "network_mode": "gateway_only",
-        "gateway_network_id": containment_attestation["gateway_network_id"],
+        "gateway_network_id": containment_attestation["worker_gateway_network_id"],
         "read_only_root": True,
         "drop_capabilities": "ALL",
         "no_new_privileges": True,

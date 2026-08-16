@@ -3702,3 +3702,30 @@ accepted only as bounded control-character-free strings. Addresses, gateways, in
 endpoints, networks, and ports remain strict denial fields. Diagnostics report only fixed
 field names or the `unknown` category, never runtime values. The live result remains
 unverified until the replacement hosted job passes.
+
+## 2026-08-16 — Worker gateway attestation contract v2
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-executing
+contract boundary only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Worker-versus-fixture network-role separation, major-version contract
+compatibility, strict unknown-field rejection, attestation freshness, launch-plan binding,
+negative/default-deny paths, rollback, and absence of execution authority.
+
+**Evidence examined:** Contract validation; v2 success; v1, wrong-role, ambiguous-network,
+stale, malformed, and containment-property denials; full local Python checks; complete diff.
+
+**Findings:** A historical gateway-to-fixture attestation can no longer be interpreted as
+authority to plan a worker on a gateway-only channel. Worker planning requires the exact v2
+role and binds the launch plan to its distinct network identity.
+
+**Limitations and deferred work:** No worker network is created or inspected, no peer
+exclusivity is proved, and no worker executes. Live re-attestation, recovery, and hosted
+rootless bypass evidence remain required.
+
+**Residual risk accepted:** The schema is only a contract boundary and has no live producer.
+Review is self-authored and non-independent. This slice authorizes no worker networking or
+target execution.
