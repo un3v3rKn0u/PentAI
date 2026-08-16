@@ -10,10 +10,10 @@ no-new-privileges, isolates PID and IPC namespaces, applies fixed resource limit
 no host paths. Exact live inspection verifies the image, identity, ownership, empty network
 set, and every launch restriction before accepting the container.
 
-Docker must report an empty network map. Podman may instead report its inert `none`
-pseudo-network; that representation is accepted only when it is the sole entry and every
-address, gateway, interface, endpoint, alias, option, and published-port field is empty.
-Unknown or additional network state fails closed.
+Docker must report an empty network map. Podman may omit that map, report it empty, or
+report its inert `none` pseudo-network. Every accepted representation still requires all
+address, gateway, interface, endpoint, alias, option, and published-port fields to be empty.
+Unknown or additional connectivity state fails closed.
 
 Malformed identities, mutable image references, runtime failures, any network attachment,
 privilege drift, missing labels, or host binds fail closed. Termination accepts only a

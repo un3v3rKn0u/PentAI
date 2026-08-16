@@ -93,6 +93,14 @@ def podman_inspection() -> dict[str, object]:
     return document
 
 
+def podman_documented_inspection() -> dict[str, object]:
+    document = podman_inspection()
+    network = document["NetworkSettings"]
+    assert isinstance(network, dict)
+    del network["Networks"]
+    return document
+
+
 @dataclass
 class Executor:
     responses: list[CommandResult]
@@ -141,7 +149,7 @@ class WorkerRuntimeTests(unittest.TestCase):
         controller(executor).verify(WORKER, CONTAINER, IMAGE)
 
     def test_podman_uses_live_process_capabilities_and_bounded_termination(self) -> None:
-        document = podman_inspection()
+        document = podman_documented_inspection()
         monitor = CapabilityMonitor()
         executor = Executor(
             [CommandResult(0, json.dumps(document).encode()), CommandResult(0, b"")]
@@ -167,6 +175,24 @@ class WorkerRuntimeTests(unittest.TestCase):
         with self.assertRaises(WorkerRuntimeError) as raised:
             denied.verify(WORKER, CONTAINER, IMAGE)
         self.assertEqual(raised.exception.code, "WORKER_CONTAINMENT_INVALID")
+
+    def test_podman_accepts_documented_empty_network_representations(self) -> None:
+        documents = (podman_documented_inspection(), podman_inspection())
+        empty_map = podman_inspection()
+        network = empty_map["NetworkSettings"]
+        assert isinstance(network, dict)
+        network["Networks"] = {}
+        documents += (empty_map,)
+
+        for document in documents:
+            with self.subTest(networks=document["NetworkSettings"]):
+                runtime_controller = OciWorkerIsolationController(
+                    runtime="podman",
+                    executable=Path("/usr/bin/podman"),
+                    executor=Executor([CommandResult(0, json.dumps(document).encode())]),
+                    capability_monitor=CapabilityMonitor(),
+                )
+                runtime_controller.verify(WORKER, CONTAINER, IMAGE)
 
     def test_podman_none_pseudo_network_rejects_connectivity_and_ambiguity(self) -> None:
         cases = (
@@ -204,7 +230,10 @@ class WorkerRuntimeTests(unittest.TestCase):
                 )
                 with self.assertRaises(WorkerRuntimeError) as raised:
                     runtime_controller.verify(WORKER, CONTAINER, IMAGE)
-                self.assertIn("network_attachments", str(raised.exception))
+                self.assertRegex(
+                    str(raised.exception),
+                    r"network_attachments_(fields|networks|none_fields|none_identity)",
+                )
 
         document = podman_inspection()
         host = document["HostConfig"]
@@ -218,12 +247,12 @@ class WorkerRuntimeTests(unittest.TestCase):
         )
         with self.assertRaises(WorkerRuntimeError) as raised:
             runtime_controller.verify(WORKER, CONTAINER, IMAGE)
-        self.assertIn("network_attachments", str(raised.exception))
+        self.assertIn("network_attachments_port_bindings", str(raised.exception))
 
     def test_each_network_or_identity_drift_denies(self) -> None:
         cases = (
             ("HostConfig", "NetworkMode", "bridge", "network_mode"),
-            ("NetworkSettings", "Networks", {"bridge": {}}, "network_attachments"),
+            ("NetworkSettings", "Networks", {"bridge": {}}, "network_attachments_networks"),
             ("root", "Image", "sha256:" + "c" * 64, "image_identity"),
             ("root", "Image", "latest", "image_identity"),
             ("Config", "Labels", {}, "ownership_labels"),

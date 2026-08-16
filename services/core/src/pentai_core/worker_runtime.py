@@ -69,29 +69,34 @@ def _has_no_connectivity(
     )
 
 
-def _has_no_network_attachment(runtime: str, host: dict[str, object], network: object) -> bool:
-    if not isinstance(network, dict) or not _has_no_connectivity(network):
-        return False
-    if host.get("PortBindings") not in (None, {}) or host.get("PublishAllPorts") not in (
-        None,
-        False,
-    ):
-        return False
+def _network_attachment_error(runtime: str, host: dict[str, object], network: object) -> str | None:
+    if not isinstance(network, dict):
+        return "document"
+    if not _has_no_connectivity(network):
+        return "fields"
+    if host.get("PortBindings") not in (None, {}):
+        return "port_bindings"
+    if host.get("PublishAllPorts") not in (None, False):
+        return "port_publication"
     networks = network.get("Networks")
-    if not isinstance(networks, dict):
-        return False
     if runtime == "docker":
-        return not networks
+        return None if isinstance(networks, dict) and not networks else "networks"
+    if networks in (None, {}):
+        return None
+    if not isinstance(networks, dict):
+        return "networks"
     if set(networks) != {"none"}:
-        return False
+        return "networks"
     none_network = networks["none"]
-    return (
-        isinstance(none_network, dict)
-        and _has_no_connectivity(none_network, allow_network_identity=True)
-        and none_network.get("NetworkID") in (None, "", "none")
-        and "Networks" not in none_network
-        and "Ports" not in none_network
-    )
+    if not isinstance(none_network, dict):
+        return "none_document"
+    if not _has_no_connectivity(none_network, allow_network_identity=True):
+        return "none_fields"
+    if none_network.get("NetworkID") not in (None, "", "none"):
+        return "none_identity"
+    if "Networks" in none_network or "Ports" in none_network:
+        return "none_nested"
+    return None
 
 
 class WorkerRuntimeError(ValueError):
@@ -220,12 +225,12 @@ class OciWorkerIsolationController:
             )
         except SnapshotCollectionError:
             image_identity = False
+        network_error = _network_attachment_error(self._runtime, host_doc, network)
         checks = {
             "container_identity": document.get("Id") == container_id,
             "running": isinstance(state, dict) and state.get("Running") is True,
             "image_identity": image_identity,
             "network_mode": host_doc.get("NetworkMode") == "none",
-            "network_attachments": _has_no_network_attachment(self._runtime, host_doc, network),
             "read_only_root": host_doc.get("ReadonlyRootfs") is True,
             "non_privileged": host_doc.get("Privileged") is False,
             "private_pid": host_doc.get("PidMode") in ("", "private", None),
@@ -243,6 +248,9 @@ class OciWorkerIsolationController:
             and labels.get("com.pentai.worker-id") == worker_id,
         }
         failed = sorted(name for name, passed in checks.items() if not passed)
+        if network_error is not None:
+            failed.append(f"network_attachments_{network_error}")
+            failed.sort()
         if failed:
             raise WorkerRuntimeError(
                 "WORKER_CONTAINMENT_INVALID",

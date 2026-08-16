@@ -3682,3 +3682,13 @@ accepts that Podman representation only when all connectivity-bearing fields are
 there are no additional networks, addresses, gateways, interfaces, aliases, options, or
 published ports. Representative success and disguised-attachment regressions preserve the
 default-deny boundary. The live result remains unverified until the next hosted job passes.
+
+### Hosted omitted-network compatibility correction
+
+The next PR #159 run again failed only on `network_attachments`. Podman's documented
+container-inspection schema may omit `NetworkSettings.Networks` entirely when no network is
+attached; requiring a synthetic `none` entry was therefore not portable. Podman now accepts
+an omitted map, an empty map, or a sole inert `none` entry, while the exact `none` host mode
+and all direct connectivity and port fields remain mandatory. Bounded field-category
+diagnostics make another runtime mismatch actionable without logging inspection values. The
+live result remains unverified until the replacement hosted job passes.
