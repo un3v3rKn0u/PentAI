@@ -373,8 +373,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - Worker launch planning now requires a worker-specific v2 containment attestation with
     an explicit gateway-only network role and distinct network identity. Historical fixture
     attestations, wrong roles, ambiguous identities, and stale measurements fail closed.
-    Network construction, live peer inspection, re-attestation, and worker execution remain
-    disabled pending the next slices and hosted rootless bypass evidence.
+    Worker attachment, re-attestation, and execution remain disabled pending the next
+    slices and hosted rootless bypass evidence.
+  - The existing fixed internal worker-to-gateway network can now be followed by bounded
+    live Docker/Podman inspection that accepts only the exact expected gateway container as
+    its sole peer. Missing, additional, renamed, or isolation-drifted peers fail closed.
+    Worker attachment, execution, immediate re-attestation, drift monitoring, and hosted
+    rootless bypass evidence remain disabled and required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies
