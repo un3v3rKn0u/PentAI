@@ -13,7 +13,8 @@ set, and every launch restriction before accepting the container.
 Docker must report an empty network map. Podman may omit that map, report it empty, or
 report its inert `none` pseudo-network. Every accepted representation still requires all
 address, gateway, interface, endpoint, alias, option, and published-port fields to be empty.
-Unknown or additional connectivity state fails closed.
+Podman's bounded namespace identifiers may be non-empty because they identify the isolated
+namespace rather than an attachment. Unknown or additional connectivity state fails closed.
 
 Malformed identities, mutable image references, runtime failures, any network attachment,
 privilege drift, missing labels, or host binds fail closed. Termination accepts only a

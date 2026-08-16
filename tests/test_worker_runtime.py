@@ -98,6 +98,8 @@ def podman_documented_inspection() -> dict[str, object]:
     network = document["NetworkSettings"]
     assert isinstance(network, dict)
     del network["Networks"]
+    network["SandboxID"] = "f" * 64
+    network["SandboxKey"] = "/run/user/1000/netns/netns-fixture"
     return document
 
 
@@ -193,6 +195,23 @@ class WorkerRuntimeTests(unittest.TestCase):
                     capability_monitor=CapabilityMonitor(),
                 )
                 runtime_controller.verify(WORKER, CONTAINER, IMAGE)
+
+    def test_network_namespace_metadata_is_bounded(self) -> None:
+        for value in ({"path": "not-text"}, "x" * 4097, "/run/user/1000/netns/bad\nkey"):
+            with self.subTest(value_type=type(value).__name__):
+                document = podman_documented_inspection()
+                network = document["NetworkSettings"]
+                assert isinstance(network, dict)
+                network["SandboxKey"] = value
+                runtime_controller = OciWorkerIsolationController(
+                    runtime="podman",
+                    executable=Path("/usr/bin/podman"),
+                    executor=Executor([CommandResult(0, json.dumps(document).encode())]),
+                    capability_monitor=CapabilityMonitor(),
+                )
+                with self.assertRaises(WorkerRuntimeError) as raised:
+                    runtime_controller.verify(WORKER, CONTAINER, IMAGE)
+                self.assertIn("network_attachments_fields_sandboxkey", str(raised.exception))
 
     def test_podman_none_pseudo_network_rejects_connectivity_and_ambiguity(self) -> None:
         cases = (

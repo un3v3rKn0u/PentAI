@@ -25,10 +25,9 @@ _EMPTY_NETWORK_TEXT_FIELDS = frozenset(
         "IPv6Gateway",
         "LinkLocalIPv6Address",
         "MacAddress",
-        "SandboxID",
-        "SandboxKey",
     }
 )
+_NETWORK_NAMESPACE_METADATA_FIELDS = frozenset({"SandboxID", "SandboxKey"})
 _EMPTY_NETWORK_PREFIX_FIELDS = frozenset(
     {"GlobalIPv6PrefixLen", "GwPriority", "IPPrefixLen", "LinkLocalIPv6PrefixLen"}
 )
@@ -47,11 +46,12 @@ _EMPTY_NETWORK_COLLECTION_FIELDS = frozenset(
 _FALSE_NETWORK_FIELDS = frozenset({"HairpinMode"})
 
 
-def _has_no_connectivity(
+def _network_field_error(
     values: dict[str, object], *, allow_network_identity: bool = False
-) -> bool:
+) -> str | None:
     allowed = (
         _EMPTY_NETWORK_TEXT_FIELDS
+        | _NETWORK_NAMESPACE_METADATA_FIELDS
         | _EMPTY_NETWORK_PREFIX_FIELDS
         | _EMPTY_NETWORK_COLLECTION_FIELDS
         | _FALSE_NETWORK_FIELDS
@@ -59,21 +59,40 @@ def _has_no_connectivity(
     )
     if allow_network_identity:
         allowed = allowed | {"NetworkID"}
-    return (
-        not (values.keys() - allowed)
-        and all(values.get(key) in (None, "") for key in _EMPTY_NETWORK_TEXT_FIELDS)
-        and all(values.get(key) in (None, 0) for key in _EMPTY_NETWORK_PREFIX_FIELDS)
-        and all(values.get(key) in (None, [], {}) for key in _EMPTY_NETWORK_COLLECTION_FIELDS)
-        and all(values.get(key) in (None, False) for key in _FALSE_NETWORK_FIELDS)
-        and values.get("Ports") in (None, {})
-    )
+    if values.keys() - allowed:
+        return "unknown"
+    for key in sorted(_EMPTY_NETWORK_TEXT_FIELDS):
+        if values.get(key) not in (None, ""):
+            return key.lower()
+    for key in sorted(_NETWORK_NAMESPACE_METADATA_FIELDS):
+        value = values.get(key)
+        if value is not None and (
+            not isinstance(value, str)
+            or len(value) > 4096
+            or any(character in value for character in ("\x00", "\r", "\n"))
+        ):
+            return key.lower()
+    for key in sorted(_EMPTY_NETWORK_PREFIX_FIELDS):
+        value = values.get(key)
+        if value is not None and (type(value) is not int or value != 0):
+            return key.lower()
+    for key in sorted(_EMPTY_NETWORK_COLLECTION_FIELDS):
+        if values.get(key) not in (None, [], {}):
+            return key.lower()
+    for key in sorted(_FALSE_NETWORK_FIELDS):
+        if values.get(key) is not None and values.get(key) is not False:
+            return key.lower()
+    if values.get("Ports") not in (None, {}):
+        return "ports"
+    return None
 
 
 def _network_attachment_error(runtime: str, host: dict[str, object], network: object) -> str | None:
     if not isinstance(network, dict):
         return "document"
-    if not _has_no_connectivity(network):
-        return "fields"
+    field_error = _network_field_error(network)
+    if field_error is not None:
+        return f"fields_{field_error}"
     if host.get("PortBindings") not in (None, {}):
         return "port_bindings"
     if host.get("PublishAllPorts") not in (None, False):
@@ -90,8 +109,9 @@ def _network_attachment_error(runtime: str, host: dict[str, object], network: ob
     none_network = networks["none"]
     if not isinstance(none_network, dict):
         return "none_document"
-    if not _has_no_connectivity(none_network, allow_network_identity=True):
-        return "none_fields"
+    field_error = _network_field_error(none_network, allow_network_identity=True)
+    if field_error is not None:
+        return f"none_fields_{field_error}"
     if none_network.get("NetworkID") not in (None, "", "none"):
         return "none_identity"
     if "Networks" in none_network or "Ports" in none_network:

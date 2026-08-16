@@ -3692,3 +3692,13 @@ an omitted map, an empty map, or a sole inert `none` entry, while the exact `non
 and all direct connectivity and port fields remain mandatory. Bounded field-category
 diagnostics make another runtime mismatch actionable without logging inspection values. The
 live result remains unverified until the replacement hosted job passes.
+
+### Hosted namespace-metadata compatibility correction
+
+The subsequent PR #159 run narrowed the denial to `network_attachments_fields`. Rootless
+Podman may populate `SandboxKey` and `SandboxID` for the private network namespace even under
+`--network=none`; these identifiers are metadata, not evidence of an attachment. They are now
+accepted only as bounded control-character-free strings. Addresses, gateways, interfaces,
+endpoints, networks, and ports remain strict denial fields. Diagnostics report only fixed
+field names or the `unknown` category, never runtime values. The live result remains
+unverified until the replacement hosted job passes.
