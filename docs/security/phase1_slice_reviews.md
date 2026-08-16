@@ -3631,3 +3631,74 @@ worker-to-gateway channel, continuous re-attestation, recovery, and bypass tests
 **Residual risk accepted:** The OCI runtime and inspection response remain local trusted
 boundaries, and no independent reviewer challenged this implementation. This review does not
 authorize worker networking or target execution.
+
+## 2026-08-15 — Hosted worker isolation sentinel proof
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for hosted
+verification subject to the protected workflow passing<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Explicit Docker/Podman selection, mandatory Podman process-capability
+monitoring, immutable image and worker identity, empty network attachment, resource and
+privilege inspection, bounded termination, hosted harness sequencing and cleanup, workflow
+path coverage, compatibility, rollback, and non-executing authority.
+
+**Evidence examined:** Docker inspection regressions; Podman live-PID capability success and
+denial tests; Podman immediate termination command; missing monitor denial; full local checks;
+complete diff; hosted workflow definition. The live hosted result is not claimed here and
+must pass before it becomes evidence.
+
+**Findings:** Worker-adapter changes can no longer skip the rootless containment job. The
+harness launches the exact digest-pinned sentinel with no network, verifies the running OCI
+object and live Podman process capabilities, and always performs bounded ID-based cleanup.
+
+**Limitations and deferred work:** Rootless Docker and cross-platform evidence remain absent.
+The sentinel has no gateway channel and is not an HTTP/browser worker. The protected hosted
+job must pass; a failed, skipped, or cancelled result supplies no evidence.
+
+**Residual risk accepted:** Podman and `/proc` remain trusted local measurement boundaries,
+and review is self-authored and non-independent. This slice does not authorize worker
+networking or target execution.
+
+### Hosted inspection compatibility correction
+
+The first PR #159 hosted run failed closed because the synthetic fixture placed immutable
+image identity under Docker's configuration shape, while Podman reports the container's
+canonical image ID at the top level and may omit the `sha256:` prefix. The correction uses
+the existing strict OCI digest normalizer on that canonical field, continues to reject tags,
+malformed values, and mismatches, and adds representative prefixed and raw-digest tests.
+Containment denials now report only a sorted bounded set of control names, making future
+hosted failures actionable without exposing raw runtime output. The live result remains
+unverified until the replacement hosted job passes.
+
+### Hosted no-network representation correction
+
+The replacement PR #159 run accepted the canonical image identity and failed closed only on
+`network_attachments`. Rootless Podman represents `--network=none` with a sole inert `none`
+pseudo-network rather than Docker's empty network map. The runtime-specific parser now
+accepts that Podman representation only when all connectivity-bearing fields are empty and
+there are no additional networks, addresses, gateways, interfaces, aliases, options, or
+published ports. Representative success and disguised-attachment regressions preserve the
+default-deny boundary. The live result remains unverified until the next hosted job passes.
+
+### Hosted omitted-network compatibility correction
+
+The next PR #159 run again failed only on `network_attachments`. Podman's documented
+container-inspection schema may omit `NetworkSettings.Networks` entirely when no network is
+attached; requiring a synthetic `none` entry was therefore not portable. Podman now accepts
+an omitted map, an empty map, or a sole inert `none` entry, while the exact `none` host mode
+and all direct connectivity and port fields remain mandatory. Bounded field-category
+diagnostics make another runtime mismatch actionable without logging inspection values. The
+live result remains unverified until the replacement hosted job passes.
+
+### Hosted namespace-metadata compatibility correction
+
+The subsequent PR #159 run narrowed the denial to `network_attachments_fields`. Rootless
+Podman may populate `SandboxKey` and `SandboxID` for the private network namespace even under
+`--network=none`; these identifiers are metadata, not evidence of an attachment. They are now
+accepted only as bounded control-character-free strings. Addresses, gateways, interfaces,
+endpoints, networks, and ports remain strict denial fields. Diagnostics report only fixed
+field names or the `unknown` category, never runtime values. The live result remains
+unverified until the replacement hosted job passes.
