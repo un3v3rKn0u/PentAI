@@ -370,6 +370,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     also passed on PR #47. Controlled DNS, outbound gateway networking, and HTTP effects
     remain required.
 - [ ] Create an isolated HTTP/browser worker with no direct outbound route.
+  - Worker launch planning now requires a worker-specific v2 containment attestation with
+    an explicit gateway-only network role and distinct network identity. Historical fixture
+    attestations, wrong roles, ambiguous identities, and stale measurements fail closed.
+    Network construction, live peer inspection, re-attestation, and worker execution remain
+    disabled pending the next slices and hosted rootless bypass evidence.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies

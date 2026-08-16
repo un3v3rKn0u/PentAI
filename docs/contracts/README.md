@@ -33,7 +33,9 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `gateway-runtime-instance-v1.schema.json` — durable identity and fail-closed state
   for a non-target-facing gateway fixture runtime.
 - `worker-containment-attestation-v1.schema.json` — short-lived runtime measurements
-  required before a worker launch may be planned.
+  retained for the historical gateway-to-fixture containment boundary.
+- `worker-containment-attestation-v2.schema.json` — worker-specific measurements with
+  an explicit gateway-only network role required before a worker launch may be planned.
 - `worker-launch-spec-v1.schema.json` — immutable, digest-pinned, non-executing worker
   launch plan with fixed isolation controls.
 - `assessment-workflow-v1.schema.json` — durable, version-fenced lifecycle for a
@@ -98,6 +100,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | GatewayFixtureExecutionClaim v2 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | GatewayRuntimeInstance v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | WorkerContainmentAttestation v1 | Systems Engineer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
+| WorkerContainmentAttestation v2 | Systems Engineer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | WorkerLaunchSpec v1 | Execution Safety Lead | Contract Maintainer | Systems Engineer, independent Security Reviewer |
 | AssessmentWorkflow v1 | Core Maintainer | Contract Maintainer | Product Safety Lead, Security Reviewer |
 | WorkflowTask v1 | Core Maintainer | Contract Maintainer | Execution Safety Lead, Security Reviewer |
