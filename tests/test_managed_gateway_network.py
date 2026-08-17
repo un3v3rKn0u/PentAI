@@ -9,6 +9,8 @@ from pentai_core.managed_gateway_network import (
     ManagedGatewayNetworkProvisioner,
     NetworkProbeExecutionError,
     OciNetworkConformanceProbe,
+    WorkerGatewayPeerInspector,
+    WorkerGatewayPeerResult,
     normalize_oci_image_digest,
     require_rootless_runtime,
 )
@@ -19,6 +21,8 @@ NAME = "pentai-gateway-fixture"
 NETWORK_ID = "fixture-network-id"
 INSTANCE = "fixture-pentai"
 IMAGE = "sha256:" + "a" * 64
+GATEWAY_ID = "gateway-container-id"
+GATEWAY_NAME = "pentai-gateway"
 
 
 def conformance(**updates: object) -> dict[str, object]:
@@ -80,6 +84,30 @@ def podman_inspected(**updates: object) -> CommandResult:
     return encoded(document)
 
 
+def peer_inspected(**updates: object) -> CommandResult:
+    document: dict[str, object] = {
+        "Id": NETWORK_ID,
+        "Name": NAME,
+        "Internal": True,
+        "EnableIPv6": False,
+        "Containers": {GATEWAY_ID: {"Name": GATEWAY_NAME}},
+    }
+    document.update(updates)
+    return encoded(document)
+
+
+def podman_peer_inspected(**updates: object) -> CommandResult:
+    document: dict[str, object] = {
+        "id": NETWORK_ID,
+        "name": NAME,
+        "internal": True,
+        "ipv6_enabled": False,
+        "containers": {GATEWAY_ID: {"name": GATEWAY_NAME}},
+    }
+    document.update(updates)
+    return encoded(document)
+
+
 @dataclass
 class FixtureExecutor:
     responses: list[CommandResult]
@@ -103,6 +131,73 @@ def provisioner(executor: FixtureExecutor) -> ManagedGatewayNetworkProvisioner:
 
 
 class ManagedGatewayNetworkTests(unittest.TestCase):
+    def test_worker_network_requires_exactly_one_expected_gateway_peer(self) -> None:
+        executor = FixtureExecutor([peer_inspected()])
+        inspector = WorkerGatewayPeerInspector(
+            runtime="docker",
+            executable=DOCKER,
+            network_name=NAME,
+            gateway_container_name=GATEWAY_NAME,
+            executor=executor,
+        )
+        self.assertEqual(
+            inspector.verify(network_id=NETWORK_ID, gateway_container_id=GATEWAY_ID),
+            WorkerGatewayPeerResult(NETWORK_ID, GATEWAY_ID),
+        )
+        command, timeout, output_limit = executor.calls[0]
+        self.assertEqual(command[1:3], ("network", "inspect"))
+        self.assertEqual((timeout, output_limit), (5, 65_536))
+
+    def test_podman_worker_gateway_peer_shape_is_verified(self) -> None:
+        result = WorkerGatewayPeerInspector(
+            runtime="podman",
+            executable=Path("/usr/local/bin/podman"),
+            network_name=NAME,
+            gateway_container_name=GATEWAY_NAME,
+            executor=FixtureExecutor([podman_peer_inspected()]),
+        ).verify(network_id=NETWORK_ID, gateway_container_id=GATEWAY_ID)
+        self.assertEqual(result.gateway_container_id, GATEWAY_ID)
+
+    def test_missing_additional_or_wrong_gateway_peer_denies(self) -> None:
+        cases = (
+            peer_inspected(Containers={}),
+            peer_inspected(
+                Containers={
+                    GATEWAY_ID: {"Name": GATEWAY_NAME},
+                    "unexpected-worker": {"Name": "unexpected-worker"},
+                }
+            ),
+            peer_inspected(Containers={GATEWAY_ID: {"Name": "wrong-gateway"}}),
+        )
+        for response in cases:
+            with self.subTest(response=response), self.assertRaises(SnapshotCollectionError):
+                WorkerGatewayPeerInspector(
+                    runtime="docker",
+                    executable=DOCKER,
+                    network_name=NAME,
+                    gateway_container_name=GATEWAY_NAME,
+                    executor=FixtureExecutor([response]),
+                ).verify(network_id=NETWORK_ID, gateway_container_id=GATEWAY_ID)
+
+    def test_worker_peer_inspection_denies_network_identity_or_isolation_drift(self) -> None:
+        cases = (
+            peer_inspected(Id="changed-network"),
+            peer_inspected(Name="changed-name"),
+            peer_inspected(Internal=False),
+            peer_inspected(EnableIPv6=True),
+            CommandResult(0, b"not-json"),
+            CommandResult(1, b""),
+        )
+        for response in cases:
+            with self.subTest(response=response), self.assertRaises(SnapshotCollectionError):
+                WorkerGatewayPeerInspector(
+                    runtime="docker",
+                    executable=DOCKER,
+                    network_name=NAME,
+                    gateway_container_name=GATEWAY_NAME,
+                    executor=FixtureExecutor([response]),
+                ).verify(network_id=NETWORK_ID, gateway_container_id=GATEWAY_ID)
+
     def test_image_digest_normalizes_strict_docker_and_podman_forms(self) -> None:
         raw = "a" * 64
         self.assertEqual(normalize_oci_image_digest(raw), "sha256:" + raw)

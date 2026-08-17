@@ -3729,3 +3729,33 @@ rootless bypass evidence remain required.
 **Residual risk accepted:** The schema is only a contract boundary and has no live producer.
 Review is self-authored and non-independent. This slice authorizes no worker networking or
 target execution.
+
+## 2026-08-16 — Worker gateway peer isolation
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-executing
+OCI inspection boundary only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Fixed runtime command construction, bounded output and timeout, Docker
+and Podman parsing, exact network identity and isolation, sole-peer comparison, gateway
+identity, default-deny paths, diagnostics, compatibility, rollback, and absence of execution
+authority.
+
+**Evidence examined:** Exact expected-peer success for Docker and Podman; missing,
+additional, renamed, malformed, failed, identity-drifted, non-internal, and IPv6-enabled
+denials; existing network provisioning tests; full local Python checks; complete diff.
+
+**Findings:** A worker network can no longer be treated as ready from labels or construction
+alone. Its live runtime peer set must contain exactly the trusted expected gateway identity
+and no worker or unrelated container before a later attestor may consume the result.
+
+**Limitations and deferred work:** This is a point-in-time inspection and does not attach a
+worker, bind a fresh v2 attestation, monitor peer drift, or prove hosted rootless enforcement.
+The trusted gateway lifecycle must supply the expected container identity.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify inspection output, and a
+peer can change after inspection. Immediate pre-attachment revalidation, continuous drift
+response, and hosted bypass evidence remain required. Review is self-authored and
+non-independent and authorizes no worker execution.
