@@ -3792,3 +3792,34 @@ v2 contract field.
 and topology can change after issuance within the bounded lifetime. Immediate re-attestation,
 continuous monitoring, and hosted evidence remain required. Review is self-authored and
 non-independent and authorizes no worker execution.
+
+## 2026-08-17 — Worker launch re-attestation
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-executing
+launch-planning boundary only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Attestor ownership of launch-boundary measurement, post-inspection
+timestamping, v2 validation and identity binding, inspection-error normalization, stale and
+malformed denial, legacy planner compatibility, rollback, and absence of runtime effects.
+
+**Evidence examined:** Fresh attestor invocation and exact timestamp assertion; returned
+attestation/network linkage; stale, non-object, and failed-inspection denials; unchanged v1,
+v2, launch-contract, runtime-control, and network-control regressions; full local Python
+checks; complete diff.
+
+**Findings:** The preferred launch-planning path no longer lets its caller choose a cached
+attestation. It measures through the trusted provider at the boundary, validates the result,
+and returns only a non-executing specification linked to that exact fresh attestation.
+Production freshness is calculated after live inspection completes.
+
+**Limitations and deferred work:** This is still planning, not the eventual OCI network
+attachment or worker launch boundary. It does not continuously monitor peer changes or prove
+hosted rootless enforcement.
+
+**Residual risk accepted:** Callers can still use the lower-level explicit-attestation
+function, which remains necessary for compatibility and testing; execution code must use the
+attestor-owned path. Runtime compromise and topology change after planning remain possible.
+Review is self-authored and non-independent and authorizes no worker execution.

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import copy
 import unittest
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import uuid4
 
 from pentai_core.worker_containment import (
     ContainmentError,
+    prepare_attested_worker_launch,
     prepare_worker_launch,
     validate_worker_containment_attestation,
 )
@@ -59,7 +63,70 @@ def prepared_session() -> dict[str, object]:
     }
 
 
+@dataclass
+class FixtureAttestor:
+    result: object = dataclass_field(default_factory=containment_attestation)
+    error: Exception | None = None
+    calls: list[datetime | None] = dataclass_field(default_factory=list)
+
+    def measure(self, *, now: datetime | None = None) -> dict[str, object]:
+        self.calls.append(now)
+        if self.error is not None:
+            raise self.error
+        return cast(dict[str, object], copy.deepcopy(self.result))
+
+
 class WorkerContainmentTests(unittest.TestCase):
+    def test_attested_planner_measures_at_the_launch_boundary(self) -> None:
+        instant = datetime.now(UTC)
+        attestation = containment_attestation()
+        attestation["observed_at"] = instant.isoformat().replace("+00:00", "Z")
+        attestation["expires_at"] = (instant + timedelta(seconds=30)).isoformat().replace(
+            "+00:00", "Z"
+        )
+        attestor = FixtureAttestor(attestation)
+        result = prepare_attested_worker_launch(
+            attestor=attestor,
+            session=prepared_session(),
+            image_digest="sha256:" + "a" * 64,
+            argv=["fixture-tool"],
+            now=instant,
+        )
+        self.assertEqual(attestor.calls, [instant])
+        self.assertEqual(result["containment_attestation_id"], attestation["attestation_id"])
+        self.assertEqual(
+            result["gateway_network_id"], attestation["worker_gateway_network_id"]
+        )
+        self.assertFalse(result["execution_enabled"])
+
+    def test_attested_planner_denies_stale_malformed_or_failed_measurement(self) -> None:
+        instant = datetime.now(UTC)
+        stale = containment_attestation()
+        stale["observed_at"] = (instant - timedelta(seconds=30)).isoformat().replace(
+            "+00:00", "Z"
+        )
+        stale["expires_at"] = (instant - timedelta(seconds=1)).isoformat().replace(
+            "+00:00", "Z"
+        )
+        cases = (
+            (FixtureAttestor(stale), "CONTAINMENT_ATTESTATION_STALE"),
+            (FixtureAttestor(result=[]), "CONTAINMENT_ATTESTATION_INVALID"),
+            (
+                FixtureAttestor(error=OSError("synthetic inspection failure")),
+                "CONTAINMENT_INSPECTION_FAILED",
+            ),
+        )
+        for attestor, expected in cases:
+            with self.subTest(expected=expected), self.assertRaises(ContainmentError) as raised:
+                prepare_attested_worker_launch(
+                    attestor=attestor,
+                    session=prepared_session(),
+                    image_digest="sha256:" + "a" * 64,
+                    argv=["fixture-tool"],
+                    now=instant,
+                )
+            self.assertEqual(raised.exception.code, expected)
+
     def test_prepares_locked_down_non_executing_launch_spec(self) -> None:
         result = prepare_worker_launch(
             session=prepared_session(),
