@@ -3823,3 +3823,35 @@ hosted rootless enforcement.
 function, which remains necessary for compatibility and testing; execution code must use the
 attestor-owned path. Runtime compromise and topology change after planning remain possible.
 Review is self-authored and non-independent and authorizes no worker execution.
+
+## 2026-08-17 — Worker containment watchdog
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-executing
+supervision boundary only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Registered binding validation, duplicate detection, fresh v2
+re-attestation, runtime/network identity comparison, startup ordering, bounded watchdog and
+shutdown, pause-before-termination response, control failures, fixed diagnostics,
+compatibility, rollback, and absence of execution authority.
+
+**Evidence examined:** Exact registered-worker success; runtime and network drift, duplicate,
+and malformed binding denials; initial check before ready; repeated watchdog check; startup
+and watchdog failure response ordering; pause, termination, and join-timeout failures; full
+local Python checks; complete diff.
+
+**Findings:** Point-in-time launch planning is no longer the only available containment
+check. A supervisor can continuously require fresh v2 evidence for every trusted registered
+worker identity and trigger both global pause and worker termination when containment is no
+longer provable.
+
+**Limitations and deferred work:** No durable worker registry or production OCI termination
+adapter is composed, and no worker is attached or launched. Hosted rootless drift and bypass
+evidence remains absent.
+
+**Residual risk accepted:** Monitor correctness depends on the trusted binding registry and
+attestor factory, while a compromised runtime can falsify inspection output. A process crash
+between pause and termination requires later durable recovery. Review is self-authored and
+non-independent and authorizes no worker execution.

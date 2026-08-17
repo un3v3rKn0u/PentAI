@@ -390,6 +390,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Production freshness begins only after live inspection completes; stale, malformed, or
     failed measurement denies without returning a plan. Actual attachment, execution,
     continuous drift response, recovery, and hosted rootless bypass evidence remain required.
+  - A bounded worker containment watchdog now re-attests every registered runtime/network
+    binding before readiness and continuously afterward. Any malformed, stale, failed, or
+    identity-drifted measurement latches degraded state, pauses new authority, and requests
+    worker termination; control failures also fail closed. Durable registry composition,
+    OCI termination/recovery, attachment, execution, and hosted evidence remain required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies
