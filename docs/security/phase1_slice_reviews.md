@@ -3759,3 +3759,36 @@ The trusted gateway lifecycle must supply the expected container identity.
 peer can change after inspection. Immediate pre-attachment revalidation, continuous drift
 response, and hosted bypass evidence remain required. Review is self-authored and
 non-independent and authorizes no worker execution.
+
+## 2026-08-17 — Worker containment attestor v2
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-executing
+attestation producer only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** v1/v2 producer separation, runtime and network conformance composition,
+sole-gateway peer binding, expected identity comparison, lifetime bounds, contract validation,
+inspection failure handling, default-deny paths, compatibility, rollback, and absence of
+execution authority.
+
+**Evidence examined:** Valid composed v2 production; exact schema and role assertions;
+network and gateway identity drift denials; every worker-network control denial; invalid
+expected identity and lifetime denials; unchanged v1 regressions; full local Python checks;
+complete diff.
+
+**Findings:** Worker launch planning no longer depends on hand-assembled v2 fixtures. A
+trusted producer requires the existing runtime/network conformance evidence and the new live
+sole-peer evidence to agree on the exact expected worker network and gateway before emitting
+a short-lived worker-role attestation.
+
+**Limitations and deferred work:** The attestation remains point-in-time and does not attach
+or execute a worker, revalidate immediately before attachment, monitor peer drift, or provide
+hosted rootless bypass evidence. Gateway identity is checked during production but is not a
+v2 contract field.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify all composed observations,
+and topology can change after issuance within the bounded lifetime. Immediate re-attestation,
+continuous monitoring, and hosted evidence remain required. Review is self-authored and
+non-independent and authorizes no worker execution.

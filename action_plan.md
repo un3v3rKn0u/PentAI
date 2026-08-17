@@ -380,6 +380,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     its sole peer. Missing, additional, renamed, or isolation-drifted peers fail closed.
     Worker attachment, execution, immediate re-attestation, drift monitoring, and hosted
     rootless bypass evidence remain disabled and required.
+  - A trusted composed producer now combines rootless runtime/network conformance with the
+    exact sole-gateway peer result and issues only a short-lived v2 worker-role attestation.
+    Network or gateway identity drift and every missing containment signal deny before the
+    contract is emitted. Attachment, execution, immediate pre-attachment re-attestation,
+    drift monitoring, and hosted rootless bypass evidence remain disabled and required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies
