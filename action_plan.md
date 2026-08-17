@@ -385,6 +385,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Network or gateway identity drift and every missing containment signal deny before the
     contract is emitted. Attachment, execution, immediate pre-attachment re-attestation,
     drift monitoring, and hosted rootless bypass evidence remain disabled and required.
+  - The non-executing launch planner can now invoke that trusted attestor itself and bind
+    the newly measured v2 identity directly into its locked-down launch specification.
+    Production freshness begins only after live inspection completes; stale, malformed, or
+    failed measurement denies without returning a plan. Actual attachment, execution,
+    continuous drift response, recovery, and hosted rootless bypass evidence remain required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies

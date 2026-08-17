@@ -245,7 +245,6 @@ class WorkerContainmentAttestor:
         self._lifetime_seconds = lifetime_seconds
 
     def measure(self, *, now: datetime | None = None) -> dict[str, object]:
-        observed_at = now or datetime.now(UTC)
         try:
             runtime = self._inspector.inspect_runtime()
             network = self._inspector.inspect_worker_gateway_network()
@@ -255,6 +254,10 @@ class WorkerContainmentAttestor:
             raise ContainmentError(
                 "CONTAINMENT_INSPECTION_FAILED", "runtime containment inspection failed"
             ) from exc
+
+        # Production measurements are timestamped only after every live inspection
+        # completes so downstream launch planning does not inherit inspection time.
+        observed_at = now or datetime.now(UTC)
 
         if runtime.runtime not in {"docker", "podman"}:
             raise ContainmentError("CONTAINMENT_RUNTIME_INVALID", "runtime is unsupported")

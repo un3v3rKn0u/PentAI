@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 
 from pentai_policy.document import contract_issues, parse_time
@@ -31,6 +31,10 @@ _REQUIRED_TRUE = (
 _MAX_ATTESTATION_LIFETIME = timedelta(seconds=60)
 _MAX_ARGV_ITEMS = 64
 _MAX_ARG_LENGTH = 4096
+
+
+class WorkerAttestationProvider(Protocol):
+    def measure(self, *, now: datetime | None = None) -> dict[str, object]: ...
 
 
 def _validate_containment_attestation(
@@ -129,3 +133,39 @@ def prepare_worker_launch(
     if contract_issues(document, "worker-launch-spec-v1.schema.json"):
         raise ContainmentError("WORKER_LAUNCH_INVALID", "worker launch specification is invalid")
     return document
+
+
+def prepare_attested_worker_launch(
+    *,
+    attestor: WorkerAttestationProvider,
+    session: dict[str, Any],
+    image_digest: str,
+    argv: list[str],
+    pid_limit: int = 64,
+    memory_bytes: int = 268_435_456,
+    cpu_quota: float = 1.0,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Measure containment at the non-executing worker launch boundary."""
+    try:
+        attestation = attestor.measure(now=now)
+    except ContainmentError:
+        raise
+    except Exception as exc:
+        raise ContainmentError(
+            "CONTAINMENT_INSPECTION_FAILED", "runtime containment inspection failed"
+        ) from exc
+    if not isinstance(attestation, dict):
+        raise ContainmentError(
+            "CONTAINMENT_ATTESTATION_INVALID", "attestation is malformed"
+        )
+    return prepare_worker_launch(
+        session=session,
+        containment_attestation=attestation,
+        image_digest=image_digest,
+        argv=argv,
+        pid_limit=pid_limit,
+        memory_bytes=memory_bytes,
+        cpu_quota=cpu_quota,
+        now=now,
+    )
