@@ -38,6 +38,12 @@ class ManagedNetworkResult:
     created: bool
 
 
+@dataclass(frozen=True)
+class WorkerGatewayPeerResult:
+    network_id: str
+    gateway_container_id: str
+
+
 def normalize_oci_image_digest(value: str) -> str:
     if _DIGEST.fullmatch(value):
         return value
@@ -276,6 +282,108 @@ class ManagedGatewayNetworkProvisioner:
             command.extend(("--label", label))
         command.append(self._network_name)
         return tuple(command)
+
+
+class WorkerGatewayPeerInspector:
+    """Prove that an internal worker network has exactly one gateway peer."""
+
+    def __init__(
+        self,
+        *,
+        runtime: str,
+        executable: Path,
+        network_name: str,
+        gateway_container_name: str,
+        executor: BoundedCommandExecutor,
+    ) -> None:
+        if runtime not in {"docker", "podman"}:
+            raise SnapshotCollectionError("RUNTIME_UNSUPPORTED", "runtime is unsupported")
+        if not executable.is_absolute():
+            raise SnapshotCollectionError(
+                "RUNTIME_EXECUTABLE_UNTRUSTED", "runtime executable must be absolute"
+            )
+        if any(
+            not _IDENTIFIER.fullmatch(value)
+            for value in (network_name, gateway_container_name)
+        ):
+            raise SnapshotCollectionError(
+                "NETWORK_IDENTITY_INVALID", "network identity is invalid"
+            )
+        self._runtime = runtime
+        self._executable = str(executable)
+        self._network_name = network_name
+        self._gateway_container_name = gateway_container_name
+        self._executor = executor
+
+    def verify(self, *, network_id: str, gateway_container_id: str) -> WorkerGatewayPeerResult:
+        if any(
+            not _IDENTIFIER.fullmatch(value)
+            for value in (network_id, gateway_container_id)
+        ):
+            raise SnapshotCollectionError(
+                "NETWORK_IDENTITY_INVALID", "network identity is invalid"
+            )
+        template = "{{json .}}" if self._runtime == "docker" else "json"
+        result = self._executor.execute(
+            (self._executable, "network", "inspect", "--format", template, network_id),
+            timeout_seconds=5,
+            max_output_bytes=65_536,
+        )
+        if result.returncode != 0 or len(result.stdout) > 65_536:
+            raise SnapshotCollectionError("NETWORK_INSPECTION_FAILED", "network inspection failed")
+        try:
+            document = json.loads(result.stdout)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise SnapshotCollectionError(
+                "NETWORK_OUTPUT_INVALID", "network inspection is invalid"
+            ) from exc
+        if isinstance(document, list) and len(document) == 1:
+            document = document[0]
+        if not isinstance(document, dict):
+            raise SnapshotCollectionError("NETWORK_OUTPUT_INVALID", "network inspection is invalid")
+
+        observed_id = document.get("Id") if self._runtime == "docker" else document.get("id")
+        observed_name = (
+            document.get("Name") if self._runtime == "docker" else document.get("name")
+        )
+        internal = (
+            document.get("Internal") if self._runtime == "docker" else document.get("internal")
+        )
+        ipv6 = (
+            document.get("EnableIPv6")
+            if self._runtime == "docker"
+            else document.get("ipv6_enabled")
+        )
+        peers = (
+            document.get("Containers")
+            if self._runtime == "docker"
+            else document.get("containers")
+        )
+        if (
+            observed_id != network_id
+            or observed_name != self._network_name
+            or internal is not True
+            or ipv6 is not False
+            or not isinstance(peers, dict)
+        ):
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_INVALID", "worker gateway network verification failed"
+            )
+        if set(peers) != {gateway_container_id}:
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEERS_INVALID", "worker gateway peer set is invalid"
+            )
+        peer = peers[gateway_container_id]
+        if not isinstance(peer, dict):
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEERS_INVALID", "worker gateway peer set is invalid"
+            )
+        observed_peer_name = peer.get("Name") if self._runtime == "docker" else peer.get("name")
+        if observed_peer_name != self._gateway_container_name:
+            raise SnapshotCollectionError(
+                "WORKER_GATEWAY_IDENTITY_INVALID", "worker gateway identity is invalid"
+            )
+        return WorkerGatewayPeerResult(network_id, gateway_container_id)
 
 
 class OciNetworkConformanceProbe:
