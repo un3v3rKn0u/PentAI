@@ -166,6 +166,17 @@ class WorkerRuntimeRecoveryTests(unittest.TestCase):
         self.assertEqual(self.status("fixture:worker-a")[0], "failed")
         self.assertEqual(self.status("fixture:worker-b")[0], "terminated")
 
+    def test_targeted_termination_does_not_sweep_an_unrelated_worker(self) -> None:
+        self.register("fixture:worker-a")
+        self.register("fixture:worker-b")
+        self.recovery.terminate_worker("fixture:worker-a", "launch did not complete")
+
+        self.assertEqual(self.status("fixture:worker-a")[0], "terminated")
+        self.assertEqual(self.status("fixture:worker-b")[0], "launching")
+        with self.assertRaises(WorkerRecoveryError) as raised:
+            self.recovery.terminate_worker("fixture:missing", "launch did not complete")
+        self.assertEqual(raised.exception.code, "WORKER_RECOVERY_INVALID")
+
 
 if __name__ == "__main__":
     unittest.main()

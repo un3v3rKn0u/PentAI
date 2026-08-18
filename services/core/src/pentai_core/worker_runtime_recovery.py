@@ -35,6 +35,24 @@ class WorkerRuntimeRecovery:
     def recover_all(self) -> int:
         return self.terminate_all("startup recovery")
 
+    def terminate_worker(self, worker_id: str, reason: str) -> None:
+        """Terminate one exact durable worker without sweeping unrelated runtimes."""
+        candidates = tuple(
+            candidate
+            for candidate in self._registry.recovery_candidates()
+            if candidate.get("worker_id") == worker_id
+        )
+        if len(candidates) != 1:
+            raise WorkerRecoveryError(
+                "WORKER_RECOVERY_INVALID", "worker recovery target is invalid"
+            )
+        try:
+            self._recover(candidates[0], reason)
+        except Exception as exc:
+            raise WorkerRecoveryError(
+                "WORKER_RECOVERY_INCOMPLETE", "worker recovery is incomplete"
+            ) from exc
+
     def terminate_all(self, reason: str) -> int:
         candidates = self._registry.recovery_candidates()
         failures = 0

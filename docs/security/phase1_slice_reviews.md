@@ -3950,3 +3950,35 @@ drift and bypass evidence remains absent.
 **Residual risk accepted:** A compromised OCI runtime can falsify every composed observation,
 and configuration binds the trusted gateway container identity operationally. Review is
 self-authored and non-independent and authorizes no worker execution.
+
+## 2026-08-18 — Durable worker-runtime launch
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-executing
+isolated-sentinel lifecycle only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Fresh attestation ownership, intent-before-effect ordering, digest-pinned
+isolated launch, exact post-launch verification, immutable container binding, targeted
+failure cleanup, crash-gap discovery, durable retry, fixed diagnostics, compatibility,
+rollback, and absence of network or execution authority.
+
+**Evidence examined:** Persist-before-launch ordering; successful verified activation;
+malformed and failed-attestation denial before OCI; inspection-failure discovery, ownership
+verification, and removal; cleanup-failure persistence; unrelated-worker preservation;
+existing registry and recovery regressions; complete local Python checks; complete diff.
+
+**Findings:** The supervision registry now has a production-shaped writer. A worker cannot
+become monitored as running until a fresh v2 containment measurement is durably linked to the
+exact pinned image and the launched no-network sentinel passes post-effect inspection.
+
+**Limitations and deferred work:** The sentinel remains inert and has no network attachment.
+Gateway-only attachment requires a new post-attachment topology contract because the current
+v2 attestation intentionally requires the gateway to be the network's sole peer. Hosted
+rootless bypass evidence and workload execution also remain absent.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify launch, discovery, and
+inspection output. A process crash after successful cleanup but before final persistence may
+cause conservative retry and degraded readiness. Review is self-authored and non-independent
+and authorizes no worker network access or execution.
