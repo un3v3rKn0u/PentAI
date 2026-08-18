@@ -3855,3 +3855,35 @@ evidence remains absent.
 attestor factory, while a compromised runtime can falsify inspection output. A process crash
 between pause and termination requires later durable recovery. Review is self-authored and
 non-independent and authorizes no worker execution.
+
+## 2026-08-17 — Durable worker-runtime registry
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as non-executing
+durable composition only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Pre-effect persistence, fresh v2 evidence validation, exact runtime and
+network identity binding, digest pinning, active-identity uniqueness, version fencing,
+container binding, recovery enumeration, immutable history, compatibility, rollback, and
+absence of execution authority.
+
+**Evidence examined:** Launch intent before container identity; exact watchdog binding after
+activation; duplicate worker and containment identity denials; stale, malformed, wrong-role,
+and unpinned-image denials; inactive transition denial; launch and running recovery records;
+database identity, version, execution, and deletion guards; full local Python checks;
+complete diff.
+
+**Findings:** The containment watchdog no longer needs an ephemeral caller-owned inventory.
+It can consume exact active bindings from protected storage, and a later recovery controller
+can enumerate unfinished records without discovering runtimes by mutable labels.
+
+**Limitations and deferred work:** This slice does not compose an OCI termination adapter,
+perform startup cleanup, attach a worker to its gateway network, or execute work. Hosted
+rootless drift and bypass evidence remains absent.
+
+**Residual risk accepted:** A process can crash after an OCI effect but before its container
+identity is persisted; the next slice must use bounded ownership inspection and cleanup to
+close that recovery gap. Review is self-authored and non-independent and authorizes no worker
+execution.

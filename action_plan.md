@@ -393,8 +393,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - A bounded worker containment watchdog now re-attests every registered runtime/network
     binding before readiness and continuously afterward. Any malformed, stale, failed, or
     identity-drifted measurement latches degraded state, pauses new authority, and requests
-    worker termination; control failures also fail closed. Durable registry composition,
-    OCI termination/recovery, attachment, execution, and hosted evidence remain required.
+    worker termination; control failures also fail closed.
+  - A durable worker-runtime registry now persists a validated v2 launch intent before a
+    container identity can be bound, then supplies only version-fenced active bindings to
+    the watchdog. Immutable identities, unique active containment scope, non-executing state,
+    and unfinished-record recovery enumeration are database-enforced. Bounded OCI
+    termination/recovery, attachment, execution, and hosted evidence remain required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies

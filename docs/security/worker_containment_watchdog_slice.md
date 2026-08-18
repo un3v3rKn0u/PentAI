@@ -24,5 +24,5 @@ No contract or database migration changes. Existing network and gateway supervis
 unchanged. The worker monitor is inert when its trusted binding registry is empty. Rollback
 removes the supervisor while leaving worker execution disabled.
 
-Production composition with a durable worker registry, bounded OCI termination/recovery,
+The durable registry composition is documented separately. Bounded OCI termination/recovery,
 actual attachment and execution, and hosted rootless bypass evidence remain required.

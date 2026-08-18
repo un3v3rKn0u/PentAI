@@ -46,6 +46,7 @@ class MigrationTests(unittest.TestCase):
                     "0027",
                     "0028",
                     "0029",
+                    "0030",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -97,6 +98,7 @@ class MigrationTests(unittest.TestCase):
                     "no_findings_report_artifacts",
                     "report_export_approvals",
                     "report_file_exports",
+                    "worker_runtime_instances",
                 }
                 <= tables
             )
@@ -680,6 +682,48 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("audit_events_chain_guard", triggers)
             self.assertIn("execution_traces_immutable", triggers)
             self.assertIn("execution_traces_no_delete", triggers)
+
+    def test_worker_runtime_registry_upgrade_is_additive_and_protected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("*.sql")):
+                if path.name >= "0030_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+
+            migration = repository_migrations / "0030_worker_runtime_registry.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0030"])
+                self.assertEqual(migrate(database), [])
+
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+                    )
+                }
+                indexes = {
+                    row[1]
+                    for row in connection.execute("PRAGMA index_list(worker_runtime_instances)")
+                }
+            self.assertIn("worker_runtime_active_identity", indexes)
+            self.assertIn("worker_runtime_identity_immutable", triggers)
+            self.assertIn("worker_runtime_container_once", triggers)
+            self.assertIn("worker_runtime_version_fenced", triggers)
+            self.assertIn("worker_runtime_status_transition", triggers)
+            self.assertIn("worker_runtime_no_delete", triggers)
 
 
 if __name__ == "__main__":
