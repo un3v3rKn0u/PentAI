@@ -26,5 +26,6 @@ compatible. Rollback removes recovery composition while leaving unfinished durab
 and execution-disabled state intact; startup must remain blocked until an approved cleanup
 path resolves those records.
 
-Actual worker attachment and execution, plus hosted rootless bypass evidence, remain required
-for the Phase 1 exit gate.
+Production startup and watchdog composition are documented separately. Actual worker
+attachment and execution, plus hosted rootless bypass evidence, remain required for the
+Phase 1 exit gate.

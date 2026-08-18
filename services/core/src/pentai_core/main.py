@@ -47,6 +47,8 @@ from pentai_core.reports import ReportError, ReportService
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_core.storage_safety import StorageSafetyLatch
 from pentai_core.url_acquisition import AcquisitionError, UrlAcquirer
+from pentai_core.worker_containment_supervisor import WorkerSupervisorControl
+from pentai_core.worker_runtime_composition import compose_worker_runtime_supervisor
 from pentai_core.workflow import AssessmentWorkflowService, WorkflowError
 
 
@@ -449,6 +451,7 @@ def create_app(
     *,
     runtime_supervisor: RuntimeSupervisorControl | None = None,
     network_safety_supervisor: NetworkSafetySupervisorControl | None = None,
+    worker_runtime_supervisor: WorkerSupervisorControl | None = None,
     network_profile_setup_service: NetworkProfileSetupService | None = None,
 ) -> FastAPI:
     runtime = settings or Settings.from_environment()
@@ -522,6 +525,10 @@ def create_app(
     authorization.recover_startup()
     workflows.recover_startup()
     evidence.recover_deletions()
+    worker_supervisor = worker_runtime_supervisor or compose_worker_runtime_supervisor(
+        settings=runtime, safety_control=authorization
+    )
+    worker_supervisor.start()
     supervisor = runtime_supervisor or compose_gateway_runtime_supervisor(
         settings=runtime, safety_control=authorization
     )
@@ -539,6 +546,7 @@ def create_app(
     )
     app.state.shutdown_requested = threading.Event()
     app.state.runtime_supervisor = supervisor
+    app.state.worker_runtime_supervisor = worker_supervisor
     app.state.network_safety_supervisor = network_supervisor
     app.state.controlled_resolver_provider = controlled_resolver_provider
     app.state.network_profile_setup_service = profile_setup
@@ -550,6 +558,7 @@ def create_app(
     app.state.storage_safety = storage_safety
     app.router.add_event_handler("shutdown", network_supervisor.stop)
     app.router.add_event_handler("shutdown", supervisor.stop)
+    app.router.add_event_handler("shutdown", worker_supervisor.stop)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins(runtime),
@@ -586,11 +595,17 @@ def create_app(
     def health() -> HealthResponse:
         runtime_status = supervisor.status()
         network_status = network_supervisor.status()
+        worker_status = worker_supervisor.status()
         return HealthResponse(
             status=(
                 "degraded"
                 if storage_safety.reason_code() is not None
-                or "degraded" in {runtime_status["status"], network_status["status"]}
+                or "degraded"
+                in {
+                    runtime_status["status"],
+                    network_status["status"],
+                    worker_status["status"],
+                }
                 else "ok"
             ),
             version=__version__,
@@ -602,6 +617,7 @@ def create_app(
     def readiness() -> Any:
         runtime_status = supervisor.status()
         network_status = network_supervisor.status()
+        worker_status = worker_supervisor.status()
         if storage_safety.reason_code() is not None:
             return JSONResponse(
                 status_code=503,
@@ -611,11 +627,19 @@ def create_app(
                     "execution_enabled": False,
                 },
             )
-        if runtime_status["status"] == "degraded" or network_status["status"] == "degraded":
+        if "degraded" in {
+            runtime_status["status"],
+            network_status["status"],
+            worker_status["status"],
+        }:
             reason_code = (
                 runtime_status["reason_code"]
                 if runtime_status["status"] == "degraded"
-                else network_status["reason_code"]
+                else (
+                    network_status["reason_code"]
+                    if network_status["status"] == "degraded"
+                    else worker_status["reason_code"]
+                )
             )
             return JSONResponse(
                 status_code=503,
@@ -634,6 +658,10 @@ def create_app(
     @app.get("/api/v1/network-safety-supervision")
     def network_safety_supervision() -> dict[str, object]:
         return network_supervisor.status()
+
+    @app.get("/api/v1/worker-runtime-supervision")
+    def worker_runtime_supervision() -> dict[str, object]:
+        return worker_supervisor.status()
 
     @app.get("/api/v1/network-profile-proposal")
     def network_profile_proposal() -> dict[str, Any]:
@@ -680,6 +708,7 @@ def create_app(
 
     @app.post("/api/v1/shutdown")
     def shutdown() -> dict[str, str]:
+        worker_supervisor.stop()
         network_supervisor.stop()
         supervisor.stop()
         app.state.shutdown_requested.set()

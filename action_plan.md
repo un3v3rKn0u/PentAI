@@ -404,6 +404,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     command. Failures remain retryable, all candidates are attempted, and incomplete cleanup
     blocks startup through a fixed error. Attachment, execution, and hosted evidence remain
     required.
+  - Strict opt-in worker supervision composition now runs durable cleanup before its first
+    containment check, continuously re-attests registry bindings, and exposes worker health
+    through core readiness and authenticated supervision status. Disabled composition denies
+    when unfinished records exist, while malformed or incomplete OCI identities degrade with
+    fixed diagnostics. Attachment, execution, and hosted evidence remain required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies

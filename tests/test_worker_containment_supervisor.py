@@ -149,6 +149,25 @@ class WorkerContainmentSupervisorTests(unittest.TestCase):
         self.assertEqual(supervisor.status()["status"], "stopped")
         self.assertEqual((pauses, terminations), ([], []))
 
+    def test_startup_recovery_precedes_initial_containment_check(self) -> None:
+        events: list[str] = []
+
+        class OrderedMonitor(FixtureMonitor):
+            def check_all(self) -> int:
+                events.append("check")
+                return super().check_all()
+
+        supervisor = WorkerContainmentSupervisor(
+            monitor=OrderedMonitor(),
+            pause_safety=lambda _reason: None,
+            terminate_workers=lambda _reason: None,
+            recover_workers=lambda: events.append("recover"),
+            interval_seconds=1,
+        )
+        supervisor.start()
+        supervisor.stop()
+        self.assertEqual(events[:2], ["recover", "check"])
+
     def test_startup_or_watchdog_drift_pauses_and_terminates_workers(self) -> None:
         for startup in (True, False):
             monitor = FixtureMonitor(fail=startup)
