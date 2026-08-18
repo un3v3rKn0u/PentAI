@@ -25,5 +25,5 @@ tables or contracts. Existing deployments may apply it without backfill. Older b
 ignore the new table, and rollback disables registry composition while leaving its protected
 history intact and worker execution disabled.
 
-Bounded OCI termination and recovery, actual worker attachment and execution, and hosted
-rootless bypass evidence remain required for the Phase 1 exit gate.
+Bounded OCI termination and recovery are documented separately. Actual worker attachment and
+execution, and hosted rootless bypass evidence remain required for the Phase 1 exit gate.

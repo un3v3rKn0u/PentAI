@@ -3887,3 +3887,35 @@ rootless drift and bypass evidence remains absent.
 identity is persisted; the next slice must use bounded ownership inspection and cleanup to
 close that recovery gap. Review is self-authored and non-independent and authorizes no worker
 execution.
+
+## 2026-08-18 — Bounded worker-runtime recovery
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-executing
+termination and startup-recovery boundary only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Fixed label discovery, output and timeout bounds, ambiguity denial, exact
+container and ownership-label inspection, version-fenced termination intent, fixed OCI
+removal, retry persistence, interrupted recovery resumption, attempt-all behavior, fixed
+diagnostics, compatibility, rollback, and absence of execution authority.
+
+**Evidence examined:** No-container finalization without removal; crash-gap discovery and
+identity persistence; running and interrupted-request recovery; ownership and termination
+failure retry; remaining-worker processing after one failure; exact Docker/Podman commands;
+malformed, ambiguous, mismatched-ID, mismatched-label, and subprocess denials; full local
+Python checks; complete diff.
+
+**Findings:** Durable worker records now have a bounded cleanup consumer. Recovery never
+removes an arbitrary stored or discovered container ID: exact ownership inspection precedes
+every external removal, and incomplete cleanup remains durable and blocks startup.
+
+**Limitations and deferred work:** Startup wiring must invoke this coordinator before later
+worker execution is introduced. This slice does not attach or execute a worker, and hosted
+rootless drift and bypass evidence remains absent.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify discovery and inspection,
+and a crash after successful removal but before final persistence causes a conservative retry
+and blocked startup. Review is self-authored and non-independent and authorizes no worker
+execution.

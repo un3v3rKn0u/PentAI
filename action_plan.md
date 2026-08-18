@@ -397,8 +397,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - A durable worker-runtime registry now persists a validated v2 launch intent before a
     container identity can be bound, then supplies only version-fenced active bindings to
     the watchdog. Immutable identities, unique active containment scope, non-executing state,
-    and unfinished-record recovery enumeration are database-enforced. Bounded OCI
-    termination/recovery, attachment, execution, and hosted evidence remain required.
+    and unfinished-record recovery enumeration are database-enforced.
+  - A bounded worker termination and startup-recovery coordinator now discovers only an
+    exact uniquely labeled container for a persisted pre-effect intent, re-verifies its full
+    ownership identity, durably requests termination, and invokes the fixed OCI removal
+    command. Failures remain retryable, all candidates are attempted, and incomplete cleanup
+    blocks startup through a fixed error. Attachment, execution, and hosted evidence remain
+    required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies
