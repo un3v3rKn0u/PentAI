@@ -54,9 +54,9 @@ jobs:
           workspaces: apps/desktop
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+        run: >-
+          scripts/install_ubuntu_packages.sh
+          libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: pnpm install --frozen-lockfile
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
