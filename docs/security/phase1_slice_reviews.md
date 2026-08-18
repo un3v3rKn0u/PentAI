@@ -3919,3 +3919,34 @@ rootless drift and bypass evidence remains absent.
 and a crash after successful removal but before final persistence causes a conservative retry
 and blocked startup. Review is self-authored and non-independent and authorizes no worker
 execution.
+
+## 2026-08-18 — Worker-runtime supervision composition
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-executing
+startup and watchdog boundary only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Explicit opt-in configuration, runtime and identity validation, recovery
+before initial attestation, durable registry binding, trusted attestor/controller factories,
+runtime mismatch denial, disabled-with-active-record denial, global safety pause, readiness,
+health, authenticated status, shutdown, fixed diagnostics, compatibility, rollback, and
+absence of execution authority.
+
+**Evidence examined:** Complete environment parsing; partial, disabled, malformed, and unsafe
+configuration denials; empty-registry recovery before ready; unfinished-record denial when
+disabled; initial and repeated supervision behavior; worker degradation in health/readiness;
+authenticated status and shutdown; full local Python checks; complete diff.
+
+**Findings:** The durable registry, bounded recovery coordinator, and containment watchdog now
+have one strict production composition owned by core startup. No unfinished worker can be
+silently ignored merely because worker supervision was disabled or misconfigured.
+
+**Limitations and deferred work:** This composition currently supervises only records created
+by future worker lifecycle code. It does not attach or execute workers, and hosted rootless
+drift and bypass evidence remains absent.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify every composed observation,
+and configuration binds the trusted gateway container identity operationally. Review is
+self-authored and non-independent and authorizes no worker execution.

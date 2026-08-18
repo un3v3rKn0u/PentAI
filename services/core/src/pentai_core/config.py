@@ -13,6 +13,7 @@ from pentai_policy import CanonicalizationError, canonicalize_domain
 _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _DIGEST_PATTERN = re.compile(r"^sha256:[a-f0-9]{64}$")
+_CONTAINER_ID_PATTERN = re.compile(r"^[a-f0-9]{12,64}$")
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
@@ -39,6 +40,12 @@ class Settings:
     gateway_probe_image_digest: str | None = None
     gateway_instance_id: str | None = None
     gateway_watchdog_interval_seconds: float = 5
+    worker_supervision_enabled: bool = False
+    worker_gateway_network_id: str | None = None
+    worker_gateway_network_name: str | None = None
+    worker_gateway_container_id: str | None = None
+    worker_gateway_container_name: str | None = None
+    worker_watchdog_interval_seconds: float = 5
     network_attestation_enabled: bool = False
     network_observers: tuple[str, ...] = ()
     network_route_profile_id: str | None = None
@@ -61,6 +68,7 @@ class Settings:
         if not 1 <= self.port <= 65535:
             raise ValueError("PentAI Core port must be from 1 through 65535")
         self._validate_gateway_runtime()
+        self._validate_worker_supervision()
         self._validate_network_attestation()
         self._validate_controlled_dns()
         if self.test_mode:
@@ -103,6 +111,16 @@ class Settings:
             gateway_instance_id=os.getenv("PENTAI_GATEWAY_INSTANCE_ID"),
             gateway_watchdog_interval_seconds=float(
                 os.getenv("PENTAI_GATEWAY_WATCHDOG_INTERVAL_SECONDS", "5")
+            ),
+            worker_supervision_enabled=_environment_flag(
+                "PENTAI_WORKER_SUPERVISION_ENABLED"
+            ),
+            worker_gateway_network_id=os.getenv("PENTAI_WORKER_GATEWAY_NETWORK_ID"),
+            worker_gateway_network_name=os.getenv("PENTAI_WORKER_GATEWAY_NETWORK_NAME"),
+            worker_gateway_container_id=os.getenv("PENTAI_WORKER_GATEWAY_CONTAINER_ID"),
+            worker_gateway_container_name=os.getenv("PENTAI_WORKER_GATEWAY_CONTAINER_NAME"),
+            worker_watchdog_interval_seconds=float(
+                os.getenv("PENTAI_WORKER_WATCHDOG_INTERVAL_SECONDS", "5")
             ),
             network_attestation_enabled=_environment_flag(
                 "PENTAI_NETWORK_ATTESTATION_ENABLED"
@@ -197,6 +215,33 @@ class Settings:
             )
         ):
             raise ValueError("Enabled network attestation configuration is incomplete")
+
+    def _validate_worker_supervision(self) -> None:
+        configured = (
+            self.worker_gateway_network_id,
+            self.worker_gateway_network_name,
+            self.worker_gateway_container_id,
+            self.worker_gateway_container_name,
+        )
+        if not self.worker_supervision_enabled:
+            if any(value is not None for value in configured):
+                raise ValueError("Worker supervision configuration requires explicit enablement")
+            return
+        if (
+            not self.gateway_runtime_enabled
+            or any(
+                not isinstance(value, str) or not _IDENTIFIER_PATTERN.fullmatch(value)
+                for value in (
+                    self.worker_gateway_network_id,
+                    self.worker_gateway_network_name,
+                    self.worker_gateway_container_name,
+                )
+            )
+            or not isinstance(self.worker_gateway_container_id, str)
+            or not _CONTAINER_ID_PATTERN.fullmatch(self.worker_gateway_container_id)
+            or not 0.1 <= self.worker_watchdog_interval_seconds <= 10
+        ):
+            raise ValueError("Enabled worker supervision configuration is invalid")
 
     def _validate_controlled_dns(self) -> None:
         configured = (self.controlled_dns_server_ip, self.controlled_dns_tls_hostname)

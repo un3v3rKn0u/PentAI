@@ -90,6 +90,29 @@ class FixtureNetworkSupervisor:
         }
 
 
+@dataclass
+class FixtureWorkerSupervisor:
+    state: str = "ready"
+    reason_code: str | None = None
+    starts: int = 0
+    stops: int = 0
+
+    def start(self) -> None:
+        self.starts += 1
+
+    def stop(self) -> None:
+        self.stops += 1
+
+    def status(self) -> dict[str, object]:
+        return {
+            "status": self.state,
+            "reason_code": self.reason_code,
+            "monitored_workers": 0,
+            "watchdog_running": self.state == "ready",
+            "execution_enabled": False,
+        }
+
+
 def app_request(
     app: FastAPI,
     method: str,
@@ -421,6 +444,35 @@ def test_network_supervisor_degradation_blocks_readiness_and_shutdown_stops_it(
     assert shutdown.status_code == 200
     assert network_supervisor.starts == 1
     assert network_supervisor.stops == 1
+
+
+def test_worker_supervisor_degradation_blocks_readiness_and_shutdown_stops_it(
+    tmp_path: Path,
+) -> None:
+    settings = runtime_settings(tmp_path / "worker-degraded.db")
+    worker_supervisor = FixtureWorkerSupervisor(
+        state="degraded", reason_code="WORKER_RECOVERY_INCOMPLETE"
+    )
+    app = create_app(settings, worker_runtime_supervisor=worker_supervisor)
+    credential = settings.launch_credential or ""
+    readiness = app_request(app, "GET", "/api/v1/readiness", authorization=f"Bearer {credential}")
+    assert readiness.status_code == 503
+    assert readiness.json() == {
+        "status": "degraded",
+        "reason_code": "WORKER_RECOVERY_INCOMPLETE",
+        "execution_enabled": False,
+    }
+    status = app_request(
+        app,
+        "GET",
+        "/api/v1/worker-runtime-supervision",
+        authorization=f"Bearer {credential}",
+    )
+    assert status.json()["watchdog_running"] is False
+    shutdown = app_request(app, "POST", "/api/v1/shutdown", authorization=f"Bearer {credential}")
+    assert shutdown.status_code == 200
+    assert worker_supervisor.starts == 1
+    assert worker_supervisor.stops == 1
 
 
 def test_startup_safety_state_is_durably_paused(
