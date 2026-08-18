@@ -409,6 +409,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     through core readiness and authenticated supervision status. Disabled composition denies
     when unfinished records exist, while malformed or incomplete OCI identities degrade with
     fixed diagnostics. Attachment, execution, and hosted evidence remain required.
+  - A durable launch coordinator now measures fresh worker containment, records the exact
+    pre-effect intent, launches and verifies the digest-pinned no-network sentinel, and only
+    then activates its immutable identity for supervision. Partial launches use exact-worker
+    recovery without sweeping unrelated runtimes, and incomplete cleanup remains retryable.
+    Gateway-only attachment, execution, and hosted bypass evidence remain required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies
