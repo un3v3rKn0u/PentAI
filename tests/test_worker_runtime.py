@@ -316,6 +316,63 @@ class WorkerRuntimeTests(unittest.TestCase):
         with self.assertRaises(WorkerRuntimeError):
             runtime_controller.terminate("not-a-container")
 
+    def test_recovery_discovery_is_bounded_and_exact(self) -> None:
+        executor = Executor([CommandResult(0, (CONTAINER + "\n").encode())])
+        self.assertEqual(controller(executor).discover_owned(WORKER), CONTAINER)
+        self.assertEqual(
+            executor.calls[0],
+            (
+                str(OCI),
+                "ps",
+                "--all",
+                "--filter",
+                "label=com.pentai.managed=true",
+                "--filter",
+                "label=com.pentai.runtime-role=worker-isolation",
+                "--filter",
+                f"label=com.pentai.worker-id={WORKER}",
+                "--no-trunc",
+                "--format",
+                "{{.ID}}",
+            ),
+        )
+        self.assertIsNone(controller(Executor([CommandResult(0, b"")])).discover_owned(WORKER))
+        for output in (
+            f"{CONTAINER}\n{'c' * 64}\n".encode(),
+            b"not-a-container\n",
+            b"\xff",
+        ):
+            with self.subTest(output=output), self.assertRaises(WorkerRuntimeError):
+                controller(Executor([CommandResult(0, output)])).discover_owned(WORKER)
+        with self.assertRaises(WorkerRuntimeError) as failed_discovery:
+            controller(Executor([CommandResult(1, b"private runtime error")])).discover_owned(
+                WORKER
+            )
+        self.assertEqual(failed_discovery.exception.code, "WORKER_DISCOVERY_FAILED")
+
+    def test_recovery_ownership_requires_exact_id_and_labels(self) -> None:
+        controller(
+            Executor([CommandResult(0, json.dumps(inspection()).encode())])
+        ).verify_ownership(WORKER, CONTAINER)
+        cases = (
+            {**inspection(), "Id": "c" * 64},
+            {**inspection(), "Config": {"Labels": {}}},
+            [inspection(), inspection()],
+        )
+        for document in cases:
+            with self.subTest(document=document), self.assertRaises(
+                WorkerRuntimeError
+            ) as raised:
+                controller(
+                    Executor([CommandResult(0, json.dumps(document).encode())])
+                ).verify_ownership(WORKER, CONTAINER)
+            self.assertEqual(raised.exception.code, "WORKER_OWNERSHIP_FAILED")
+        with self.assertRaises(WorkerRuntimeError) as failed_inspection:
+            controller(Executor([CommandResult(1, b"private runtime error")])).verify_ownership(
+                WORKER, CONTAINER
+            )
+        self.assertEqual(failed_inspection.exception.code, "WORKER_OWNERSHIP_FAILED")
+
 
 if __name__ == "__main__":
     unittest.main()

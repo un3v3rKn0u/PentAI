@@ -126,7 +126,7 @@ class DurableWorkerRuntimeRegistry:
     def recovery_candidates(self) -> tuple[dict[str, object], ...]:
         with transaction(self._database_path) as connection:
             rows = connection.execute(
-                """SELECT worker_id, container_id, status, version
+                """SELECT worker_id, oci_runtime, container_id, status, version
                 FROM worker_runtime_instances
                 WHERE status IN ('launching', 'running', 'termination_requested', 'failed')
                 ORDER BY worker_id"""
@@ -134,6 +134,7 @@ class DurableWorkerRuntimeRegistry:
         return tuple(
             {
                 "worker_id": str(row["worker_id"]),
+                "oci_runtime": str(row["oci_runtime"]),
                 "container_id": row["container_id"],
                 "status": str(row["status"]),
                 "version": int(row["version"]),
@@ -141,6 +142,82 @@ class DurableWorkerRuntimeRegistry:
             }
             for row in rows
         )
+
+    def request_termination(
+        self,
+        *,
+        worker_id: str,
+        expected_version: int,
+        reason: str,
+        discovered_container_id: str | None = None,
+    ) -> dict[str, object]:
+        normalized_reason = reason.strip()
+        if (
+            not _IDENTIFIER.fullmatch(worker_id)
+            or expected_version < 1
+            or not normalized_reason
+            or len(normalized_reason) > 256
+            or (
+                discovered_container_id is not None
+                and not _CONTAINER_ID.fullmatch(discovered_container_id)
+            )
+        ):
+            raise WorkerRegistryError(
+                "WORKER_TERMINATION_INVALID", "worker termination request is invalid"
+            )
+        updated_at = self._timestamp()
+        with transaction(self._database_path) as connection:
+            if discovered_container_id is None:
+                updated = connection.execute(
+                    """UPDATE worker_runtime_instances
+                    SET status = 'termination_requested', termination_reason = ?,
+                        updated_at = ?, version = version + 1
+                    WHERE worker_id = ? AND version = ?
+                      AND status IN ('launching', 'running', 'failed')""",
+                    (normalized_reason, updated_at, worker_id, expected_version),
+                )
+            else:
+                updated = connection.execute(
+                    """UPDATE worker_runtime_instances
+                    SET container_id = ?, status = 'termination_requested',
+                        termination_reason = ?, updated_at = ?, version = version + 1
+                    WHERE worker_id = ? AND version = ? AND status = 'launching'
+                      AND container_id IS NULL""",
+                    (
+                        discovered_container_id,
+                        normalized_reason,
+                        updated_at,
+                        worker_id,
+                        expected_version,
+                    ),
+                )
+        if updated.rowcount != 1:
+            raise WorkerRegistryError("WORKER_RUNTIME_RACE", "worker runtime state changed")
+        return self._document(worker_id)
+
+    def finalize_termination(
+        self,
+        *,
+        worker_id: str,
+        expected_version: int,
+        succeeded: bool,
+    ) -> dict[str, object]:
+        if not _IDENTIFIER.fullmatch(worker_id) or expected_version < 1:
+            raise WorkerRegistryError(
+                "WORKER_TERMINATION_INVALID", "worker termination result is invalid"
+            )
+        updated_at = self._timestamp()
+        status = "terminated" if succeeded else "failed"
+        with transaction(self._database_path) as connection:
+            updated = connection.execute(
+                """UPDATE worker_runtime_instances
+                SET status = ?, updated_at = ?, version = version + 1
+                WHERE worker_id = ? AND version = ? AND status = 'termination_requested'""",
+                (status, updated_at, worker_id, expected_version),
+            )
+        if updated.rowcount != 1:
+            raise WorkerRegistryError("WORKER_RUNTIME_RACE", "worker runtime state changed")
+        return self._document(worker_id)
 
     def _document(self, worker_id: str) -> dict[str, object]:
         with transaction(self._database_path) as connection:

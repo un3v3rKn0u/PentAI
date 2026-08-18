@@ -292,6 +292,69 @@ class OciWorkerIsolationController:
         if result.returncode != 0:
             raise WorkerRuntimeError("WORKER_TERMINATION_FAILED", "worker termination failed")
 
+    def discover_owned(self, worker_id: str) -> str | None:
+        if not _IDENTIFIER.fullmatch(worker_id):
+            raise WorkerRuntimeError("WORKER_RUNTIME_INVALID", "worker identity is invalid")
+        result = self._executor.execute(
+            (
+                self._executable,
+                "ps",
+                "--all",
+                "--filter",
+                "label=com.pentai.managed=true",
+                "--filter",
+                "label=com.pentai.runtime-role=worker-isolation",
+                "--filter",
+                f"label=com.pentai.worker-id={worker_id}",
+                "--no-trunc",
+                "--format",
+                "{{.ID}}",
+            ),
+            timeout_seconds=5,
+            max_output_bytes=4096,
+        )
+        if result.returncode != 0 or len(result.stdout) > 4096:
+            raise WorkerRuntimeError("WORKER_DISCOVERY_FAILED", "worker discovery failed")
+        try:
+            container_ids = [line.strip() for line in result.stdout.decode("ascii").splitlines()]
+        except UnicodeDecodeError as exc:
+            raise WorkerRuntimeError("WORKER_DISCOVERY_FAILED", "worker discovery failed") from exc
+        if any(not _CONTAINER_ID.fullmatch(value) for value in container_ids):
+            raise WorkerRuntimeError("WORKER_DISCOVERY_FAILED", "worker discovery failed")
+        if len(container_ids) > 1:
+            raise WorkerRuntimeError("WORKER_DISCOVERY_AMBIGUOUS", "worker discovery is ambiguous")
+        return container_ids[0] if container_ids else None
+
+    def verify_ownership(self, worker_id: str, container_id: str) -> None:
+        if not _IDENTIFIER.fullmatch(worker_id) or not _CONTAINER_ID.fullmatch(container_id):
+            raise WorkerRuntimeError("WORKER_RUNTIME_INVALID", "worker identity is invalid")
+        result = self._executor.execute(
+            (self._executable, "inspect", "--format", "{{json .}}", container_id),
+            timeout_seconds=5,
+            max_output_bytes=65_536,
+        )
+        if result.returncode != 0 or len(result.stdout) > 65_536:
+            raise WorkerRuntimeError("WORKER_OWNERSHIP_FAILED", "worker ownership is unproved")
+        try:
+            document = json.loads(result.stdout)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise WorkerRuntimeError(
+                "WORKER_OWNERSHIP_FAILED", "worker ownership is unproved"
+            ) from exc
+        if isinstance(document, list) and len(document) == 1:
+            document = document[0]
+        config = document.get("Config") if isinstance(document, dict) else None
+        labels = config.get("Labels") if isinstance(config, dict) else None
+        if not (
+            isinstance(document, dict)
+            and document.get("Id") == container_id
+            and isinstance(labels, dict)
+            and labels.get("com.pentai.managed") == "true"
+            and labels.get("com.pentai.runtime-role") == "worker-isolation"
+            and labels.get("com.pentai.worker-id") == worker_id
+        ):
+            raise WorkerRuntimeError("WORKER_OWNERSHIP_FAILED", "worker ownership is unproved")
+
     @staticmethod
     def _validate(worker_id: str, image_digest: str) -> None:
         if not _IDENTIFIER.fullmatch(worker_id) or not _DIGEST.fullmatch(image_digest):

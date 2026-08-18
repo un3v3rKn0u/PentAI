@@ -121,6 +121,7 @@ class DurableWorkerRuntimeRegistryTests(unittest.TestCase):
             (
                 {
                     "worker_id": "fixture:worker",
+                    "oci_runtime": "podman",
                     "container_id": None,
                     "status": "launching",
                     "version": 1,
