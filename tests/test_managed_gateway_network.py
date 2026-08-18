@@ -9,6 +9,8 @@ from pentai_core.managed_gateway_network import (
     ManagedGatewayNetworkProvisioner,
     NetworkProbeExecutionError,
     OciNetworkConformanceProbe,
+    WorkerGatewayAttachmentInspector,
+    WorkerGatewayAttachmentResult,
     WorkerGatewayPeerInspector,
     WorkerGatewayPeerResult,
     normalize_oci_image_digest,
@@ -23,6 +25,8 @@ INSTANCE = "fixture-pentai"
 IMAGE = "sha256:" + "a" * 64
 GATEWAY_ID = "gateway-container-id"
 GATEWAY_NAME = "pentai-gateway"
+WORKER_ID = "worker-container-id"
+WORKER_NAME = "pentai-worker"
 
 
 def conformance(**updates: object) -> dict[str, object]:
@@ -131,6 +135,18 @@ def provisioner(executor: FixtureExecutor) -> ManagedGatewayNetworkProvisioner:
 
 
 class ManagedGatewayNetworkTests(unittest.TestCase):
+    def attachment_inspector(
+        self, response: CommandResult, *, runtime: str = "docker"
+    ) -> WorkerGatewayAttachmentInspector:
+        return WorkerGatewayAttachmentInspector(
+            runtime=runtime,
+            executable=DOCKER,
+            network_name=NAME,
+            gateway_container_name=GATEWAY_NAME,
+            worker_container_name=WORKER_NAME,
+            executor=FixtureExecutor([response]),
+        )
+
     def test_worker_network_requires_exactly_one_expected_gateway_peer(self) -> None:
         executor = FixtureExecutor([peer_inspected()])
         inspector = WorkerGatewayPeerInspector(
@@ -197,6 +213,83 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
                     gateway_container_name=GATEWAY_NAME,
                     executor=FixtureExecutor([response]),
                 ).verify(network_id=NETWORK_ID, gateway_container_id=GATEWAY_ID)
+
+    def test_attached_topology_requires_exact_gateway_and_worker_for_both_runtimes(self) -> None:
+        docker = peer_inspected(
+            Containers={
+                GATEWAY_ID: {"Name": GATEWAY_NAME},
+                WORKER_ID: {"Name": WORKER_NAME},
+            }
+        )
+        podman = podman_peer_inspected(
+            containers={
+                GATEWAY_ID: {"name": GATEWAY_NAME},
+                WORKER_ID: {"name": WORKER_NAME},
+            }
+        )
+        for runtime, response in (("docker", docker), ("podman", podman)):
+            with self.subTest(runtime=runtime):
+                result = self.attachment_inspector(
+                    response, runtime=runtime
+                ).verify_attached(
+                    network_id=NETWORK_ID,
+                    gateway_container_id=GATEWAY_ID,
+                    worker_container_id=WORKER_ID,
+                )
+                self.assertEqual(
+                    result,
+                    WorkerGatewayAttachmentResult(NETWORK_ID, GATEWAY_ID, WORKER_ID),
+                )
+
+    def test_attached_topology_denies_missing_extra_or_renamed_peers(self) -> None:
+        exact = {
+            GATEWAY_ID: {"Name": GATEWAY_NAME},
+            WORKER_ID: {"Name": WORKER_NAME},
+        }
+        cases = (
+            {},
+            {GATEWAY_ID: {"Name": GATEWAY_NAME}},
+            {**exact, "unexpected-peer": {"Name": "unexpected-peer"}},
+            {**exact, GATEWAY_ID: {"Name": "renamed-gateway"}},
+            {**exact, WORKER_ID: {"Name": "renamed-worker"}},
+            {**exact, WORKER_ID: "malformed"},
+        )
+        for peers in cases:
+            with self.subTest(peers=peers), self.assertRaises(SnapshotCollectionError):
+                self.attachment_inspector(
+                    peer_inspected(Containers=peers)
+                ).verify_attached(
+                    network_id=NETWORK_ID,
+                    gateway_container_id=GATEWAY_ID,
+                    worker_container_id=WORKER_ID,
+                )
+
+    def test_attached_topology_denies_ambiguous_identity_or_network_drift(self) -> None:
+        exact = {
+            GATEWAY_ID: {"Name": GATEWAY_NAME},
+            WORKER_ID: {"Name": WORKER_NAME},
+        }
+        responses = (
+            peer_inspected(Id="changed", Containers=exact),
+            peer_inspected(Name="changed", Containers=exact),
+            peer_inspected(Internal=False, Containers=exact),
+            peer_inspected(EnableIPv6=True, Containers=exact),
+            CommandResult(0, b"not-json"),
+            CommandResult(1, b""),
+        )
+        for response in responses:
+            with self.subTest(response=response), self.assertRaises(SnapshotCollectionError):
+                self.attachment_inspector(response).verify_attached(
+                    network_id=NETWORK_ID,
+                    gateway_container_id=GATEWAY_ID,
+                    worker_container_id=WORKER_ID,
+                )
+        with self.assertRaises(SnapshotCollectionError):
+            self.attachment_inspector(peer_inspected(Containers=exact)).verify_attached(
+                network_id=NETWORK_ID,
+                gateway_container_id=GATEWAY_ID,
+                worker_container_id=GATEWAY_ID,
+            )
 
     def test_image_digest_normalizes_strict_docker_and_podman_forms(self) -> None:
         raw = "a" * 64

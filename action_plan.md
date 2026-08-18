@@ -414,6 +414,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     then activates its immutable identity for supervision. Partial launches use exact-worker
     recovery without sweeping unrelated runtimes, and incomplete cleanup remains retryable.
     Gateway-only attachment, execution, and hosted bypass evidence remain required.
+  - A bounded post-attachment topology inspector now requires the exact internal network to
+    contain only the trusted gateway and expected worker identities. Docker and Podman use one
+    fail-closed parser for both the sole-gateway pre-attachment state and exact two-peer state.
+    Attachment commands, durable attachment state, execution, and hosted evidence remain
+    disabled and required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies

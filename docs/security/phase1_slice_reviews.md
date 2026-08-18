@@ -3982,3 +3982,34 @@ rootless bypass evidence and workload execution also remain absent.
 inspection output. A process crash after successful cleanup but before final persistence may
 cause conservative retry and degraded readiness. Review is self-authored and non-independent
 and authorizes no worker network access or execution.
+
+## 2026-08-18 — Worker gateway attachment topology
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-mutating
+post-attachment inspection boundary only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Shared bounded Docker/Podman parsing, exact network identity, internal and
+IPv6-disabled controls, distinct gateway/worker identities, exact two-peer cardinality,
+runtime-specific peer names, malformed and subprocess denial, compatibility, rollback, and
+absence of runtime mutation or execution authority.
+
+**Evidence examined:** Docker and Podman exact-topology success; missing, additional,
+malformed, renamed, duplicate, and ambiguous peer denial; network ID, name, internal, and IPv6
+drift denial; invalid JSON and command-failure denial; unchanged sole-gateway regressions;
+full local Python checks; complete diff.
+
+**Findings:** A later attachment coordinator no longer needs to interpret arbitrary runtime
+network documents itself. It can require one exact post-effect topology result, while the
+pre-effect attestor retains the stricter gateway-only peer requirement.
+
+**Limitations and deferred work:** No network-connect effect is issued, no attachment state is
+persisted, and the continuous watchdog still measures only the pre-attachment v2 topology.
+Fresh pre-effect re-attestation, post-effect durable binding, continuous attached-topology
+monitoring, hosted rootless bypass evidence, and workload execution remain required.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify inspection output, and
+topology can change immediately after a point-in-time result. Review is self-authored and
+non-independent and authorizes no worker network attachment or execution.
