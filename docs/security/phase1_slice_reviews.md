@@ -4170,3 +4170,32 @@ core route. A durable authorized product worker request remains required.
 **Residual risk accepted:** Hosted Linux evidence does not prove every platform runtime, and a
 compromised OCI runtime can falsify inspection. Review is self-authored and non-independent and
 authorizes no external destination.
+
+## 2026-08-19 — Authorized worker HTTP fixture execution
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the fixed owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Additive migration, claim-before-worker binding, exact running gateway and
+attached worker identity, attachment-version fencing, immutable audit linkage, fixed OCI exec,
+public-key claim verification, tuple/deadline/response bounds, result ordering, timeout cleanup,
+startup recovery, replay denial, compatibility, and rollback.
+
+**Evidence examined:** Exact attached-state preparation and denial; immutable transition and
+replay tests; exact worker exec command; signed-claim transport regressions; migration upgrade
+and idempotency; recovery ordering; Python lint, strict types, and complete local tests; diff.
+
+**Findings:** The fixed owned HTTP action can originate inside the supervised worker without
+creating caller-controlled command or destination authority, and every attempt has durable
+claim, attachment, result, and audit linkage.
+
+**Limitations and deferred work:** This is not general HTTP(S) or browser automation and cannot
+reach external destinations. Hosted execution of this exact signed product path remains a Phase
+1 exit-gate evidence item.
+
+**Residual risk accepted:** A compromised OCI runtime can redirect or falsify exec/inspection,
+and process loss after the effect may require conservative recovery. Review is self-authored and
+non-independent and authorizes only the fixed owned fixture.

@@ -191,6 +191,11 @@ The hosted rootless TEST-NET matrix now exercises the bounded attachment and pro
 gateway fixture is reachable from the worker while alternate IPv4, DNS, IPv6, runtime-socket,
 host-mount, host-namespace, and resource-limit bypass probes fail. This evidence is valid only
 after the protected workflow passes and grants no product execution authority.
+For the owned fixture only, the signed one-use gateway claim may now be bound durably to the
+exact attached worker, gateway container, and attachment version before an OCI `exec` effect.
+The digest-pinned verifier retains the fixed TEST-NET tuple, deadline, and response ceiling;
+startup terminates the exact worker for every unfinished binding. External execution remains
+false and no caller-controlled destination is accepted.
 
 ### INV-NET-002 — Approved source identity
 

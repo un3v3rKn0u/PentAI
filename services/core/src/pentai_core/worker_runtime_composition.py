@@ -30,6 +30,10 @@ from pentai_core.worker_containment_supervisor import (
     WorkerSupervisionBinding,
     WorkerSupervisorControl,
 )
+from pentai_core.worker_fixture_execution import (
+    DurableWorkerFixtureExecutionRegistry,
+    WorkerFixtureExecutionRecovery,
+)
 from pentai_core.worker_runtime import OciWorkerIsolationController
 from pentai_core.worker_runtime_recovery import WorkerRuntimeRecovery
 from pentai_core.worker_runtime_registry import DurableWorkerRuntimeRegistry
@@ -158,6 +162,12 @@ def compose_worker_runtime_supervisor(
         attachment_recovery = WorkerAttachmentRecovery(
             registry=attachment_registry, runtime_recovery=recovery
         )
+        fixture_recovery = WorkerFixtureExecutionRecovery(
+            registry=DurableWorkerFixtureExecutionRegistry(
+                database_path=settings.database_path
+            ),
+            terminate_worker=recovery.terminate_worker,
+        )
 
         def pre_attachment_attestor_for(
             binding: WorkerSupervisionBinding,
@@ -217,7 +227,8 @@ def compose_worker_runtime_supervisor(
         )
 
         def recover_and_revalidate() -> int:
-            recovered = attachment_recovery.recover_all()
+            recovered = fixture_recovery.recover_all()
+            recovered += attachment_recovery.recover_all()
             recovered += recovery.recover_all()
             startup_attestor.measure()
             return recovered

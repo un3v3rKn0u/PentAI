@@ -446,6 +446,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     gateway fixture from inside that worker, and proves alternate IPv4, DNS, IPv6, runtime
     socket, host mount/namespace, and resource-limit bypasses remain blocked. Evidence is valid
     only after the hosted workflow passes. A durable authorized product request boundary remains.
+  - The existing signed, single-use owned-fixture claim can now be durably bound to one exact
+    attached worker before OCI `exec`. The worker invokes only the digest-pinned claim verifier's
+    fixed TEST-NET request, preserves the existing deadline and response ceiling, and finalizes
+    through the gateway authority. Startup terminates exact workers for unfinished bindings.
+    General HTTP(S), browser automation, and external destinations remain prohibited.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies
