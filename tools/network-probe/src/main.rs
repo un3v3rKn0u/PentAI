@@ -33,6 +33,18 @@ fn main() {
     if raw_arguments == ["--mode=http-fixture-server"] {
         run_http_fixture_server();
     }
+    if raw_arguments == ["--mode=worker-gateway-fixture-client"] {
+        match run_worker_gateway_fixture_client() {
+            Ok(()) => {
+                println!("{{\"gateway_reachable\":true}}");
+                return;
+            }
+            Err(message) => {
+                eprintln!("pentai-network-probe: {message}");
+                process::exit(2);
+            }
+        }
+    }
     if raw_arguments.first().map(String::as_str) == Some("--mode=http-fixture-client") {
         match parse_http_fixture_client(&raw_arguments).and_then(run_http_fixture_client) {
             Ok(result) => {
@@ -530,6 +542,31 @@ fn run_http_fixture_server() -> ! {
         let _ = stream.write_all(response);
     }
     process::exit(0)
+}
+
+fn run_worker_gateway_fixture_client() -> Result<(), &'static str> {
+    let address = "192.0.2.20:8080"
+        .parse::<SocketAddr>()
+        .map_err(|_| "fixed worker gateway address is invalid")?;
+    let mut stream = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT)
+        .map_err(|_| "fixed worker gateway is unreachable")?;
+    stream
+        .set_read_timeout(Some(CONNECT_TIMEOUT))
+        .and_then(|_| stream.set_write_timeout(Some(CONNECT_TIMEOUT)))
+        .map_err(|_| "fixed worker gateway timeout is unavailable")?;
+    stream
+        .write_all(b"GET /fixture HTTP/1.1\r\nHost: example.test\r\nConnection: close\r\n\r\n")
+        .map_err(|_| "fixed worker gateway write failed")?;
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .map_err(|_| "fixed worker gateway read failed")?;
+    let expected =
+        b"HTTP/1.1 200 OK\r\nContent-Length: 17\r\nConnection: close\r\n\r\npentai-fixture-ok";
+    if response != expected {
+        return Err("fixed worker gateway response is invalid");
+    }
+    Ok(())
 }
 
 fn sentinel_runtime_id(arguments: &[String]) -> Option<&str> {

@@ -107,6 +107,7 @@ def compose_worker_runtime_supervisor(
             executable=executable,
             executor=command_executor,
             capability_monitor=(LinuxProcCapabilityMonitor() if runtime == "podman" else None),
+            container_name=settings.worker_container_name,
         )
 
         def controller_for(candidate_runtime: str) -> OciWorkerIsolationController:

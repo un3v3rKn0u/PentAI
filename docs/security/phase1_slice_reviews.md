@@ -4143,3 +4143,30 @@ worker-to-gateway execution and direct-egress bypass evidence remain required.
 **Residual risk accepted:** A compromised OCI runtime can falsify inspection output, and
 topology can drift between bounded checks. Review is self-authored and non-independent and
 authorizes no worker execution.
+
+## 2026-08-19 — Hosted worker gateway conformance
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as TEST-NET-only
+hosted evidence after the protected workflow passes<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Rootless runtime requirement, digest-pinned gateway and worker launch,
+no-network launch before bounded attachment, deterministic container identities, exact two-peer
+topology, fixed TEST-NET gateway reachability, direct IPv4/DNS/IPv6 bypass denial, runtime
+socket/mount/namespace/resource controls, cleanup, workflow path coverage, compatibility, and
+rollback.
+
+**Evidence examined:** Rust probe unit tests; Python lint and strict types; fixed command and
+destination review; protected rootless Podman workflow result when available; complete diff.
+
+**Findings:** The hosted matrix now tests the same attachment shape consumed by production
+supervision and distinguishes permitted gateway reachability from prohibited alternate egress.
+
+**Limitations and deferred work:** The compiled fixture client is conformance-only and has no
+core route. A durable authorized product worker request remains required.
+
+**Residual risk accepted:** Hosted Linux evidence does not prove every platform runtime, and a
+compromised OCI runtime can falsify inspection. Review is self-authored and non-independent and
+authorizes no external destination.

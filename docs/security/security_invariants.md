@@ -187,6 +187,10 @@ Production startup performs that attachment recovery before runtime recovery and
 readiness check. The continuous watchdog reads durable attachment state and verifies either
 the exact no-network sentinel or the exact attached worker image, controls, internal network,
 and two-peer topology. Any uncertain state pauses authority and requests worker termination.
+The hosted rootless TEST-NET matrix now exercises the bounded attachment and proves the fixed
+gateway fixture is reachable from the worker while alternate IPv4, DNS, IPv6, runtime-socket,
+host-mount, host-namespace, and resource-limit bypass probes fail. This evidence is valid only
+after the protected workflow passes and grants no product execution authority.
 
 ### INV-NET-002 — Approved source identity
 

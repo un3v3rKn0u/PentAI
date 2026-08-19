@@ -138,6 +138,7 @@ class WorkerRuntimeTests(unittest.TestCase):
         )
         command = executor.calls[0]
         for expected in (
+            "--name=pentai-worker",
             "--network=none",
             "--read-only",
             "--cap-drop=all",

@@ -160,6 +160,7 @@ class OciWorkerIsolationController:
         executable: Path,
         executor: BoundedCommandExecutor,
         capability_monitor: CapabilityMonitor | None = None,
+        container_name: str = "pentai-worker",
     ) -> None:
         if runtime not in {"docker", "podman"}:
             raise WorkerRuntimeError("WORKER_RUNTIME_UNSUPPORTED", "runtime is unsupported")
@@ -169,10 +170,13 @@ class OciWorkerIsolationController:
             raise WorkerRuntimeError(
                 "WORKER_CAPABILITY_MONITOR_REQUIRED", "capability monitor is required"
             )
+        if not _IDENTIFIER.fullmatch(container_name):
+            raise WorkerRuntimeError("WORKER_RUNTIME_INVALID", "worker name is invalid")
         self._runtime = runtime
         self._executable = str(executable)
         self._executor = executor
         self._capability_monitor = capability_monitor
+        self._container_name = container_name
 
     def launch(self, worker_id: str, image_digest: str) -> str:
         self._validate(worker_id, image_digest)
@@ -180,6 +184,7 @@ class OciWorkerIsolationController:
             oci_run_command(
                 self._executable,
                 "--detach",
+                f"--name={self._container_name}",
                 "--network=none",
                 "--read-only",
                 "--cap-drop=all",
