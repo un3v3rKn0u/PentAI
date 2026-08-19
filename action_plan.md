@@ -430,6 +430,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     effect records failure and invokes ownership-verified exact-worker termination. Production
     composition, startup recovery, continuous attached monitoring, execution, and hosted
     evidence remain required.
+  - Crash-safe attachment recovery now marks uncertain prepared/attached records failed,
+    terminates each exact ownership-verified worker, and appends an immutable version-bound
+    receipt only after termination is durable. Already terminated workers do not repeat the OCI
+    effect, failures remain retryable, and one bad record cannot hide later cleanup. Startup
+    composition, continuous attached monitoring, execution, and hosted evidence remain required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies

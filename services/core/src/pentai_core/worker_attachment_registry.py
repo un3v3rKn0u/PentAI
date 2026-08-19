@@ -128,8 +128,13 @@ class DurableWorkerAttachmentRegistry:
             rows = connection.execute(
                 """SELECT worker_id, container_id, worker_gateway_network_id,
                     gateway_container_id, status, version
-                FROM worker_network_attachments
-                WHERE status IN ('prepared', 'attached', 'failed') ORDER BY worker_id"""
+                FROM worker_network_attachments AS attachment
+                WHERE status IN ('prepared', 'attached', 'failed')
+                  AND NOT EXISTS (
+                    SELECT 1 FROM worker_attachment_recoveries AS recovery
+                    WHERE recovery.worker_id = attachment.worker_id
+                  )
+                ORDER BY worker_id"""
             ).fetchall()
         return tuple(
             {
@@ -143,6 +148,48 @@ class DurableWorkerAttachmentRegistry:
             }
             for row in rows
         )
+
+    def resolve_recovery(
+        self, *, worker_id: str, expected_version: int
+    ) -> dict[str, object]:
+        if (
+            not _IDENTIFIER.fullmatch(worker_id)
+            or type(expected_version) is not int
+            or expected_version < 1
+        ):
+            raise WorkerAttachmentRegistryError(
+                "WORKER_ATTACHMENT_RECOVERY_INVALID", "worker attachment recovery is invalid"
+            )
+        timestamp = self._timestamp()
+        try:
+            with transaction(self._database_path) as connection:
+                inserted = connection.execute(
+                    """INSERT INTO worker_attachment_recoveries(
+                    worker_id, attachment_version, recovered_at, outcome, execution_enabled)
+                    SELECT attachment.worker_id, attachment.version, ?, 'worker_terminated', 0
+                    FROM worker_network_attachments AS attachment
+                    JOIN worker_runtime_instances AS runtime
+                      ON runtime.worker_id = attachment.worker_id
+                     AND runtime.container_id = attachment.container_id
+                    WHERE attachment.worker_id = ? AND attachment.version = ?
+                      AND attachment.status = 'failed' AND runtime.status = 'terminated'""",
+                    (timestamp, worker_id, expected_version),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise WorkerAttachmentRegistryError(
+                "WORKER_ATTACHMENT_RECOVERY_CONFLICT", "worker attachment recovery conflicts"
+            ) from exc
+        if inserted.rowcount != 1:
+            raise WorkerAttachmentRegistryError(
+                "WORKER_ATTACHMENT_RECOVERY_PENDING",
+                "worker attachment recovery is incomplete",
+            )
+        return {
+            "worker_id": worker_id,
+            "attachment_version": expected_version,
+            "outcome": "worker_terminated",
+            "execution_enabled": False,
+        }
 
     def _transition(
         self,

@@ -4082,3 +4082,36 @@ HTTP/browser worker remain absent.
 **Residual risk accepted:** A compromised OCI runtime can falsify connect and inspection
 results, and topology can drift after the point-in-time verification. Review is self-authored
 and non-independent and authorizes only the inert internal attachment, not worker execution.
+
+## 2026-08-19 — Worker attachment recovery
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as non-executing
+crash recovery only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Additive immutable recovery receipts, unresolved queue semantics,
+prepared/attached failure transition, exact-worker termination, already-terminated handling,
+receipt-after-termination ordering, attempt-all aggregation, retry behavior, fixed diagnostics,
+version binding, execution-disabled state, compatibility, rollback, and absence of execution
+authority.
+
+**Evidence examined:** Prepared attachment failure/termination/resolution; previously failed
+and terminated resolution without a repeated OCI effect; termination failure durability and
+retry queue preservation; continued processing of later attachments; receipt replay denial;
+receipt mutation/deletion guards; isolated migration upgrade and idempotency; existing
+attachment, worker-runtime recovery, and database regressions; full local Python checks;
+complete diff.
+
+**Findings:** A crash after the attachment effect can no longer leave attachment-specific
+state without a durable consumer. Resolution is distinct from failure and occurs only when the
+exact bound worker-runtime record proves termination.
+
+**Limitations and deferred work:** Core startup does not yet invoke this coordinator before
+readiness, and continuous supervision still assumes the pre-attachment sole-gateway topology.
+Hosted rootless bypass evidence and actual worker execution remain absent.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify termination evidence, while
+a crash after OCI removal but before worker-runtime persistence causes conservative retry.
+Review is self-authored and non-independent and grants no network or execution authority.
