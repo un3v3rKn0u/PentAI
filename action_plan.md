@@ -424,6 +424,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     internal network before any future connect effect. Only prepared, attached, or failed
     non-executing states are allowed, and unfinished records remain enumerable for recovery.
     Attachment commands, recovery composition, execution, and hosted evidence remain required.
+  - A bounded attachment coordinator now obtains fresh sole-gateway containment, persists the
+    exact intent before one fixed OCI network-connect effect, verifies the exact gateway/worker
+    two-peer topology afterward, and keeps the attached sentinel non-executing. Any uncertain
+    effect records failure and invokes ownership-verified exact-worker termination. Production
+    composition, startup recovery, continuous attached monitoring, execution, and hosted
+    evidence remain required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies
