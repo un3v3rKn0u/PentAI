@@ -180,6 +180,9 @@ inspection; any uncertainty records failure and terminates the ownership-verifie
 The attached sentinel remains execution-disabled, so this proves topology composition rather
 than worker-originated traffic or bypass resistance. Continuous attached-topology supervision
 and hosted direct-egress/DNS/IPv6/raw-route bypass evidence remain required.
+Unresolved attachment state is also independently recoverable: startup recovery must mark
+uncertain topology failed, terminate the exact ownership-verified worker, and persist an
+immutable version-bound receipt before the record leaves the recovery queue.
 
 ### INV-NET-002 — Approved source identity
 

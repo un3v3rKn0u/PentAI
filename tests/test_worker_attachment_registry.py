@@ -150,6 +150,57 @@ class DurableWorkerAttachmentRegistryTests(unittest.TestCase):
                 with self.subTest(statement=statement), self.assertRaises(sqlite3.IntegrityError):
                     connection.execute(statement)
 
+    def test_recovery_resolution_requires_failed_attachment_and_terminated_worker(self) -> None:
+        prepared = self.prepare()
+        with self.assertRaises(WorkerAttachmentRegistryError) as active:
+            self.registry.resolve_recovery(
+                worker_id=WORKER, expected_version=int(prepared["version"])
+            )
+        self.assertEqual(active.exception.code, "WORKER_ATTACHMENT_RECOVERY_PENDING")
+
+        failed = self.registry.mark_failed(
+            worker_id=WORKER,
+            expected_version=int(prepared["version"]),
+            reason="startup recovery",
+        )
+        with self.assertRaises(WorkerAttachmentRegistryError):
+            self.registry.resolve_recovery(
+                worker_id=WORKER, expected_version=int(failed["version"])
+            )
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            connection.execute(
+                """UPDATE worker_runtime_instances
+                SET status = 'termination_requested', termination_reason = 'recovery',
+                    updated_at = '2026-08-19T10:00:01Z', version = version + 1
+                WHERE worker_id = ?""",
+                (WORKER,),
+            )
+            connection.execute(
+                """UPDATE worker_runtime_instances
+                SET status = 'terminated', updated_at = '2026-08-19T10:00:02Z',
+                    version = version + 1 WHERE worker_id = ?""",
+                (WORKER,),
+            )
+        resolved = self.registry.resolve_recovery(
+            worker_id=WORKER, expected_version=int(failed["version"])
+        )
+        self.assertEqual(resolved["outcome"], "worker_terminated")
+        self.assertFalse(resolved["execution_enabled"])
+        self.assertEqual(self.registry.recovery_candidates(), ())
+        with self.assertRaises(WorkerAttachmentRegistryError) as replayed:
+            self.registry.resolve_recovery(
+                worker_id=WORKER, expected_version=int(failed["version"])
+            )
+        self.assertEqual(replayed.exception.code, "WORKER_ATTACHMENT_RECOVERY_CONFLICT")
+
+        with closing(sqlite3.connect(self.database)) as connection:
+            for statement in (
+                "UPDATE worker_attachment_recoveries SET recovered_at = 'changed'",
+                "DELETE FROM worker_attachment_recoveries",
+            ):
+                with self.subTest(statement=statement), self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute(statement)
+
 
 if __name__ == "__main__":
     unittest.main()
