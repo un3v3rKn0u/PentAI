@@ -44,6 +44,13 @@ class WorkerGatewayPeerResult:
     gateway_container_id: str
 
 
+@dataclass(frozen=True)
+class WorkerGatewayAttachmentResult:
+    network_id: str
+    gateway_container_id: str
+    worker_container_id: str
+
+
 def normalize_oci_image_digest(value: str) -> str:
     if _DIGEST.fullmatch(value):
         return value
@@ -323,6 +330,23 @@ class WorkerGatewayPeerInspector:
             raise SnapshotCollectionError(
                 "NETWORK_IDENTITY_INVALID", "network identity is invalid"
             )
+        peers = self._inspect(network_id)
+        if set(peers) != {gateway_container_id}:
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEERS_INVALID", "worker gateway peer set is invalid"
+            )
+        peer = peers[gateway_container_id]
+        if not isinstance(peer, dict):
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEERS_INVALID", "worker gateway peer set is invalid"
+            )
+        if self._peer_name(peer) != self._gateway_container_name:
+            raise SnapshotCollectionError(
+                "WORKER_GATEWAY_IDENTITY_INVALID", "worker gateway identity is invalid"
+            )
+        return WorkerGatewayPeerResult(network_id, gateway_container_id)
+
+    def _inspect(self, network_id: str) -> dict[str, object]:
         template = "{{json .}}" if self._runtime == "docker" else "json"
         result = self._executor.execute(
             (self._executable, "network", "inspect", "--format", template, network_id),
@@ -341,7 +365,6 @@ class WorkerGatewayPeerInspector:
             document = document[0]
         if not isinstance(document, dict):
             raise SnapshotCollectionError("NETWORK_OUTPUT_INVALID", "network inspection is invalid")
-
         observed_id = document.get("Id") if self._runtime == "docker" else document.get("id")
         observed_name = (
             document.get("Name") if self._runtime == "docker" else document.get("name")
@@ -369,21 +392,74 @@ class WorkerGatewayPeerInspector:
             raise SnapshotCollectionError(
                 "WORKER_NETWORK_INVALID", "worker gateway network verification failed"
             )
-        if set(peers) != {gateway_container_id}:
+        return peers
+
+    def _peer_name(self, peer: dict[str, object]) -> object:
+        return peer.get("Name") if self._runtime == "docker" else peer.get("name")
+
+
+class WorkerGatewayAttachmentInspector(WorkerGatewayPeerInspector):
+    """Prove an attached worker network has exactly its gateway and worker peers."""
+
+    def __init__(
+        self,
+        *,
+        runtime: str,
+        executable: Path,
+        network_name: str,
+        gateway_container_name: str,
+        worker_container_name: str,
+        executor: BoundedCommandExecutor,
+    ) -> None:
+        super().__init__(
+            runtime=runtime,
+            executable=executable,
+            network_name=network_name,
+            gateway_container_name=gateway_container_name,
+            executor=executor,
+        )
+        if not _IDENTIFIER.fullmatch(worker_container_name):
+            raise SnapshotCollectionError(
+                "NETWORK_IDENTITY_INVALID", "network identity is invalid"
+            )
+        self._worker_container_name = worker_container_name
+
+    def verify_attached(
+        self,
+        *,
+        network_id: str,
+        gateway_container_id: str,
+        worker_container_id: str,
+    ) -> WorkerGatewayAttachmentResult:
+        identities = (network_id, gateway_container_id, worker_container_id)
+        if any(not _IDENTIFIER.fullmatch(value) for value in identities) or (
+            gateway_container_id == worker_container_id
+        ):
+            raise SnapshotCollectionError(
+                "NETWORK_IDENTITY_INVALID", "network identity is invalid"
+            )
+        peers = self._inspect(network_id)
+        if set(peers) != {gateway_container_id, worker_container_id}:
             raise SnapshotCollectionError(
                 "WORKER_NETWORK_PEERS_INVALID", "worker gateway peer set is invalid"
             )
-        peer = peers[gateway_container_id]
-        if not isinstance(peer, dict):
+        gateway = peers[gateway_container_id]
+        worker = peers[worker_container_id]
+        if not isinstance(gateway, dict) or not isinstance(worker, dict):
             raise SnapshotCollectionError(
                 "WORKER_NETWORK_PEERS_INVALID", "worker gateway peer set is invalid"
             )
-        observed_peer_name = peer.get("Name") if self._runtime == "docker" else peer.get("name")
-        if observed_peer_name != self._gateway_container_name:
+        if self._peer_name(gateway) != self._gateway_container_name:
             raise SnapshotCollectionError(
                 "WORKER_GATEWAY_IDENTITY_INVALID", "worker gateway identity is invalid"
             )
-        return WorkerGatewayPeerResult(network_id, gateway_container_id)
+        if self._peer_name(worker) != self._worker_container_name:
+            raise SnapshotCollectionError(
+                "WORKER_IDENTITY_INVALID", "worker identity is invalid"
+            )
+        return WorkerGatewayAttachmentResult(
+            network_id, gateway_container_id, worker_container_id
+        )
 
 
 class OciNetworkConformanceProbe:
