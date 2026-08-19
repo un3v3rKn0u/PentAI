@@ -419,6 +419,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     fail-closed parser for both the sole-gateway pre-attachment state and exact two-peer state.
     Attachment commands, durable attachment state, execution, and hosted evidence remain
     disabled and required.
+  - A durable attachment registry now binds fresh v2 containment evidence to one exact
+    version-fenced running worker, immutable worker/gateway container identities, and the
+    internal network before any future connect effect. Only prepared, attached, or failed
+    non-executing states are allowed, and unfinished records remain enumerable for recovery.
+    Attachment commands, recovery composition, execution, and hosted evidence remain required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies

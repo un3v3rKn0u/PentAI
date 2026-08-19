@@ -4013,3 +4013,37 @@ monitoring, hosted rootless bypass evidence, and workload execution remain requi
 **Residual risk accepted:** A compromised OCI runtime can falsify inspection output, and
 topology can change immediately after a point-in-time result. Review is self-authored and
 non-independent and authorizes no worker network attachment or execution.
+
+## 2026-08-19 — Durable worker attachment state
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as non-executing
+pre-effect attachment persistence only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Additive migration, fresh v2 evidence validation, exact running-worker
+version and identity comparison, immutable worker/gateway/network binding, unique authority,
+status and version fencing, execution-disabled state, recovery enumeration, mutation/deletion
+guards, compatibility, rollback, and absence of OCI effects.
+
+**Evidence examined:** Exact pre-effect persistence and linkage; stale attestation, runtime,
+network, OCI runtime, worker-version, and gateway-identity denial; duplicate denial; attached
+and failed transition fencing; replay denial; immutable identity, timestamp, execution, and
+deletion database guards; isolated upgrade and idempotency; full local Python checks;
+complete diff.
+
+**Findings:** The future network-connect boundary no longer needs caller-owned ephemeral
+state. It can require a durable prepared record that proves fresh containment agreed with one
+exact running worker before the effect and can persist the post-effect result without granting
+execution authority.
+
+**Limitations and deferred work:** No OCI command is issued and no post-effect topology is
+verified or continuously monitored. Startup does not yet consume unfinished attachment
+records independently of worker-runtime recovery. The attachment coordinator, bounded effect,
+recovery composition, hosted rootless evidence, and workload execution remain required.
+
+**Residual risk accepted:** A process crash after a future connect effect but before the
+attached transition will leave a conservative prepared record; the next coordinator must
+terminate the exact worker and preserve failure state. Review is self-authored and
+non-independent and authorizes no network mutation or execution.
