@@ -9,7 +9,10 @@ from typing import Any
 
 from pentai_core.database import transaction
 from pentai_core.worker_containment import validate_worker_containment_attestation
-from pentai_core.worker_containment_supervisor import WorkerContainmentBinding
+from pentai_core.worker_containment_supervisor import (
+    WorkerContainmentBinding,
+    WorkerSupervisionBinding,
+)
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _CONTAINER_ID = re.compile(r"^[a-f0-9]{12,64}$")
@@ -119,6 +122,40 @@ class DurableWorkerRuntimeRegistry:
                 str(row["worker_id"]),
                 str(row["runtime_instance_id"]),
                 str(row["worker_gateway_network_id"]),
+            )
+            for row in rows
+        )
+
+    def supervision_bindings(self) -> tuple[WorkerSupervisionBinding, ...]:
+        with transaction(self._database_path) as connection:
+            rows = connection.execute(
+                """SELECT runtime.worker_id, runtime.runtime_instance_id,
+                    runtime.worker_gateway_network_id, runtime.container_id,
+                    runtime.image_digest, attachment.gateway_container_id,
+                    attachment.status AS attachment_status
+                FROM worker_runtime_instances AS runtime
+                LEFT JOIN worker_network_attachments AS attachment
+                  ON attachment.worker_id = runtime.worker_id
+                WHERE runtime.status = 'running'
+                ORDER BY runtime.worker_id"""
+            ).fetchall()
+        return tuple(
+            WorkerSupervisionBinding(
+                worker_id=str(row["worker_id"]),
+                runtime_instance_id=str(row["runtime_instance_id"]),
+                worker_gateway_network_id=str(row["worker_gateway_network_id"]),
+                container_id=str(row["container_id"]),
+                image_digest=str(row["image_digest"]),
+                gateway_container_id=(
+                    str(row["gateway_container_id"])
+                    if row["gateway_container_id"] is not None
+                    else None
+                ),
+                attachment_status=(
+                    str(row["attachment_status"])
+                    if row["attachment_status"] is not None
+                    else None
+                ),
             )
             for row in rows
         )

@@ -435,6 +435,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     receipt only after termination is durable. Already terminated workers do not repeat the OCI
     effect, failures remain retryable, and one bad record cannot hide later cleanup. Startup
     composition, continuous attached monitoring, execution, and hosted evidence remain required.
+  - Production worker startup now resolves every unfinished attachment before runtime recovery
+    and readiness. Continuous supervision selects the durable topology: unattached workers must
+    retain no-network isolation and fresh gateway-only containment, while attached workers must
+    retain the exact image, resource/privilege controls, single internal network, and exact
+    gateway/worker peer set. Uncertain attachment state pauses authority and terminates workers.
+    Hosted worker-to-gateway execution and bypass evidence remain required.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies

@@ -119,6 +119,27 @@ def _network_attachment_error(runtime: str, host: dict[str, object], network: ob
     return None
 
 
+def _attached_network_error(
+    host: dict[str, object], network: object, *, network_name: str, network_id: str
+) -> str | None:
+    if not isinstance(network, dict):
+        return "document"
+    if host.get("PortBindings") not in (None, {}) or host.get("PublishAllPorts") not in (
+        None,
+        False,
+    ):
+        return "published_ports"
+    networks = network.get("Networks")
+    if not isinstance(networks, dict) or set(networks) != {network_name}:
+        return "networks"
+    attachment = networks[network_name]
+    if not isinstance(attachment, dict) or attachment.get("NetworkID") != network_id:
+        return "identity"
+    if network.get("Ports") not in (None, {}):
+        return "ports"
+    return None
+
+
 class WorkerRuntimeError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -190,6 +211,42 @@ class OciWorkerIsolationController:
         return container_id
 
     def verify(self, worker_id: str, container_id: str, image_digest: str) -> None:
+        self._verify(
+            worker_id,
+            container_id,
+            image_digest,
+            network_name=None,
+            network_id=None,
+        )
+
+    def verify_attached(
+        self,
+        worker_id: str,
+        container_id: str,
+        image_digest: str,
+        *,
+        network_name: str,
+        network_id: str,
+    ) -> None:
+        if not _IDENTIFIER.fullmatch(network_name) or not _IDENTIFIER.fullmatch(network_id):
+            raise WorkerRuntimeError("WORKER_RUNTIME_INVALID", "worker network is invalid")
+        self._verify(
+            worker_id,
+            container_id,
+            image_digest,
+            network_name=network_name,
+            network_id=network_id,
+        )
+
+    def _verify(
+        self,
+        worker_id: str,
+        container_id: str,
+        image_digest: str,
+        *,
+        network_name: str | None,
+        network_id: str | None,
+    ) -> None:
         self._validate(worker_id, image_digest)
         if not _CONTAINER_ID.fullmatch(container_id):
             raise WorkerRuntimeError("WORKER_RUNTIME_INVALID", "worker identity is invalid")
@@ -245,12 +302,23 @@ class OciWorkerIsolationController:
             )
         except SnapshotCollectionError:
             image_identity = False
-        network_error = _network_attachment_error(self._runtime, host_doc, network)
+        attached = network_name is not None and network_id is not None
+        if attached:
+            assert network_name is not None and network_id is not None
+            network_error = _attached_network_error(
+                host_doc, network, network_name=network_name, network_id=network_id
+            )
+        else:
+            network_error = _network_attachment_error(self._runtime, host_doc, network)
         checks = {
             "container_identity": document.get("Id") == container_id,
             "running": isinstance(state, dict) and state.get("Running") is True,
             "image_identity": image_identity,
-            "network_mode": host_doc.get("NetworkMode") == "none",
+            "network_mode": (
+                host_doc.get("NetworkMode") == network_name
+                if attached
+                else host_doc.get("NetworkMode") == "none"
+            ),
             "read_only_root": host_doc.get("ReadonlyRootfs") is True,
             "non_privileged": host_doc.get("Privileged") is False,
             "private_pid": host_doc.get("PidMode") in ("", "private", None),

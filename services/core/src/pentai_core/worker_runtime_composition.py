@@ -7,6 +7,7 @@ from pentai_core.config import Settings
 from pentai_core.gateway_runtime_lifecycle import LinuxProcCapabilityMonitor
 from pentai_core.managed_gateway_network import (
     OciNetworkConformanceProbe,
+    WorkerGatewayAttachmentInspector,
     WorkerGatewayPeerInspector,
 )
 from pentai_core.runtime_containment import (
@@ -18,12 +19,15 @@ from pentai_core.runtime_snapshot_collector import (
     LocalBoundedCommandExecutor,
     OciRuntimeSnapshotCollector,
 )
+from pentai_core.worker_attachment_recovery import WorkerAttachmentRecovery
+from pentai_core.worker_attachment_registry import DurableWorkerAttachmentRegistry
 from pentai_core.worker_containment_supervisor import (
-    RegisteredWorkerContainmentMonitor,
+    AttachmentAwareWorkerContainmentMonitor,
     UnconfiguredWorkerContainmentSupervisor,
     WorkerContainmentBinding,
     WorkerContainmentMonitor,
     WorkerContainmentSupervisor,
+    WorkerSupervisionBinding,
     WorkerSupervisorControl,
 )
 from pentai_core.worker_runtime import OciWorkerIsolationController
@@ -147,8 +151,61 @@ def compose_worker_runtime_supervisor(
                 gateway_container_id=gateway_container_id,
             )
 
-        containment_monitor = monitor or RegisteredWorkerContainmentMonitor(
-            bindings=registry.bindings, attestor_for=attestor_for
+        attachment_registry = DurableWorkerAttachmentRegistry(
+            database_path=settings.database_path
+        )
+        attachment_recovery = WorkerAttachmentRecovery(
+            registry=attachment_registry, runtime_recovery=recovery
+        )
+
+        def pre_attachment_attestor_for(
+            binding: WorkerSupervisionBinding,
+        ) -> WorkerContainmentAttestor:
+            return attestor_for(
+                WorkerContainmentBinding(
+                    binding.worker_id,
+                    binding.runtime_instance_id,
+                    binding.worker_gateway_network_id,
+                )
+            )
+
+        attachment_inspector = WorkerGatewayAttachmentInspector(
+            runtime=runtime,
+            executable=executable,
+            network_name=network_name,
+            gateway_container_name=gateway_container_name,
+            worker_container_name=settings.worker_container_name,
+            executor=command_executor,
+        )
+
+        def verify_worker(binding: WorkerSupervisionBinding) -> None:
+            if binding.attachment_status == "attached":
+                controller.verify_attached(
+                    binding.worker_id,
+                    binding.container_id,
+                    binding.image_digest,
+                    network_name=network_name,
+                    network_id=binding.worker_gateway_network_id,
+                )
+            else:
+                controller.verify(
+                    binding.worker_id, binding.container_id, binding.image_digest
+                )
+
+        def verify_attachment(binding: WorkerSupervisionBinding) -> object:
+            if binding.gateway_container_id is None:
+                raise ValueError("worker gateway identity is missing")
+            return attachment_inspector.verify_attached(
+                network_id=binding.worker_gateway_network_id,
+                gateway_container_id=binding.gateway_container_id,
+                worker_container_id=binding.container_id,
+            )
+
+        containment_monitor = monitor or AttachmentAwareWorkerContainmentMonitor(
+            bindings=registry.supervision_bindings,
+            pre_attachment_attestor_for=pre_attachment_attestor_for,
+            verify_worker=verify_worker,
+            verify_attachment=verify_attachment,
         )
         startup_attestor = baseline_attestor or attestor_for(
             WorkerContainmentBinding(
@@ -159,7 +216,8 @@ def compose_worker_runtime_supervisor(
         )
 
         def recover_and_revalidate() -> int:
-            recovered = recovery.recover_all()
+            recovered = attachment_recovery.recover_all()
+            recovered += recovery.recover_all()
             startup_attestor.measure()
             return recovered
 

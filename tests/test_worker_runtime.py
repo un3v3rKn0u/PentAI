@@ -295,6 +295,48 @@ class WorkerRuntimeTests(unittest.TestCase):
                 self.assertEqual(raised.exception.code, "WORKER_CONTAINMENT_INVALID")
                 self.assertIn(failed_control, str(raised.exception))
 
+    def test_attached_verification_requires_one_exact_internal_network(self) -> None:
+        document = copy.deepcopy(inspection())
+        host = document["HostConfig"]
+        network = document["NetworkSettings"]
+        assert isinstance(host, dict) and isinstance(network, dict)
+        host["NetworkMode"] = "fixture-worker-network"
+        network["Networks"] = {
+            "fixture-worker-network": {"NetworkID": "fixture:worker-network"}
+        }
+        runtime_controller = controller(
+            Executor([CommandResult(0, json.dumps(document).encode())])
+        )
+        runtime_controller.verify_attached(
+            WORKER,
+            CONTAINER,
+            IMAGE,
+            network_name="fixture-worker-network",
+            network_id="fixture:worker-network",
+        )
+
+        for networks in (
+            {"fixture-worker-network": {"NetworkID": "changed"}},
+            {
+                "fixture-worker-network": {"NetworkID": "fixture:worker-network"},
+                "bridge": {"NetworkID": "bridge"},
+            },
+        ):
+            with self.subTest(networks=networks), self.assertRaises(WorkerRuntimeError):
+                changed = copy.deepcopy(document)
+                changed_network = changed["NetworkSettings"]
+                assert isinstance(changed_network, dict)
+                changed_network["Networks"] = networks
+                controller(
+                    Executor([CommandResult(0, json.dumps(changed).encode())])
+                ).verify_attached(
+                    WORKER,
+                    CONTAINER,
+                    IMAGE,
+                    network_name="fixture-worker-network",
+                    network_id="fixture:worker-network",
+                )
+
     def test_invalid_inputs_and_subprocess_failures_deny(self) -> None:
         runtime_controller = controller(Executor([CommandResult(1, b"")]))
         with self.assertRaises(WorkerRuntimeError):

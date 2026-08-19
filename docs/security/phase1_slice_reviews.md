@@ -4115,3 +4115,31 @@ Hosted rootless bypass evidence and actual worker execution remain absent.
 **Residual risk accepted:** A compromised OCI runtime can falsify termination evidence, while
 a crash after OCI removal but before worker-runtime persistence causes conservative retry.
 Review is self-authored and non-independent and grants no network or execution authority.
+
+## 2026-08-19 — Worker attachment supervision composition
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a fail-closed
+startup and continuous attached-topology boundary<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Attachment-before-runtime recovery ordering, durable topology selection,
+exact image/container/network/gateway binding, no-network and attached worker inspection,
+resource and privilege retention, exact two-peer monitoring, fixed degradation diagnostics,
+shutdown behavior, compatibility, and rollback.
+
+**Evidence examined:** Unattached and attached selection tests; uncertain-state denial; exact
+network and additional-network denial; existing runtime, attachment, recovery, topology, and
+supervisor regressions; complete local Python checks; complete diff.
+
+**Findings:** Production startup can no longer report worker readiness while attachment cleanup
+is incomplete, and the watchdog no longer incorrectly applies a gateway-only peer rule after a
+successful attachment.
+
+**Limitations and deferred work:** The worker remains an inert sentinel. Hosted rootless
+worker-to-gateway execution and direct-egress bypass evidence remain required.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify inspection output, and
+topology can drift between bounded checks. Review is self-authored and non-independent and
+authorizes no worker execution.

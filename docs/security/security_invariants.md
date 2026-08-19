@@ -183,6 +183,10 @@ and hosted direct-egress/DNS/IPv6/raw-route bypass evidence remain required.
 Unresolved attachment state is also independently recoverable: startup recovery must mark
 uncertain topology failed, terminate the exact ownership-verified worker, and persist an
 immutable version-bound receipt before the record leaves the recovery queue.
+Production startup performs that attachment recovery before runtime recovery and the first
+readiness check. The continuous watchdog reads durable attachment state and verifies either
+the exact no-network sentinel or the exact attached worker image, controls, internal network,
+and two-peer topology. Any uncertain state pauses authority and requests worker termination.
 
 ### INV-NET-002 — Approved source identity
 
