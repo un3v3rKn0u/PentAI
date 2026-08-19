@@ -4047,3 +4047,38 @@ recovery composition, hosted rootless evidence, and workload execution remain re
 attached transition will leave a conservative prepared record; the next coordinator must
 terminate the exact worker and preserve failure state. Review is self-authored and
 non-independent and authorizes no network mutation or execution.
+
+## 2026-08-19 — Bounded worker gateway attachment
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a non-executing
+gateway-only attachment boundary<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Fresh pre-effect v2 measurement, intent-before-effect ordering, exact
+durable identity consumption, fixed OCI network-connect command, timeout and output bounds,
+exact post-effect two-peer verification, version-fenced success, failure persistence,
+ownership-verified exact-worker termination, attempt-all cleanup, fixed diagnostics,
+compatibility, rollback, and continued absence of execution authority.
+
+**Evidence examined:** Attest/persist/connect/inspect/commit ordering; exact bounded Docker and
+Podman command shape; malformed identity and runtime-failure denial; pre-persistence denial
+without effects; connect and topology failure cleanup; cleanup-failure durability; existing
+attestation, topology, attachment-registry, runtime-recovery, and launch regressions; full local
+Python checks; complete diff.
+
+**Findings:** The worker network attachment is no longer an unimplemented effect boundary. A
+successful result now requires fresh gateway-only evidence before a durable intent, followed
+by the fixed effect and an exact gateway-plus-worker observation. No step grants workload or
+target authority.
+
+**Limitations and deferred work:** Production startup does not yet compose this coordinator,
+and continuous supervision still expects the pre-attachment topology. A crash after connect
+but before local exception handling relies on startup worker termination rather than an
+attachment-specific composed recovery gate. Hosted rootless bypass evidence and the actual
+HTTP/browser worker remain absent.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify connect and inspection
+results, and topology can drift after the point-in-time verification. Review is self-authored
+and non-independent and authorizes only the inert internal attachment, not worker execution.

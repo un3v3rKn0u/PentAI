@@ -173,6 +173,14 @@ the live claim from the complete durable supervised authorization chain, verify 
 linked result and audit hash chain, and terminate the runtime. This does not yet verify
 worker-to-gateway routing or authorize external destinations.
 
+**Phase 1 worker attachment note:** An inert digest-pinned worker sentinel can now be attached
+only after fresh gateway-only containment is durably bound to its exact runtime identities.
+The fixed bounded connect effect must be followed by an exact two-peer gateway/worker
+inspection; any uncertainty records failure and terminates the ownership-verified worker.
+The attached sentinel remains execution-disabled, so this proves topology composition rather
+than worker-originated traffic or bypass resistance. Continuous attached-topology supervision
+and hosted direct-egress/DNS/IPv6/raw-route bypass evidence remain required.
+
 ### INV-NET-002 — Approved source identity
 
 **Statement:** Network execution is permitted only while the measured public source IPv4/IPv6 and route identity match the active policy.
