@@ -299,10 +299,15 @@ def _run_worker_gateway_conformance(
     worker_id = f"worker-{uuid.uuid4().hex}"
     container_id: str | None = None
     try:
-        container_id = controller.launch(worker_id, image_digest)
-        OciWorkerGatewayConnector(
-            runtime=runtime, executable=executable, executor=executor
-        ).connect(network_id=network_id, container_id=container_id)
+        if runtime == "podman":
+            container_id = controller.launch_attached(
+                worker_id, image_digest, network_id=network_id
+            )
+        else:
+            container_id = controller.launch(worker_id, image_digest)
+            OciWorkerGatewayConnector(
+                runtime=runtime, executable=executable, executor=executor
+            ).connect(network_id=network_id, container_id=container_id)
         WorkerGatewayAttachmentInspector(
             runtime=runtime,
             executable=executable,

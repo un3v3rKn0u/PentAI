@@ -179,13 +179,24 @@ class OciWorkerIsolationController:
         self._container_name = container_name
 
     def launch(self, worker_id: str, image_digest: str) -> str:
+        return self._launch(worker_id, image_digest, network=("--network=none",))
+
+    def launch_attached(self, worker_id: str, image_digest: str, *, network_id: str) -> str:
+        if self._runtime != "podman" or not _IDENTIFIER.fullmatch(network_id):
+            raise WorkerRuntimeError(
+                "WORKER_DIRECT_ATTACHMENT_INVALID",
+                "direct worker attachment is unsupported",
+            )
+        return self._launch(worker_id, image_digest, network=("--network", network_id))
+
+    def _launch(self, worker_id: str, image_digest: str, *, network: tuple[str, ...]) -> str:
         self._validate(worker_id, image_digest)
         result = self._executor.execute(
             oci_run_command(
                 self._executable,
                 "--detach",
                 f"--name={self._container_name}",
-                "--network=none",
+                *network,
                 "--read-only",
                 "--cap-drop=all",
                 "--security-opt=no-new-privileges",

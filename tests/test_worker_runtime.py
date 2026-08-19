@@ -147,6 +147,31 @@ class WorkerRuntimeTests(unittest.TestCase):
         ):
             self.assertIn(expected, command)
 
+    def test_podman_launches_directly_on_attested_network(self) -> None:
+        executor = Executor([CommandResult(0, CONTAINER.encode())])
+        runtime_controller = OciWorkerIsolationController(
+            runtime="podman",
+            executable=Path("/usr/bin/podman"),
+            executor=executor,
+            capability_monitor=CapabilityMonitor(),
+        )
+        self.assertEqual(
+            runtime_controller.launch_attached(WORKER, IMAGE, network_id="network:fixture"),
+            CONTAINER,
+        )
+        command = executor.calls[0]
+        self.assertIn(
+            ("--network", "network:fixture"), tuple(zip(command, command[1:], strict=False))
+        )
+        self.assertNotIn("--network=none", command)
+
+    def test_direct_attachment_is_podman_only_and_validated_before_effect(self) -> None:
+        executor = Executor([])
+        with self.assertRaises(WorkerRuntimeError) as docker_error:
+            controller(executor).launch_attached(WORKER, IMAGE, network_id="network:fixture")
+        self.assertEqual(docker_error.exception.code, "WORKER_DIRECT_ATTACHMENT_INVALID")
+        self.assertEqual(executor.calls, [])
+
     def test_verifies_exact_runtime_identity_and_no_networks(self) -> None:
         executor = Executor([CommandResult(0, json.dumps(inspection()).encode())])
         controller(executor).verify(WORKER, CONTAINER, IMAGE)

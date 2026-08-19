@@ -129,6 +129,38 @@ class DurableWorkerAttachmentRegistryTests(unittest.TestCase):
         self.assertEqual((failed["status"], failed["version"]), ("failed", 3))
         self.assertEqual(self.registry.recovery_candidates()[0]["status"], "failed")
 
+    def test_direct_attachment_requires_matching_durable_podman_intent(self) -> None:
+        other_database = Path(self.temporary.name) / "direct.db"
+        migrate(other_database)
+        runtime = DurableWorkerRuntimeRegistry(
+            database_path=other_database, clock=lambda: NOW
+        )
+        runtime.register_direct_attachment_intent(
+            worker_id=WORKER,
+            containment=containment(),
+            image_digest=IMAGE,
+            gateway_container_id=GATEWAY,
+        )
+        running = runtime.mark_running(worker_id=WORKER, container_id=CONTAINER)
+        registry = DurableWorkerAttachmentRegistry(
+            database_path=other_database, clock=lambda: NOW
+        )
+        attached = registry.record_direct_attached(
+            worker_id=WORKER,
+            expected_runtime_version=int(running["version"]),
+            containment=containment(),
+            gateway_container_id=GATEWAY,
+        )
+        self.assertEqual(attached["status"], "attached")
+
+        with self.assertRaises(WorkerAttachmentRegistryError):
+            registry.record_direct_attached(
+                worker_id=WORKER,
+                expected_runtime_version=int(running["version"]),
+                containment=containment(),
+                gateway_container_id="d" * 64,
+            )
+
     def test_duplicate_and_database_mutation_attempts_fail_closed(self) -> None:
         self.prepare()
         with self.assertRaises(WorkerAttachmentRegistryError) as duplicate:

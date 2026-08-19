@@ -4199,3 +4199,31 @@ reach external destinations. Hosted execution of this exact signed product path 
 **Residual risk accepted:** A compromised OCI runtime can redirect or falsify exec/inspection,
 and process loss after the effect may require conservative recovery. Review is self-authored and
 non-independent and authorizes only the fixed owned fixture.
+
+## 2026-08-19 — Rootless Podman direct worker attachment
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as the runtime-specific
+correction for hosted worker gateway conformance<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Rootless Podman's inability to connect a network to a container launched
+with network mode `none`; durable pre-effect strategy, gateway, runtime, image, worker, and
+network binding; direct launch command; exact post-launch controls and topology; cleanup;
+Docker compatibility; migration rollback; and fixed diagnostics.
+
+**Evidence examined:** Runtime-specific command tests; unsupported Podman connect denial before
+effect; durable direct-intent and version-fence tests; exact topology ordering and cleanup tests;
+migration idempotency; hosted TEST-NET harness path; Python lint, strict types, and tests.
+
+**Findings:** Rootless Podman now uses a supported direct launch onto only the pre-attested
+internal network. No attachment is accepted until worker isolation and the exact two-peer
+topology pass. Docker's launch-then-connect path is unchanged.
+
+**Limitations and deferred work:** The hosted protected workflow remains the authority for live
+rootless behavior. Direct launch is intentionally unavailable to Docker and arbitrary networks.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify launch or inspection output,
+and a crash after launch requires conservative durable recovery. Review is self-authored and
+non-independent.

@@ -175,7 +175,8 @@ worker-to-gateway routing or authorize external destinations.
 
 **Phase 1 worker attachment note:** An inert digest-pinned worker sentinel can now be attached
 only after fresh gateway-only containment is durably bound to its exact runtime identities.
-The fixed bounded connect effect must be followed by an exact two-peer gateway/worker
+Docker's fixed bounded connect effect, or rootless Podman's pre-authorized direct launch on the
+same attested internal network, must be followed by an exact two-peer gateway/worker
 inspection; any uncertainty records failure and terminates the ownership-verified worker.
 The attached sentinel remains execution-disabled, so this proves topology composition rather
 than worker-originated traffic or bypass resistance. Continuous attached-topology supervision

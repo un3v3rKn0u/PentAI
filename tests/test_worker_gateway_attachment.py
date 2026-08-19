@@ -171,8 +171,8 @@ class WorkerGatewayAttachmentTests(unittest.TestCase):
     def test_bounded_connector_uses_fixed_network_connect_command(self) -> None:
         executor = Executor(CommandResult(0, b""))
         connector = OciWorkerGatewayConnector(
-            runtime="podman",
-            executable=Path("/usr/bin/podman"),
+            runtime="docker",
+            executable=Path("/usr/bin/docker"),
             executor=executor,
         )
         connector.connect(network_id=NETWORK, container_id=CONTAINER)
@@ -180,12 +180,24 @@ class WorkerGatewayAttachmentTests(unittest.TestCase):
             executor.calls,
             [
                 (
-                    ("/usr/bin/podman", "network", "connect", NETWORK, CONTAINER),
+                    ("/usr/bin/docker", "network", "connect", NETWORK, CONTAINER),
                     5,
                     4096,
                 )
             ],
         )
+
+    def test_podman_denies_unsupported_post_launch_attachment_before_effect(self) -> None:
+        executor = Executor(CommandResult(0, b""))
+        connector = OciWorkerGatewayConnector(
+            runtime="podman",
+            executable=Path("/usr/bin/podman"),
+            executor=executor,
+        )
+        with self.assertRaises(WorkerGatewayAttachmentError) as raised:
+            connector.connect(network_id=NETWORK, container_id=CONTAINER)
+        self.assertEqual(raised.exception.code, "WORKER_ATTACHMENT_STRATEGY_INVALID")
+        self.assertEqual(executor.calls, [])
 
     def test_connector_denies_invalid_identity_or_runtime_failure(self) -> None:
         for network, container, result in (
