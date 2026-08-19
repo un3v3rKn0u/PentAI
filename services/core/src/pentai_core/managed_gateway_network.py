@@ -377,22 +377,153 @@ class WorkerGatewayPeerInspector:
             if self._runtime == "docker"
             else document.get("ipv6_enabled")
         )
-        peers = (
-            document.get("Containers")
-            if self._runtime == "docker"
-            else document.get("containers")
-        )
         if (
             observed_id != network_id
             or observed_name != self._network_name
             or internal is not True
             or ipv6 is not False
-            or not isinstance(peers, dict)
         ):
             raise SnapshotCollectionError(
                 "WORKER_NETWORK_INVALID", "worker gateway network verification failed"
             )
+        if self._runtime == "podman":
+            return self._inspect_podman_peers(network_id)
+        peers = document.get("Containers")
+        if not isinstance(peers, dict):
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEERS_INVALID", "worker gateway peer discovery failed"
+            )
         return peers
+
+    def _inspect_podman_peers(self, network_id: str) -> dict[str, object]:
+        result = self._executor.execute(
+            (
+                self._executable,
+                "ps",
+                "--all",
+                "--no-trunc",
+                "--filter",
+                f"network={network_id}",
+                "--format",
+                "json",
+            ),
+            timeout_seconds=5,
+            max_output_bytes=65_536,
+        )
+        if result.returncode != 0 or len(result.stdout) > 65_536:
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEERS_INSPECTION_FAILED",
+                "worker gateway peer discovery failed",
+            )
+        try:
+            documents = json.loads(result.stdout)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEERS_OUTPUT_INVALID",
+                "worker gateway peer discovery is invalid",
+            ) from exc
+        if not isinstance(documents, list):
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEERS_OUTPUT_INVALID",
+                "worker gateway peer discovery is invalid",
+            )
+        peers: dict[str, object] = {}
+        for document in documents:
+            if not isinstance(document, dict):
+                raise SnapshotCollectionError(
+                    "WORKER_NETWORK_PEERS_OUTPUT_INVALID",
+                    "worker gateway peer discovery is invalid",
+                )
+            container_id = document.get("Id")
+            observed_names = document.get("Names")
+            name = (
+                observed_names
+                if isinstance(observed_names, str)
+                else observed_names[0]
+                if isinstance(observed_names, list)
+                and len(observed_names) == 1
+                and isinstance(observed_names[0], str)
+                else None
+            )
+            state = document.get("State")
+            networks = document.get("Networks")
+            network_names = (
+                {networks}
+                if isinstance(networks, str)
+                else set(networks)
+                if isinstance(networks, list)
+                and all(isinstance(value, str) for value in networks)
+                else set()
+            )
+            if (
+                not isinstance(container_id, str)
+                or not _RAW_SHA256.fullmatch(container_id)
+                or not isinstance(name, str)
+                or not _IDENTIFIER.fullmatch(name)
+                or state != "running"
+                or network_names != {self._network_name}
+                or container_id in peers
+            ):
+                raise SnapshotCollectionError(
+                    "WORKER_NETWORK_PEERS_INVALID", "worker gateway peer set is invalid"
+                )
+            self._verify_podman_peer(container_id, name, network_id)
+            peers[container_id] = {"name": name}
+        return peers
+
+    def _verify_podman_peer(
+        self, container_id: str, expected_name: str, network_id: str
+    ) -> None:
+        result = self._executor.execute(
+            (self._executable, "container", "inspect", container_id),
+            timeout_seconds=5,
+            max_output_bytes=262_144,
+        )
+        if result.returncode != 0 or len(result.stdout) > 262_144:
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEER_INSPECTION_FAILED",
+                "worker gateway peer inspection failed",
+            )
+        try:
+            documents = json.loads(result.stdout)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEER_OUTPUT_INVALID",
+                "worker gateway peer inspection is invalid",
+            ) from exc
+        if not isinstance(documents, list) or len(documents) != 1:
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEER_OUTPUT_INVALID",
+                "worker gateway peer inspection is invalid",
+            )
+        document = documents[0]
+        if not isinstance(document, dict):
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEER_OUTPUT_INVALID",
+                "worker gateway peer inspection is invalid",
+            )
+        state = document.get("State")
+        host = document.get("HostConfig")
+        network = document.get("NetworkSettings")
+        attachments = network.get("Networks") if isinstance(network, dict) else None
+        attachment = (
+            attachments.get(self._network_name) if isinstance(attachments, dict) else None
+        )
+        if (
+            document.get("Id") != container_id
+            or document.get("Name") != expected_name
+            or not isinstance(state, dict)
+            or state.get("Running") is not True
+            or not isinstance(host, dict)
+            or host.get("NetworkMode") != self._network_name
+            or not isinstance(attachments, dict)
+            or set(attachments) != {self._network_name}
+            or not isinstance(attachment, dict)
+            or attachment.get("NetworkID") != network_id
+        ):
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEER_INVALID", "worker gateway peer verification failed"
+            )
 
     def _peer_name(self, peer: dict[str, object]) -> object:
         return peer.get("Name") if self._runtime == "docker" else peer.get("name")
