@@ -8,10 +8,12 @@ exact model, while keeping provider execution unconditionally disabled. Validati
 pure and performs no provider request, local-model load, secret resolution, evidence
 read, persistence, agent loop, network action, approval, or authorization operation.
 
-The deterministic core supplies a trusted `ProviderPolicy`; configuration data cannot
-add providers, models, data classes, or budget authority. Provider and model identifiers
-are exact and case-sensitive. Remote use requires both configuration opt-in and trusted
-policy enablement. Local runtimes must not carry a secret reference.
+The deterministic core compiles `ProviderPolicy` from a contract-valid
+`AIProviderRegistry v1`; configuration data cannot add providers, models, data classes,
+or budget authority. Provider and model identifiers are exact and case-sensitive.
+Remote use requires both configuration opt-in and trusted policy enablement. Local
+runtimes must not carry a secret reference. Configuration expiry cannot exceed the
+registry expiry, and an expired registry policy denies reuse.
 
 ## Privacy and secret handling
 
@@ -52,8 +54,8 @@ default-denying. Required-field or semantic changes require a new major contract
 
 Synthetic tests cover valid remote/local configurations and malformed, missing,
 future, stale, ambiguous, unknown-provider, unknown-model, raw-secret-property,
-cross-provider-reference, privacy, opt-in, execution-enable, and every budget-boundary
-case. Contract validation, Python tests, Ruff, and mypy are required for the slice.
+cross-provider-reference, privacy, opt-in, execution-enable, registry expiry, and every
+budget-boundary case. Contract validation, Python tests, Ruff, and mypy are required.
 
 Deferred risks include actual secret brokerage, provider adapters, context construction,
 content classification, prompt-injection defenses, structured-output parsing, budget

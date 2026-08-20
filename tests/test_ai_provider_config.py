@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from pentai_core.ai_provider_config import (
-    ProviderBudgetCeilings,
     ProviderConfigurationError,
     ProviderPolicy,
     validate_provider_configuration,
 )
+from pentai_core.ai_provider_registry import build_provider_policy
 from pentai_policy.document import contract_issues
 
 NOW = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
@@ -45,29 +45,42 @@ def configuration(*, remote: bool = True) -> dict[str, object]:
     }
 
 
-def provider_policy(*, remote_enabled: bool = True) -> ProviderPolicy:
-    return ProviderPolicy(
-        approved_models={
-            "approved-remote": frozenset({"model-exact-v1"}),
-            "local-runtime": frozenset({"local-model-q4"}),
+def provider_policy(
+    *, remote_enabled: bool = True, local_type: str = "local_runtime"
+) -> ProviderPolicy:
+    registry: dict[str, object] = {
+        "schema_version": "1.0.0",
+        "registry_id": str(uuid4()),
+        "revision": 1,
+        "providers": [
+            {
+                "provider_id": "approved-remote",
+                "provider_type": "approved_remote",
+                "models": ["model-exact-v1"],
+                "allowed_input_classifications": ["public", "internal"],
+                "state": "enabled",
+            },
+            {
+                "provider_id": "local-runtime",
+                "provider_type": local_type,
+                "models": ["local-model-q4"],
+                "allowed_input_classifications": ["public", "internal", "confidential"],
+                "state": "enabled",
+            },
+        ],
+        "budget_ceilings": {
+            "max_input_tokens": 8_000,
+            "max_output_tokens": 2_000,
+            "max_requests": 10,
+            "max_cost_microusd": 250_000,
+            "max_runtime_seconds": 120,
         },
-        provider_types={
-            "approved-remote": "approved_remote",
-            "local-runtime": "local_runtime",
-        },
-        allowed_input_classifications={
-            "approved-remote": frozenset({"public", "internal"}),
-            "local-runtime": frozenset({"public", "internal", "confidential"}),
-        },
-        budget_ceilings=ProviderBudgetCeilings(
-            max_input_tokens=8_000,
-            max_output_tokens=2_000,
-            max_requests=10,
-            max_cost_microusd=250_000,
-            max_runtime_seconds=120,
-        ),
-        remote_providers_enabled=remote_enabled,
-    )
+        "remote_providers_enabled": remote_enabled,
+        "configured_at": (NOW - timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
+        "expires_at": (NOW + timedelta(days=20)).isoformat().replace("+00:00", "Z"),
+        "execution_enabled": False,
+    }
+    return build_provider_policy(registry, now=NOW)
 
 
 def assert_denied(
@@ -127,14 +140,7 @@ class AIProviderConfigurationTests(unittest.TestCase):
         unknown_model = configuration()
         unknown_model["model_id"] = "model-exact-v2"
         type_mismatch = configuration(remote=False)
-        mismatch_policy = provider_policy()
-        mismatch_policy = ProviderPolicy(
-            approved_models=mismatch_policy.approved_models,
-            provider_types=mismatch_policy.provider_types | {"local-runtime": "approved_remote"},
-            allowed_input_classifications=mismatch_policy.allowed_input_classifications,
-            budget_ceilings=mismatch_policy.budget_ceilings,
-            remote_providers_enabled=True,
-        )
+        mismatch_policy = provider_policy(local_type="approved_remote")
         assert_denied(self, unknown_provider, "AI_PROVIDER_UNKNOWN")
         assert_denied(self, unknown_model, "AI_MODEL_UNKNOWN")
         assert_denied(
