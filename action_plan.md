@@ -693,6 +693,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     privacy-unsafe, or empty-enabled registry state. Provider configurations cannot
     outlive or reuse an expired registry. Durable registry activation/revocation and
     runtime enforcement remain required before this item can be completed.
+  - A non-resolving AI secret-reference v1 descriptor now binds one opaque reference
+    to an exact remote-provider configuration, provider identity, purpose, state, and
+    covering validity window. Raw-secret-shaped fields, mismatched/reused identity,
+    stale, revoked, local-runtime, and resolution-enabled input deny. OS credential
+    storage, brokered resolution, rotation, persistence, and audit remain required
+    before this item can be completed.
 - [ ] Implement strict structured-output parsing with rejection and bounded repair.
 - [ ] Create untrusted-content envelopes and prompt-injection regression tests.
 - [ ] Implement assessment-scoped retrieval with provenance and ACL filters.
