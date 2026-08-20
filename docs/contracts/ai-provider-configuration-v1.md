@@ -24,9 +24,11 @@ permitted for its exact trusted provider identity. This is configuration validat
 not a future context-builder guarantee; no content is accepted by this API.
 
 Remote credentials are represented only by a provider-bound opaque reference of the
-form `secretref://provider/<provider-id>/<uuid>`. Unknown properties, including common
-raw-credential fields, fail schema validation. The validator never resolves or logs a
-referenced value.
+form `secretref://provider/<provider-id>/<uuid>`. The separate `AISecretReference v1`
+descriptor binds that exact reference to one configuration, provider, purpose, state,
+and covering validity window while keeping resolution disabled. Unknown properties,
+including common raw-credential fields, fail schema validation. Neither validator
+resolves or logs a referenced value.
 
 ## Default-deny and abuse cases
 
@@ -54,8 +56,9 @@ default-denying. Required-field or semantic changes require a new major contract
 
 Synthetic tests cover valid remote/local configurations and malformed, missing,
 future, stale, ambiguous, unknown-provider, unknown-model, raw-secret-property,
-cross-provider-reference, privacy, opt-in, execution-enable, registry expiry, and every
-budget-boundary case. Contract validation, Python tests, Ruff, and mypy are required.
+cross-provider-reference, privacy, opt-in, execution-enable, registry expiry, secret
+reference binding/lifecycle, and every budget-boundary case. Contract validation,
+Python tests, Ruff, and mypy are required.
 
 Deferred risks include actual secret brokerage, provider adapters, context construction,
 content classification, prompt-injection defenses, structured-output parsing, budget

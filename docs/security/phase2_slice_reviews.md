@@ -94,3 +94,45 @@ rollback protection, durable activation/revocation, audit, UI, adapters, context
 construction, secret brokerage, and runtime budget accounting are deferred. Execution
 remains disabled. Non-independent review reduces governance assurance; the sole
 maintainer accepts that risk only for this local-development non-executing slice.
+
+## 2026-08-20 — Non-resolving AI secret reference v1
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, author, Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer, Data
+Protection Lead, and Security Reviewer. The `GIT_WORKFLOW.md` exception is used. This
+review is not independent and cannot satisfy an external independence requirement.
+
+**Scope and evidence:** Complete secret-reference schema/validator, provider
+configuration and registry composition, synthetic tests, contract documentation,
+action-plan note, complete diff, contract validation, Python unit and pytest suites,
+Ruff, mypy, and repository scans. Exact results are recorded in the pull request.
+
+**Invariants and boundaries:** `INV-AUTH-003`, `INV-AGENT-001`, `INV-AGENT-004`, and
+`INV-DATA-001`; untrusted descriptor to deterministic validation, configuration to
+opaque reference binding, and future core to secret broker. No credential store,
+provider, model, evidence, target, or network boundary is crossed.
+
+**Threat and abuse cases:** raw-secret fields, malformed reference identity,
+cross-provider confusion, configuration reuse/replay, purpose confusion, future/stale/
+overlong lifetime, incomplete configuration coverage, revocation bypass, local-runtime
+secret attachment, attempted resolution enablement, and invalid underlying registry or
+configuration authority.
+
+**Default deny and findings:** Schema validation rejects unknown/raw-value-shaped and
+resolution-enabled documents. Exact configuration, provider, URI, purpose, lifecycle,
+and time binding is required. Revoked, local, stale, mismatched, or reused descriptors
+deny with stable codes. No material finding is accepted.
+
+**Compatibility, privacy, secrets, migration, and rollback:** Additive descriptor v1;
+provider configuration/registry v1 stay compatible. No secret value or store locator is
+represented, resolved, logged, or exposed. There is no persistence or migration.
+Rollback removes the additive descriptor boundary without data conversion or authority
+recovery.
+
+**Limitations and residual risk:** Credential-store custody, broker authentication,
+just-in-time and single-use resolution, rotation, durable revocation, audit, recovery,
+redaction scans, UI, adapters, and runtime execution remain deferred. Non-independent
+review reduces governance assurance; the sole maintainer accepts that risk only for
+this local-development non-resolving slice.
