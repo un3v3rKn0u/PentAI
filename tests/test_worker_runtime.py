@@ -103,6 +103,18 @@ def podman_documented_inspection() -> dict[str, object]:
     return document
 
 
+def podman_attached_inspection() -> dict[str, object]:
+    document = podman_inspection()
+    host = document["HostConfig"]
+    network = document["NetworkSettings"]
+    assert isinstance(host, dict) and isinstance(network, dict)
+    host["NetworkMode"] = "bridge"
+    network["Networks"] = {
+        "fixture-worker-network": {"NetworkID": "fixture-worker-network"}
+    }
+    return document
+
+
 @dataclass
 class Executor:
     responses: list[CommandResult]
@@ -138,6 +150,7 @@ class WorkerRuntimeTests(unittest.TestCase):
         )
         command = executor.calls[0]
         for expected in (
+            "--name=pentai-worker",
             "--network=none",
             "--read-only",
             "--cap-drop=all",
@@ -145,6 +158,31 @@ class WorkerRuntimeTests(unittest.TestCase):
             IMAGE,
         ):
             self.assertIn(expected, command)
+
+    def test_podman_launches_directly_on_attested_network(self) -> None:
+        executor = Executor([CommandResult(0, CONTAINER.encode())])
+        runtime_controller = OciWorkerIsolationController(
+            runtime="podman",
+            executable=Path("/usr/bin/podman"),
+            executor=executor,
+            capability_monitor=CapabilityMonitor(),
+        )
+        self.assertEqual(
+            runtime_controller.launch_attached(WORKER, IMAGE, network_id="network:fixture"),
+            CONTAINER,
+        )
+        command = executor.calls[0]
+        self.assertIn(
+            ("--network", "network:fixture"), tuple(zip(command, command[1:], strict=False))
+        )
+        self.assertNotIn("--network=none", command)
+
+    def test_direct_attachment_is_podman_only_and_validated_before_effect(self) -> None:
+        executor = Executor([])
+        with self.assertRaises(WorkerRuntimeError) as docker_error:
+            controller(executor).launch_attached(WORKER, IMAGE, network_id="network:fixture")
+        self.assertEqual(docker_error.exception.code, "WORKER_DIRECT_ATTACHMENT_INVALID")
+        self.assertEqual(executor.calls, [])
 
     def test_verifies_exact_runtime_identity_and_no_networks(self) -> None:
         executor = Executor([CommandResult(0, json.dumps(inspection()).encode())])
@@ -195,6 +233,23 @@ class WorkerRuntimeTests(unittest.TestCase):
                     capability_monitor=CapabilityMonitor(),
                 )
                 runtime_controller.verify(WORKER, CONTAINER, IMAGE)
+
+    def test_podman_verifies_native_attached_network_representation(self) -> None:
+        runtime_controller = OciWorkerIsolationController(
+            runtime="podman",
+            executable=Path("/usr/bin/podman"),
+            executor=Executor(
+                [CommandResult(0, json.dumps(podman_attached_inspection()).encode())]
+            ),
+            capability_monitor=CapabilityMonitor(),
+        )
+        runtime_controller.verify_attached(
+            WORKER,
+            CONTAINER,
+            IMAGE,
+            network_name="fixture-worker-network",
+            network_id="fixture:worker-network",
+        )
 
     def test_network_namespace_metadata_is_bounded(self) -> None:
         for value in ({"path": "not-text"}, "x" * 4097, "/run/user/1000/netns/bad\nkey"):
@@ -294,6 +349,48 @@ class WorkerRuntimeTests(unittest.TestCase):
                     runtime_controller.verify(WORKER, CONTAINER, IMAGE)
                 self.assertEqual(raised.exception.code, "WORKER_CONTAINMENT_INVALID")
                 self.assertIn(failed_control, str(raised.exception))
+
+    def test_attached_verification_requires_one_exact_internal_network(self) -> None:
+        document = copy.deepcopy(inspection())
+        host = document["HostConfig"]
+        network = document["NetworkSettings"]
+        assert isinstance(host, dict) and isinstance(network, dict)
+        host["NetworkMode"] = "fixture-worker-network"
+        network["Networks"] = {
+            "fixture-worker-network": {"NetworkID": "fixture:worker-network"}
+        }
+        runtime_controller = controller(
+            Executor([CommandResult(0, json.dumps(document).encode())])
+        )
+        runtime_controller.verify_attached(
+            WORKER,
+            CONTAINER,
+            IMAGE,
+            network_name="fixture-worker-network",
+            network_id="fixture:worker-network",
+        )
+
+        for networks in (
+            {"fixture-worker-network": {"NetworkID": "changed"}},
+            {
+                "fixture-worker-network": {"NetworkID": "fixture:worker-network"},
+                "bridge": {"NetworkID": "bridge"},
+            },
+        ):
+            with self.subTest(networks=networks), self.assertRaises(WorkerRuntimeError):
+                changed = copy.deepcopy(document)
+                changed_network = changed["NetworkSettings"]
+                assert isinstance(changed_network, dict)
+                changed_network["Networks"] = networks
+                controller(
+                    Executor([CommandResult(0, json.dumps(changed).encode())])
+                ).verify_attached(
+                    WORKER,
+                    CONTAINER,
+                    IMAGE,
+                    network_name="fixture-worker-network",
+                    network_id="fixture:worker-network",
+                )
 
     def test_invalid_inputs_and_subprocess_failures_deny(self) -> None:
         runtime_controller = controller(Executor([CommandResult(1, b"")]))

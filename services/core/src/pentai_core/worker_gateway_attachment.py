@@ -54,6 +54,7 @@ class OciWorkerGatewayConnector:
             raise WorkerGatewayAttachmentError(
                 "WORKER_ATTACHMENT_RUNTIME_INVALID", "worker runtime is untrusted"
             )
+        self._runtime = runtime
         self._executable = str(executable)
         self._executor = executor
 
@@ -61,6 +62,11 @@ class OciWorkerGatewayConnector:
         if not _IDENTIFIER.fullmatch(network_id) or not _CONTAINER_ID.fullmatch(container_id):
             raise WorkerGatewayAttachmentError(
                 "WORKER_ATTACHMENT_IDENTITY_INVALID", "worker attachment identity is invalid"
+            )
+        if self._runtime == "podman":
+            raise WorkerGatewayAttachmentError(
+                "WORKER_ATTACHMENT_STRATEGY_INVALID",
+                "rootless Podman requires direct attachment launch",
             )
         result = self._executor.execute(
             (self._executable, "network", "connect", network_id, container_id),

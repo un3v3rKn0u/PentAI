@@ -25,6 +25,17 @@ class WorkerContainmentBinding:
     worker_gateway_network_id: str
 
 
+@dataclass(frozen=True)
+class WorkerSupervisionBinding:
+    worker_id: str
+    runtime_instance_id: str
+    worker_gateway_network_id: str
+    container_id: str
+    image_digest: str
+    gateway_container_id: str | None
+    attachment_status: str | None
+
+
 class WorkerContainmentMonitor(Protocol):
     def check_all(self) -> int: ...
 
@@ -69,6 +80,55 @@ class RegisteredWorkerContainmentMonitor:
                 != binding.worker_gateway_network_id
             ):
                 raise ValueError("worker containment identity changed")
+        return len(bindings)
+
+
+class AttachmentAwareWorkerContainmentMonitor:
+    """Verify pre-attachment containment or the exact attached topology."""
+
+    def __init__(
+        self,
+        *,
+        bindings: Callable[[], tuple[WorkerSupervisionBinding, ...]],
+        pre_attachment_attestor_for: Callable[[WorkerSupervisionBinding], WorkerAttestor],
+        verify_worker: Callable[[WorkerSupervisionBinding], object],
+        verify_attachment: Callable[[WorkerSupervisionBinding], object],
+    ) -> None:
+        self._bindings = bindings
+        self._pre_attachment_attestor_for = pre_attachment_attestor_for
+        self._verify_worker = verify_worker
+        self._verify_attachment = verify_attachment
+
+    def check_all(self) -> int:
+        bindings = self._bindings()
+        worker_ids = [binding.worker_id for binding in bindings]
+        if len(worker_ids) != len(set(worker_ids)) or any(
+            not _IDENTIFIER.fullmatch(value)
+            for binding in bindings
+            for value in (
+                binding.worker_id,
+                binding.runtime_instance_id,
+                binding.worker_gateway_network_id,
+                binding.container_id,
+                binding.image_digest,
+            )
+        ):
+            raise ValueError("worker supervision binding is invalid")
+        for binding in bindings:
+            self._verify_worker(binding)
+            if binding.attachment_status is None:
+                attestation = self._pre_attachment_attestor_for(binding).measure()
+                validate_worker_containment_attestation(attestation)
+                if (
+                    attestation.get("runtime_instance_id") != binding.runtime_instance_id
+                    or attestation.get("worker_gateway_network_id")
+                    != binding.worker_gateway_network_id
+                ):
+                    raise ValueError("worker containment identity changed")
+            elif binding.attachment_status == "attached" and binding.gateway_container_id:
+                self._verify_attachment(binding)
+            else:
+                raise ValueError("worker attachment state is unsafe")
         return len(bindings)
 
 

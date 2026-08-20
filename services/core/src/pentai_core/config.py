@@ -45,6 +45,7 @@ class Settings:
     worker_gateway_network_name: str | None = None
     worker_gateway_container_id: str | None = None
     worker_gateway_container_name: str | None = None
+    worker_container_name: str = "pentai-worker"
     worker_watchdog_interval_seconds: float = 5
     network_attestation_enabled: bool = False
     network_observers: tuple[str, ...] = ()
@@ -119,6 +120,7 @@ class Settings:
             worker_gateway_network_name=os.getenv("PENTAI_WORKER_GATEWAY_NETWORK_NAME"),
             worker_gateway_container_id=os.getenv("PENTAI_WORKER_GATEWAY_CONTAINER_ID"),
             worker_gateway_container_name=os.getenv("PENTAI_WORKER_GATEWAY_CONTAINER_NAME"),
+            worker_container_name=os.getenv("PENTAI_WORKER_CONTAINER_NAME", "pentai-worker"),
             worker_watchdog_interval_seconds=float(
                 os.getenv("PENTAI_WORKER_WATCHDOG_INTERVAL_SECONDS", "5")
             ),
@@ -222,6 +224,7 @@ class Settings:
             self.worker_gateway_network_name,
             self.worker_gateway_container_id,
             self.worker_gateway_container_name,
+            self.worker_container_name if self.worker_supervision_enabled else None,
         )
         if not self.worker_supervision_enabled:
             if any(value is not None for value in configured):
@@ -235,6 +238,7 @@ class Settings:
                     self.worker_gateway_network_id,
                     self.worker_gateway_network_name,
                     self.worker_gateway_container_name,
+                    self.worker_container_name,
                 )
             )
             or not isinstance(self.worker_gateway_container_id, str)

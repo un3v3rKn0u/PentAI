@@ -78,12 +78,14 @@ class WorkerRuntimeCompositionTests(unittest.TestCase):
             "PENTAI_WORKER_GATEWAY_NETWORK_NAME": "fixture-worker-network",
             "PENTAI_WORKER_GATEWAY_CONTAINER_ID": "b" * 64,
             "PENTAI_WORKER_GATEWAY_CONTAINER_NAME": "fixture-gateway",
+            "PENTAI_WORKER_CONTAINER_NAME": "fixture-worker",
             "PENTAI_WORKER_WATCHDOG_INTERVAL_SECONDS": "1",
         }
         with patch.dict(os.environ, environment, clear=True):
             settings = Settings.from_environment()
         self.assertTrue(settings.worker_supervision_enabled)
         self.assertEqual(settings.worker_gateway_container_id, "b" * 64)
+        self.assertEqual(settings.worker_container_name, "fixture-worker")
 
     def test_disabled_or_incomplete_configuration_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "explicit enablement"):

@@ -4115,3 +4115,115 @@ Hosted rootless bypass evidence and actual worker execution remain absent.
 **Residual risk accepted:** A compromised OCI runtime can falsify termination evidence, while
 a crash after OCI removal but before worker-runtime persistence causes conservative retry.
 Review is self-authored and non-independent and grants no network or execution authority.
+
+## 2026-08-19 — Worker attachment supervision composition
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as a fail-closed
+startup and continuous attached-topology boundary<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Attachment-before-runtime recovery ordering, durable topology selection,
+exact image/container/network/gateway binding, no-network and attached worker inspection,
+resource and privilege retention, exact two-peer monitoring, fixed degradation diagnostics,
+shutdown behavior, compatibility, and rollback.
+
+**Evidence examined:** Unattached and attached selection tests; uncertain-state denial; exact
+network and additional-network denial; existing runtime, attachment, recovery, topology, and
+supervisor regressions; complete local Python checks; complete diff.
+
+**Findings:** Production startup can no longer report worker readiness while attachment cleanup
+is incomplete, and the watchdog no longer incorrectly applies a gateway-only peer rule after a
+successful attachment.
+
+**Limitations and deferred work:** The worker remains an inert sentinel. Hosted rootless
+worker-to-gateway execution and direct-egress bypass evidence remain required.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify inspection output, and
+topology can drift between bounded checks. Review is self-authored and non-independent and
+authorizes no worker execution.
+
+## 2026-08-19 — Hosted worker gateway conformance
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as TEST-NET-only
+hosted evidence after the protected workflow passes<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Rootless runtime requirement, digest-pinned gateway and worker launch,
+no-network launch before bounded attachment, deterministic container identities, exact two-peer
+topology, fixed TEST-NET gateway reachability, direct IPv4/DNS/IPv6 bypass denial, runtime
+socket/mount/namespace/resource controls, cleanup, workflow path coverage, compatibility, and
+rollback.
+
+**Evidence examined:** Rust probe unit tests; Python lint and strict types; fixed command and
+destination review; protected rootless Podman workflow result when available; complete diff.
+
+**Findings:** The hosted matrix now tests the same attachment shape consumed by production
+supervision and distinguishes permitted gateway reachability from prohibited alternate egress.
+
+**Limitations and deferred work:** The compiled fixture client is conformance-only and has no
+core route. A durable authorized product worker request remains required.
+
+**Residual risk accepted:** Hosted Linux evidence does not prove every platform runtime, and a
+compromised OCI runtime can falsify inspection. Review is self-authored and non-independent and
+authorizes no external destination.
+
+## 2026-08-19 — Authorized worker HTTP fixture execution
+
+**Decision:** Sole-maintainer security review — non-independent; accepted for the fixed owned
+TEST-NET fixture only<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Additive migration, claim-before-worker binding, exact running gateway and
+attached worker identity, attachment-version fencing, immutable audit linkage, fixed OCI exec,
+public-key claim verification, tuple/deadline/response bounds, result ordering, timeout cleanup,
+startup recovery, replay denial, compatibility, and rollback.
+
+**Evidence examined:** Exact attached-state preparation and denial; immutable transition and
+replay tests; exact worker exec command; signed-claim transport regressions; migration upgrade
+and idempotency; recovery ordering; Python lint, strict types, and complete local tests; diff.
+
+**Findings:** The fixed owned HTTP action can originate inside the supervised worker without
+creating caller-controlled command or destination authority, and every attempt has durable
+claim, attachment, result, and audit linkage.
+
+**Limitations and deferred work:** This is not general HTTP(S) or browser automation and cannot
+reach external destinations. Hosted execution of this exact signed product path remains a Phase
+1 exit-gate evidence item.
+
+**Residual risk accepted:** A compromised OCI runtime can redirect or falsify exec/inspection,
+and process loss after the effect may require conservative recovery. Review is self-authored and
+non-independent and authorizes only the fixed owned fixture.
+
+## 2026-08-19 — Rootless Podman direct worker attachment
+
+**Decision:** Sole-maintainer security review — non-independent; accepted as the runtime-specific
+correction for hosted worker gateway conformance<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Rootless Podman's inability to connect a network to a container launched
+with network mode `none`; durable pre-effect strategy, gateway, runtime, image, worker, and
+network binding; direct launch command; exact post-launch controls and topology; cleanup;
+Docker compatibility; migration rollback; and fixed diagnostics.
+
+**Evidence examined:** Runtime-specific command tests; unsupported Podman connect denial before
+effect; durable direct-intent and version-fence tests; exact topology ordering and cleanup tests;
+migration idempotency; hosted TEST-NET harness path; Python lint, strict types, and tests.
+
+**Findings:** Rootless Podman now uses a supported direct launch onto only the pre-attested
+internal network. No attachment is accepted until worker isolation and the exact two-peer
+topology pass. Docker's launch-then-connect path is unchanged.
+
+**Limitations and deferred work:** The hosted protected workflow remains the authority for live
+rootless behavior. Direct launch is intentionally unavailable to Docker and arbitrary networks.
+
+**Residual risk accepted:** A compromised OCI runtime can falsify launch or inspection output,
+and a crash after launch requires conservative durable recovery. Review is self-authored and
+non-independent.

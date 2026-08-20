@@ -9,7 +9,10 @@ from typing import Any
 
 from pentai_core.database import transaction
 from pentai_core.worker_containment import validate_worker_containment_attestation
-from pentai_core.worker_containment_supervisor import WorkerContainmentBinding
+from pentai_core.worker_containment_supervisor import (
+    WorkerContainmentBinding,
+    WorkerSupervisionBinding,
+)
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _CONTAINER_ID = re.compile(r"^[a-f0-9]{12,64}$")
@@ -87,6 +90,64 @@ class DurableWorkerRuntimeRegistry:
             ) from exc
         return self._document(worker_id)
 
+    def register_direct_attachment_intent(
+        self,
+        *,
+        worker_id: str,
+        containment: dict[str, Any],
+        image_digest: str,
+        gateway_container_id: str,
+    ) -> dict[str, object]:
+        try:
+            validate_worker_containment_attestation(containment, now=self._clock())
+        except Exception as exc:
+            raise WorkerRegistryError(
+                "WORKER_REGISTRATION_DENIED", "worker containment evidence is invalid"
+            ) from exc
+        runtime_id = containment.get("runtime_instance_id")
+        network_id = containment.get("worker_gateway_network_id")
+        if (
+            containment.get("runtime") != "podman"
+            or containment.get("network_role") != "worker_gateway"
+            or not _IDENTIFIER.fullmatch(worker_id)
+            or not isinstance(runtime_id, str)
+            or not _IDENTIFIER.fullmatch(runtime_id)
+            or not isinstance(network_id, str)
+            or not _IDENTIFIER.fullmatch(network_id)
+            or not _DIGEST.fullmatch(image_digest)
+            or not _CONTAINER_ID.fullmatch(gateway_container_id)
+        ):
+            raise WorkerRegistryError(
+                "WORKER_REGISTRATION_DENIED", "worker registration is invalid"
+            )
+        created_at = self._timestamp()
+        try:
+            with transaction(self._database_path) as connection:
+                connection.execute(
+                    """INSERT INTO worker_runtime_instances(
+                    worker_id, containment_attestation_id, oci_runtime,
+                    runtime_instance_id, worker_gateway_network_id, image_digest,
+                    status, created_at, updated_at, execution_enabled, version,
+                    gateway_container_id, attachment_mode)
+                    VALUES (?, ?, 'podman', ?, ?, ?, 'launching', ?, ?, 0, 1, ?,
+                    'podman_direct')""",
+                    (
+                        worker_id,
+                        containment["attestation_id"],
+                        runtime_id,
+                        network_id,
+                        image_digest,
+                        created_at,
+                        created_at,
+                        gateway_container_id,
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise WorkerRegistryError(
+                "WORKER_REGISTRATION_CONFLICT", "worker registration conflicts"
+            ) from exc
+        return self._document(worker_id)
+
     def mark_running(self, *, worker_id: str, container_id: str) -> dict[str, object]:
         if not _IDENTIFIER.fullmatch(worker_id) or not _CONTAINER_ID.fullmatch(container_id):
             raise WorkerRegistryError("WORKER_RUNTIME_INVALID", "worker identity is invalid")
@@ -119,6 +180,40 @@ class DurableWorkerRuntimeRegistry:
                 str(row["worker_id"]),
                 str(row["runtime_instance_id"]),
                 str(row["worker_gateway_network_id"]),
+            )
+            for row in rows
+        )
+
+    def supervision_bindings(self) -> tuple[WorkerSupervisionBinding, ...]:
+        with transaction(self._database_path) as connection:
+            rows = connection.execute(
+                """SELECT runtime.worker_id, runtime.runtime_instance_id,
+                    runtime.worker_gateway_network_id, runtime.container_id,
+                    runtime.image_digest, attachment.gateway_container_id,
+                    attachment.status AS attachment_status
+                FROM worker_runtime_instances AS runtime
+                LEFT JOIN worker_network_attachments AS attachment
+                  ON attachment.worker_id = runtime.worker_id
+                WHERE runtime.status = 'running'
+                ORDER BY runtime.worker_id"""
+            ).fetchall()
+        return tuple(
+            WorkerSupervisionBinding(
+                worker_id=str(row["worker_id"]),
+                runtime_instance_id=str(row["runtime_instance_id"]),
+                worker_gateway_network_id=str(row["worker_gateway_network_id"]),
+                container_id=str(row["container_id"]),
+                image_digest=str(row["image_digest"]),
+                gateway_container_id=(
+                    str(row["gateway_container_id"])
+                    if row["gateway_container_id"] is not None
+                    else None
+                ),
+                attachment_status=(
+                    str(row["attachment_status"])
+                    if row["attachment_status"] is not None
+                    else None
+                ),
             )
             for row in rows
         )
@@ -235,6 +330,8 @@ class DurableWorkerRuntimeRegistry:
             "container_id": row["container_id"],
             "status": str(row["status"]),
             "version": int(row["version"]),
+            "gateway_container_id": row["gateway_container_id"],
+            "attachment_mode": str(row["attachment_mode"]),
             "execution_enabled": False,
         }
 

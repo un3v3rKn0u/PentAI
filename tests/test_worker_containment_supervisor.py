@@ -7,9 +7,11 @@ from threading import Event
 from uuid import uuid4
 
 from pentai_core.worker_containment_supervisor import (
+    AttachmentAwareWorkerContainmentMonitor,
     RegisteredWorkerContainmentMonitor,
     WorkerContainmentBinding,
     WorkerContainmentSupervisor,
+    WorkerSupervisionBinding,
 )
 
 
@@ -80,6 +82,50 @@ class BlockingMonitor(FixtureMonitor):
 
 
 class WorkerContainmentSupervisorTests(unittest.TestCase):
+    def test_attachment_aware_monitor_selects_exact_topology_after_attachment(self) -> None:
+        pre = WorkerSupervisionBinding(
+            "fixture:pre", "fixture:runtime", "fixture:worker-network",
+            "a" * 64, "sha256:" + "b" * 64, None, None,
+        )
+        attached = WorkerSupervisionBinding(
+            "fixture:attached", "fixture:runtime", "fixture:worker-network",
+            "c" * 64, "sha256:" + "d" * 64, "e" * 64, "attached",
+        )
+        events: list[tuple[str, str]] = []
+        monitor = AttachmentAwareWorkerContainmentMonitor(
+            bindings=lambda: (pre, attached),
+            pre_attachment_attestor_for=lambda binding: (
+                events.append(("pre", binding.worker_id))
+                or FixtureAttestor(attestation())
+            ),
+            verify_worker=lambda binding: events.append(("worker", binding.worker_id)),
+            verify_attachment=lambda binding: events.append(("attached", binding.worker_id)),
+        )
+        self.assertEqual(monitor.check_all(), 2)
+        self.assertEqual(
+            events,
+            [
+                ("worker", "fixture:pre"),
+                ("pre", "fixture:pre"),
+                ("worker", "fixture:attached"),
+                ("attached", "fixture:attached"),
+            ],
+        )
+
+    def test_attachment_aware_monitor_denies_uncertain_attachment_state(self) -> None:
+        binding = WorkerSupervisionBinding(
+            "fixture:worker", "fixture:runtime", "fixture:worker-network",
+            "a" * 64, "sha256:" + "b" * 64, "c" * 64, "prepared",
+        )
+        monitor = AttachmentAwareWorkerContainmentMonitor(
+            bindings=lambda: (binding,),
+            pre_attachment_attestor_for=lambda _binding: FixtureAttestor(attestation()),
+            verify_worker=lambda _binding: None,
+            verify_attachment=lambda _binding: None,
+        )
+        with self.assertRaisesRegex(ValueError, "unsafe"):
+            monitor.check_all()
+
     def test_registered_monitor_remeasures_exact_worker_identities(self) -> None:
         binding = WorkerContainmentBinding(
             "fixture:worker", "fixture:runtime", "fixture:worker-network"

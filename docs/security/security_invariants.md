@@ -175,7 +175,8 @@ worker-to-gateway routing or authorize external destinations.
 
 **Phase 1 worker attachment note:** An inert digest-pinned worker sentinel can now be attached
 only after fresh gateway-only containment is durably bound to its exact runtime identities.
-The fixed bounded connect effect must be followed by an exact two-peer gateway/worker
+Docker's fixed bounded connect effect, or rootless Podman's pre-authorized direct launch on the
+same attested internal network, must be followed by an exact two-peer gateway/worker
 inspection; any uncertainty records failure and terminates the ownership-verified worker.
 The attached sentinel remains execution-disabled, so this proves topology composition rather
 than worker-originated traffic or bypass resistance. Continuous attached-topology supervision
@@ -183,6 +184,19 @@ and hosted direct-egress/DNS/IPv6/raw-route bypass evidence remain required.
 Unresolved attachment state is also independently recoverable: startup recovery must mark
 uncertain topology failed, terminate the exact ownership-verified worker, and persist an
 immutable version-bound receipt before the record leaves the recovery queue.
+Production startup performs that attachment recovery before runtime recovery and the first
+readiness check. The continuous watchdog reads durable attachment state and verifies either
+the exact no-network sentinel or the exact attached worker image, controls, internal network,
+and two-peer topology. Any uncertain state pauses authority and requests worker termination.
+The hosted rootless TEST-NET matrix now exercises the bounded attachment and proves the fixed
+gateway fixture is reachable from the worker while alternate IPv4, DNS, IPv6, runtime-socket,
+host-mount, host-namespace, and resource-limit bypass probes fail. This evidence is valid only
+after the protected workflow passes and grants no product execution authority.
+For the owned fixture only, the signed one-use gateway claim may now be bound durably to the
+exact attached worker, gateway container, and attachment version before an OCI `exec` effect.
+The digest-pinned verifier retains the fixed TEST-NET tuple, deadline, and response ceiling;
+startup terminates the exact worker for every unfinished binding. External execution remains
+false and no caller-controlled destination is accepted.
 
 ### INV-NET-002 — Approved source identity
 

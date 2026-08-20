@@ -435,6 +435,26 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     receipt only after termination is durable. Already terminated workers do not repeat the OCI
     effect, failures remain retryable, and one bad record cannot hide later cleanup. Startup
     composition, continuous attached monitoring, execution, and hosted evidence remain required.
+  - Production worker startup now resolves every unfinished attachment before runtime recovery
+    and readiness. Continuous supervision selects the durable topology: unattached workers must
+    retain no-network isolation and fresh gateway-only containment, while attached workers must
+    retain the exact image, resource/privilege controls, single internal network, and exact
+    gateway/worker peer set. Uncertain attachment state pauses authority and terminates workers.
+    Hosted worker-to-gateway execution and bypass evidence remain required.
+  - The hosted rootless Podman matrix now launches the exact digest-pinned worker directly on
+    the pre-attested internal network because rootless Podman cannot connect a container started
+    with network mode `none`. The durable intent binds that strategy and gateway identity before
+    launch; exact worker controls and two-peer topology are verified before attachment state.
+    Docker retains the bounded launch-then-connect strategy. The matrix then
+    verifies its attached controls and two-peer topology, reaches only a compiled TEST-NET
+    gateway fixture from inside that worker, and proves alternate IPv4, DNS, IPv6, runtime
+    socket, host mount/namespace, and resource-limit bypasses remain blocked. Evidence is valid
+    only after the hosted workflow passes. A durable authorized product request boundary remains.
+  - The existing signed, single-use owned-fixture claim can now be durably bound to one exact
+    attached worker before OCI `exec`. The worker invokes only the digest-pinned claim verifier's
+    fixed TEST-NET request, preserves the existing deadline and response ceiling, and finalizes
+    through the gateway authority. Startup terminates exact workers for unfinished bindings.
+    General HTTP(S), browser automation, and external destinations remain prohibited.
   - A digest-pinned non-executing worker sentinel now launches with no network attachment,
     fixed resource limits, no host mounts, a read-only root, private namespaces, all
     capabilities dropped, and no-new-privileges. Exact post-launch OCI inspection denies

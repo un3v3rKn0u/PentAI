@@ -34,6 +34,7 @@ from pentai_core.managed_gateway_network import (
     ManagedGatewayNetworkProvisioner,
     NetworkProbeExecutionError,
     OciNetworkConformanceProbe,
+    WorkerGatewayAttachmentInspector,
     normalize_oci_image_digest,
     require_rootless_runtime,
 )
@@ -47,6 +48,7 @@ from pentai_core.runtime_snapshot_collector import (
     SnapshotCollectionError,
     runtime_instance_identity,
 )
+from pentai_core.worker_gateway_attachment import OciWorkerGatewayConnector
 from pentai_core.worker_runtime import OciWorkerIsolationController
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -178,6 +180,14 @@ def main() -> int:
             executor=executor,
             image_digest=digest,
         )
+        _run_worker_gateway_conformance(
+            runtime=arguments.runtime,
+            executable=executable,
+            executor=executor,
+            network_id=network.network_id,
+            network_name=network_name,
+            image_digest=digest,
+        )
         _run_gateway_lifecycle(
             runtime=arguments.runtime,
             executable=executable,
@@ -193,6 +203,7 @@ def main() -> int:
                     "network_id": network.network_id,
                     "safe": True,
                     "worker_isolation_safe": True,
+                    "worker_gateway_safe": True,
                 }
             )
         )
@@ -231,6 +242,164 @@ def _run_worker_isolation(
         controller.verify(worker_id, container_id, image_digest)
     finally:
         controller.terminate(container_id)
+
+
+def _run_worker_gateway_conformance(
+    *,
+    runtime: str,
+    executable: Path,
+    executor: LocalBoundedCommandExecutor,
+    network_id: str,
+    network_name: str,
+    image_digest: str,
+) -> None:
+    gateway_name = "pentai-worker-gateway"
+    worker_name = "pentai-worker"
+    launched = executor.execute(
+        oci_run_command(
+            str(executable),
+            "--detach",
+            f"--name={gateway_name}",
+            f"--network={network_id}",
+            "--ip=192.0.2.20",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=16",
+            "--memory=32m",
+            "--cpus=0.25",
+            "--entrypoint=/pentai-network-probe",
+            image_digest,
+            "--mode=http-fixture-server",
+        ),
+        timeout_seconds=10,
+        max_output_bytes=4096,
+    )
+    try:
+        gateway_id = launched.stdout.decode(errors="strict").strip()
+    except UnicodeDecodeError as exc:
+        raise SnapshotCollectionError(
+            "WORKER_GATEWAY_FIXTURE_FAILED", "worker gateway identity is invalid"
+        ) from exc
+    if (
+        launched.returncode != 0
+        or not 12 <= len(gateway_id) <= 64
+        or any(character not in "0123456789abcdef" for character in gateway_id)
+    ):
+        raise SnapshotCollectionError(
+            "WORKER_GATEWAY_FIXTURE_FAILED", "worker gateway launch failed"
+        )
+    controller = OciWorkerIsolationController(
+        runtime=runtime,
+        executable=executable,
+        executor=executor,
+        capability_monitor=LinuxProcCapabilityMonitor() if runtime == "podman" else None,
+        container_name=worker_name,
+    )
+    worker_id = f"worker-{uuid.uuid4().hex}"
+    container_id: str | None = None
+    try:
+        if runtime == "podman":
+            container_id = controller.launch_attached(
+                worker_id, image_digest, network_id=network_id
+            )
+        else:
+            container_id = controller.launch(worker_id, image_digest)
+            OciWorkerGatewayConnector(
+                runtime=runtime, executable=executable, executor=executor
+            ).connect(network_id=network_id, container_id=container_id)
+        WorkerGatewayAttachmentInspector(
+            runtime=runtime,
+            executable=executable,
+            network_name=network_name,
+            gateway_container_name=gateway_name,
+            worker_container_name=worker_name,
+            executor=executor,
+        ).verify_attached(
+            network_id=network_id,
+            gateway_container_id=gateway_id,
+            worker_container_id=container_id,
+        )
+        controller.verify_attached(
+            worker_id,
+            container_id,
+            image_digest,
+            network_name=network_name,
+            network_id=network_id,
+        )
+        gateway_probe = executor.execute(
+            (
+                str(executable),
+                "exec",
+                container_id,
+                "/pentai-network-probe",
+                "--mode=worker-gateway-fixture-client",
+            ),
+            timeout_seconds=5,
+            max_output_bytes=4096,
+        )
+        bypass_probe = executor.execute(
+            (
+                str(executable),
+                "exec",
+                container_id,
+                "/pentai-network-probe",
+                "--format=json",
+                f"--network-id={network_id}",
+                "--direct-ip=192.0.2.1",
+                "--dns-ip=192.0.2.53",
+                "--ipv6=2001:db8::1",
+                f"--pid1-runtime-id={worker_id}",
+            ),
+            timeout_seconds=10,
+            max_output_bytes=4096,
+        )
+        try:
+            gateway_result = json.loads(gateway_probe.stdout)
+            bypass_result = json.loads(bypass_probe.stdout)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise SnapshotCollectionError(
+                "WORKER_GATEWAY_PROBE_FAILED", "worker gateway proof is invalid"
+            ) from exc
+        if gateway_probe.returncode != 0 or gateway_result != {"gateway_reachable": True}:
+            raise SnapshotCollectionError(
+                "WORKER_GATEWAY_PROBE_FAILED", "worker gateway is unreachable"
+            )
+        required = (
+            "direct_egress_blocked",
+            "external_dns_blocked",
+            "ipv6_blocked",
+            "runtime_socket_blocked",
+            "host_mounts_blocked",
+            "host_namespaces_blocked",
+            "resource_limits_enforced",
+        )
+        failed_controls = (
+            ["probe_execution"]
+            if bypass_probe.returncode != 0
+            else [key for key in required if bypass_result.get(key) is not True]
+        )
+        if failed_controls:
+            print(
+                "PentAI worker bypass diagnostic: "
+                + json.dumps({"failed_controls": failed_controls}, ensure_ascii=True),
+                file=sys.stderr,
+            )
+            raise SnapshotCollectionError(
+                "WORKER_BYPASS_PROBE_FAILED", "worker bypass proof failed"
+            )
+    finally:
+        if container_id is not None:
+            controller.terminate(container_id)
+        cleanup = [str(executable), "rm", "--force"]
+        if runtime == "podman":
+            cleanup.append("--time=0")
+        cleanup.append(gateway_id)
+        result = executor.execute(tuple(cleanup), timeout_seconds=10, max_output_bytes=4096)
+        if result.returncode != 0:
+            raise SnapshotCollectionError(
+                "WORKER_GATEWAY_FIXTURE_FAILED", "worker gateway cleanup failed"
+            )
 
 
 def _run_http_fixture(

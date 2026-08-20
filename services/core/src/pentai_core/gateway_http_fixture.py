@@ -22,6 +22,7 @@ from pentai_core.policy_signing import (
 )
 from pentai_core.runtime_snapshot_collector import (
     BoundedCommandExecutor,
+    CommandResult,
     SnapshotCollectionError,
 )
 from pentai_core.worker_containment import validate_containment_attestation
@@ -333,37 +334,15 @@ class OciGatewayHttpFixtureTransport:
             raise GatewayHttpFixtureError("HTTP_FIXTURE_DEADLINE", "fixture deadline expired")
         claim_payload_arguments = _claim_payload_arguments(claim_payload)
         try:
-            result = self._executor.execute(
-                oci_run_command(
-                    self._executable,
-                    "--rm",
-                    f"--name={container_name}",
-                    "--label=com.pentai.managed=true",
-                    "--label=com.pentai.role=gateway-http-fixture",
-                    f"--label=com.pentai.execution-claim={claim['claim_id']}",
-                    f"--label=com.pentai.runtime-id={claim['runtime_id']}",
-                    f"--label=com.pentai.gateway-network={network_id}",
-                    f"--label=com.pentai.image-digest={claim['image_digest']}",
-                    f"--network={network_id}",
-                    "--read-only",
-                    "--cap-drop=ALL",
-                    "--security-opt=no-new-privileges",
-                    "--pids-limit=16",
-                    "--memory=32m",
-                    "--cpus=0.25",
-                    "--entrypoint=/pentai-network-probe",
-                    str(claim["image_digest"]),
-                    "--mode=http-fixture-client",
-                    "--target=192.0.2.20:8080",
-                    "--host=example.test",
-                    "--path=/fixture",
-                    f"--maximum-response-bytes={maximum_response_bytes}",
-                    f"--deadline-unix-milliseconds={deadline_milliseconds}",
-                    *claim_payload_arguments,
-                    f"--claim-signature={signature['value']}",
-                ),
+            result = self._execute_transport(
+                claim=claim,
+                network_id=network_id,
+                maximum_response_bytes=maximum_response_bytes,
+                deadline_milliseconds=deadline_milliseconds,
+                claim_payload_arguments=claim_payload_arguments,
+                signature_value=str(signature["value"]),
+                container_name=container_name,
                 timeout_seconds=remaining_seconds,
-                max_output_bytes=4096,
             )
         except SnapshotCollectionError as exc:
             if exc.code == "RUNTIME_COMMAND_TIMEOUT":
@@ -412,6 +391,51 @@ class OciGatewayHttpFixtureTransport:
         if completed_at >= effective_deadline:
             outcome = "deadline_exceeded"
         return GatewayResponseMeasurement(outcome, observed, retained, completed_at)
+
+    def _execute_transport(
+        self,
+        *,
+        claim: dict[str, Any],
+        network_id: str,
+        maximum_response_bytes: int,
+        deadline_milliseconds: int,
+        claim_payload_arguments: tuple[str, ...],
+        signature_value: str,
+        container_name: str,
+        timeout_seconds: float,
+    ) -> CommandResult:
+        return self._executor.execute(
+            oci_run_command(
+                self._executable,
+                "--rm",
+                f"--name={container_name}",
+                "--label=com.pentai.managed=true",
+                "--label=com.pentai.role=gateway-http-fixture",
+                f"--label=com.pentai.execution-claim={claim['claim_id']}",
+                f"--label=com.pentai.runtime-id={claim['runtime_id']}",
+                f"--label=com.pentai.gateway-network={network_id}",
+                f"--label=com.pentai.image-digest={claim['image_digest']}",
+                f"--network={network_id}",
+                "--read-only",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges",
+                "--pids-limit=16",
+                "--memory=32m",
+                "--cpus=0.25",
+                "--entrypoint=/pentai-network-probe",
+                str(claim["image_digest"]),
+                "--mode=http-fixture-client",
+                "--target=192.0.2.20:8080",
+                "--host=example.test",
+                "--path=/fixture",
+                f"--maximum-response-bytes={maximum_response_bytes}",
+                f"--deadline-unix-milliseconds={deadline_milliseconds}",
+                *claim_payload_arguments,
+                f"--claim-signature={signature_value}",
+            ),
+            timeout_seconds=timeout_seconds,
+            max_output_bytes=4096,
+        )
 
     def _remove_timed_out_container(self, container_name: str) -> None:
         try:

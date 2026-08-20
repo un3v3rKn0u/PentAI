@@ -23,9 +23,9 @@ NAME = "pentai-gateway-fixture"
 NETWORK_ID = "fixture-network-id"
 INSTANCE = "fixture-pentai"
 IMAGE = "sha256:" + "a" * 64
-GATEWAY_ID = "gateway-container-id"
+GATEWAY_ID = "b" * 64
 GATEWAY_NAME = "pentai-gateway"
-WORKER_ID = "worker-container-id"
+WORKER_ID = "c" * 64
 WORKER_NAME = "pentai-worker"
 
 
@@ -100,16 +100,35 @@ def peer_inspected(**updates: object) -> CommandResult:
     return encoded(document)
 
 
-def podman_peer_inspected(**updates: object) -> CommandResult:
+def podman_peers(*peers: tuple[str, str], **updates: object) -> CommandResult:
+    documents: list[dict[str, object]] = [
+        {
+            "Id": container_id,
+            "Names": [name],
+            "State": "running",
+            "Networks": [NAME],
+        }
+        for container_id, name in peers
+    ]
+    for document in documents:
+        document.update(updates)
+    return encoded(documents)
+
+
+def podman_peer_container(
+    container_id: str, name: str, **updates: object
+) -> CommandResult:
     document: dict[str, object] = {
-        "id": NETWORK_ID,
-        "name": NAME,
-        "internal": True,
-        "ipv6_enabled": False,
-        "containers": {GATEWAY_ID: {"name": GATEWAY_NAME}},
+        "Id": container_id,
+        "Name": name,
+        "State": {"Running": True},
+        "HostConfig": {"NetworkMode": "bridge"},
+        "NetworkSettings": {
+            "Networks": {NAME: {"NetworkID": NAME}},
+        },
     }
     document.update(updates)
-    return encoded(document)
+    return encoded([document])
 
 
 @dataclass
@@ -136,7 +155,7 @@ def provisioner(executor: FixtureExecutor) -> ManagedGatewayNetworkProvisioner:
 
 class ManagedGatewayNetworkTests(unittest.TestCase):
     def attachment_inspector(
-        self, response: CommandResult, *, runtime: str = "docker"
+        self, response: CommandResult | list[CommandResult], *, runtime: str = "docker"
     ) -> WorkerGatewayAttachmentInspector:
         return WorkerGatewayAttachmentInspector(
             runtime=runtime,
@@ -144,7 +163,9 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
             network_name=NAME,
             gateway_container_name=GATEWAY_NAME,
             worker_container_name=WORKER_NAME,
-            executor=FixtureExecutor([response]),
+            executor=FixtureExecutor(
+                response if isinstance(response, list) else [response]
+            ),
         )
 
     def test_worker_network_requires_exactly_one_expected_gateway_peer(self) -> None:
@@ -165,14 +186,37 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
         self.assertEqual((timeout, output_limit), (5, 65_536))
 
     def test_podman_worker_gateway_peer_shape_is_verified(self) -> None:
+        executor = FixtureExecutor(
+            [
+                podman_inspected(),
+                podman_peers((GATEWAY_ID, GATEWAY_NAME)),
+                podman_peer_container(GATEWAY_ID, GATEWAY_NAME),
+            ]
+        )
         result = WorkerGatewayPeerInspector(
             runtime="podman",
             executable=Path("/usr/local/bin/podman"),
             network_name=NAME,
             gateway_container_name=GATEWAY_NAME,
-            executor=FixtureExecutor([podman_peer_inspected()]),
+            executor=executor,
         ).verify(network_id=NETWORK_ID, gateway_container_id=GATEWAY_ID)
         self.assertEqual(result.gateway_container_id, GATEWAY_ID)
+        self.assertEqual(
+            executor.calls[1][0][1:],
+            (
+                "ps",
+                "--all",
+                "--no-trunc",
+                "--filter",
+                f"network={NETWORK_ID}",
+                "--format",
+                "json",
+            ),
+        )
+        self.assertEqual(
+            executor.calls[2][0][1:],
+            ("container", "inspect", GATEWAY_ID),
+        )
 
     def test_missing_additional_or_wrong_gateway_peer_denies(self) -> None:
         cases = (
@@ -221,12 +265,15 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
                 WORKER_ID: {"Name": WORKER_NAME},
             }
         )
-        podman = podman_peer_inspected(
-            containers={
-                GATEWAY_ID: {"name": GATEWAY_NAME},
-                WORKER_ID: {"name": WORKER_NAME},
-            }
-        )
+        podman = [
+            podman_inspected(),
+            podman_peers(
+                (GATEWAY_ID, GATEWAY_NAME),
+                (WORKER_ID, WORKER_NAME),
+            ),
+            podman_peer_container(GATEWAY_ID, GATEWAY_NAME),
+            podman_peer_container(WORKER_ID, WORKER_NAME),
+        ]
         for runtime, response in (("docker", docker), ("podman", podman)):
             with self.subTest(runtime=runtime):
                 result = self.attachment_inspector(
@@ -240,6 +287,82 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
                     result,
                     WorkerGatewayAttachmentResult(NETWORK_ID, GATEWAY_ID, WORKER_ID),
                 )
+
+    def test_podman_peer_discovery_rejects_ambiguous_or_unverified_members(self) -> None:
+        malformed_listing = (
+            CommandResult(0, b"not-json"),
+            encoded({"Id": GATEWAY_ID}),
+            podman_peers((GATEWAY_ID[:8], GATEWAY_NAME)),
+            podman_peers((GATEWAY_ID, GATEWAY_NAME), State="exited"),
+            podman_peers((GATEWAY_ID, GATEWAY_NAME), Networks=[NAME, "extra"]),
+        )
+        for listing in malformed_listing:
+            with self.subTest(listing=listing), self.assertRaises(
+                SnapshotCollectionError
+            ):
+                WorkerGatewayPeerInspector(
+                    runtime="podman",
+                    executable=Path("/usr/local/bin/podman"),
+                    network_name=NAME,
+                    gateway_container_name=GATEWAY_NAME,
+                    executor=FixtureExecutor([podman_inspected(), listing]),
+                ).verify(network_id=NETWORK_ID, gateway_container_id=GATEWAY_ID)
+
+    def test_podman_attached_topology_rejects_an_extra_verified_peer(self) -> None:
+        extra_id = "d" * 64
+        with self.assertRaises(SnapshotCollectionError) as raised:
+            self.attachment_inspector(
+                [
+                    podman_inspected(),
+                    podman_peers(
+                        (GATEWAY_ID, GATEWAY_NAME),
+                        (WORKER_ID, WORKER_NAME),
+                        (extra_id, "unexpected-peer"),
+                    ),
+                    podman_peer_container(GATEWAY_ID, GATEWAY_NAME),
+                    podman_peer_container(WORKER_ID, WORKER_NAME),
+                    podman_peer_container(extra_id, "unexpected-peer"),
+                ],
+                runtime="podman",
+            ).verify_attached(
+                network_id=NETWORK_ID,
+                gateway_container_id=GATEWAY_ID,
+                worker_container_id=WORKER_ID,
+            )
+        self.assertEqual(raised.exception.code, "WORKER_NETWORK_PEERS_INVALID")
+
+        invalid_inspections = (
+            podman_peer_container(GATEWAY_ID, GATEWAY_NAME, Name="renamed"),
+            podman_peer_container(GATEWAY_ID, GATEWAY_NAME, State={"Running": False}),
+            podman_peer_container(
+                GATEWAY_ID,
+                GATEWAY_NAME,
+                NetworkSettings={"Networks": {"extra": {"NetworkID": NETWORK_ID}}},
+            ),
+            podman_peer_container(
+                GATEWAY_ID,
+                GATEWAY_NAME,
+                NetworkSettings={"Networks": {NAME: {"NetworkID": NETWORK_ID}}},
+            ),
+            CommandResult(0, b"not-json"),
+        )
+        for inspection in invalid_inspections:
+            with self.subTest(inspection=inspection), self.assertRaises(
+                SnapshotCollectionError
+            ):
+                WorkerGatewayPeerInspector(
+                    runtime="podman",
+                    executable=Path("/usr/local/bin/podman"),
+                    network_name=NAME,
+                    gateway_container_name=GATEWAY_NAME,
+                    executor=FixtureExecutor(
+                        [
+                            podman_inspected(),
+                            podman_peers((GATEWAY_ID, GATEWAY_NAME)),
+                            inspection,
+                        ]
+                    ),
+                ).verify(network_id=NETWORK_ID, gateway_container_id=GATEWAY_ID)
 
     def test_attached_topology_denies_missing_extra_or_renamed_peers(self) -> None:
         exact = {

@@ -108,6 +108,75 @@ class DurableWorkerAttachmentRegistry:
             failure_reason=None,
         )
 
+    def record_direct_attached(
+        self,
+        *,
+        worker_id: str,
+        expected_runtime_version: int,
+        containment: dict[str, Any],
+        gateway_container_id: str,
+    ) -> dict[str, object]:
+        """Record a verified Podman direct attachment against its durable launch intent."""
+        try:
+            validate_worker_containment_attestation(containment, now=self._clock())
+        except Exception as exc:
+            raise WorkerAttachmentRegistryError(
+                "WORKER_ATTACHMENT_DENIED", "worker attachment evidence is invalid"
+            ) from exc
+        runtime_id = containment.get("runtime_instance_id")
+        network_id = containment.get("worker_gateway_network_id")
+        if (
+            not _IDENTIFIER.fullmatch(worker_id)
+            or type(expected_runtime_version) is not int
+            or expected_runtime_version < 1
+            or not isinstance(runtime_id, str)
+            or not _IDENTIFIER.fullmatch(runtime_id)
+            or not isinstance(network_id, str)
+            or not _IDENTIFIER.fullmatch(network_id)
+            or not _CONTAINER_ID.fullmatch(gateway_container_id)
+            or containment.get("runtime") != "podman"
+            or containment.get("network_role") != "worker_gateway"
+        ):
+            raise WorkerAttachmentRegistryError(
+                "WORKER_ATTACHMENT_DENIED", "worker attachment request is invalid"
+            )
+        timestamp = self._timestamp()
+        try:
+            with transaction(self._database_path) as connection:
+                inserted = connection.execute(
+                    """INSERT INTO worker_network_attachments(
+                    worker_id, attachment_attestation_id, runtime_version, container_id,
+                    worker_gateway_network_id, gateway_container_id, status, created_at,
+                    updated_at, execution_enabled, version)
+                    SELECT worker_id, ?, version, container_id, worker_gateway_network_id,
+                        gateway_container_id, 'attached', ?, ?, 0, 1
+                    FROM worker_runtime_instances
+                    WHERE worker_id = ? AND status = 'running' AND version = ?
+                      AND container_id IS NOT NULL AND oci_runtime = 'podman'
+                      AND runtime_instance_id = ? AND worker_gateway_network_id = ?
+                      AND attachment_mode = 'podman_direct'
+                      AND gateway_container_id = ?""",
+                    (
+                        containment["attestation_id"],
+                        timestamp,
+                        timestamp,
+                        worker_id,
+                        expected_runtime_version,
+                        runtime_id,
+                        network_id,
+                        gateway_container_id,
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise WorkerAttachmentRegistryError(
+                "WORKER_ATTACHMENT_CONFLICT", "worker attachment conflicts"
+            ) from exc
+        if inserted.rowcount != 1:
+            raise WorkerAttachmentRegistryError(
+                "WORKER_ATTACHMENT_STALE", "worker runtime identity changed"
+            )
+        return self._document(worker_id)
+
     def mark_failed(
         self, *, worker_id: str, expected_version: int, reason: str
     ) -> dict[str, object]:
