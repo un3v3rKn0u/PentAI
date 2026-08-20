@@ -51,3 +51,46 @@ output, persistence/audit, UI, and provider availability are absent. The slice m
 be described as completing either provider-adapter or full allowlist/budget action-plan
 items. Governance assurance is reduced because review is non-independent; the sole
 maintainer accepts that governance risk only for this local-development contract slice.
+
+## 2026-08-20 — Trusted AI provider registry v1
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, author, Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer, Data
+Protection Lead, and Security Reviewer. The `GIT_WORKFLOW.md` exception is used. This
+review is not independent and cannot satisfy an external independence requirement.
+
+**Scope and evidence:** Complete registry schema/compiler, configuration-policy
+composition change, synthetic tests, contract documentation, action-plan note, complete
+diff, contract validation, Python unit and pytest suites, Ruff, mypy, and repository
+scans. Exact results are recorded in the pull request.
+
+**Invariants and boundaries:** `INV-AUTH-003`, `INV-AGENT-001`, `INV-AGENT-004`, and
+`INV-DATA-001`; untrusted registry documents to trusted deterministic compilation, and
+compiled policy to provider-configuration validation. No provider, secret broker,
+evidence store, model, target, or network boundary is crossed.
+
+**Threat and abuse cases:** malformed/missing registry data, provider/model
+substitution, duplicate identity ambiguity, order-dependent disabled entries, stale or
+future policy, configuration outliving policy, expired-policy reuse, empty/degraded
+allowlists, forbidden data routing, invalid budgets, execution-enable mutation, and
+source-document mutation after compilation.
+
+**Default deny and findings:** Schema validation precedes semantic compilation.
+Malformed, stale, ambiguous, privacy-unsafe, and empty-enabled registries deny with
+stable codes. Compiled maps are immutable snapshots with registry revision and expiry.
+Configuration cannot outlive or reuse expired registry policy. No material finding is
+accepted.
+
+**Compatibility, privacy, secrets, migration, and rollback:** Additive registry v1;
+configuration v1 remains compatible. Secret and restricted raw evidence routing denies,
+and the registry stores no secret references or values. There is no persistence or
+migration. Rollback removes the additive registry boundary without data conversion or
+authority recovery.
+
+**Limitations and residual risk:** Registry origin authentication, signatures,
+rollback protection, durable activation/revocation, audit, UI, adapters, context
+construction, secret brokerage, and runtime budget accounting are deferred. Execution
+remains disabled. Non-independent review reduces governance assurance; the sole
+maintainer accepts that risk only for this local-development non-executing slice.

@@ -28,6 +28,9 @@ class ProviderBudgetCeilings:
 class ProviderPolicy:
     """Trusted allowlist and routing policy supplied by the deterministic core."""
 
+    registry_id: str
+    registry_revision: int
+    registry_expires_at: datetime
     approved_models: Mapping[str, frozenset[str]]
     provider_types: Mapping[str, str]
     allowed_input_classifications: Mapping[str, frozenset[str]]
@@ -76,6 +79,10 @@ def validate_provider_configuration(
     ):
         raise ProviderConfigurationError(
             "AI_PROVIDER_CONFIGURATION_STALE", "provider configuration lifetime is invalid"
+        )
+    if policy.registry_expires_at <= instant or expires_at > policy.registry_expires_at:
+        raise ProviderConfigurationError(
+            "AI_PROVIDER_REGISTRY_STALE", "trusted provider registry is not current"
         )
 
     provider_id = document["provider_id"]

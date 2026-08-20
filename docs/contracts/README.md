@@ -6,6 +6,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 
 - `ai-provider-configuration-v1.schema.json` — non-executing exact provider/model,
   secret-reference, privacy-routing, opt-in, expiry, and budget configuration.
+- `ai-provider-registry-v1.schema.json` — trusted, revisioned provider/model allowlist,
+  privacy-route, state, validity, and global budget-ceiling source.
 - `engagement-manifest-v2.schema.json` — normalized human-reviewed engagement data.
 - `policy-ir-v1.schema.json` — deterministic compiled authorization policy.
 - `action-intent-v1.schema.json` — immutable request for an external effect.
@@ -86,6 +88,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | Schema | Owning role | Compatibility and versioning | Required reviewers |
 |---|---|---|---|
 | AIProviderConfiguration v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
+| AIProviderRegistry v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
 | Engagement Manifest v2 | Product Safety Lead | Contract Maintainer | Product Owner, Policy Maintainer, Security Reviewer |
 | Policy IR v1 | Policy Maintainer | Contract Maintainer | Core Maintainer, independent Security Reviewer |
 | ActionIntent v1 | Execution Safety Lead | Contract Maintainer | Policy Maintainer, independent Security Reviewer |

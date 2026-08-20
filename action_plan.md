@@ -688,6 +688,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     input classes, and request/token/cost/runtime ceilings. Provider adapters, durable
     configuration, secret brokerage, runtime budget accounting, and model contexts
     remain required before this item can be completed.
+  - A versioned trusted provider registry now compiles immutable, revision- and
+    expiry-bound allowlist policy only after rejecting malformed, stale, duplicate,
+    privacy-unsafe, or empty-enabled registry state. Provider configurations cannot
+    outlive or reuse an expired registry. Durable registry activation/revocation and
+    runtime enforcement remain required before this item can be completed.
 - [ ] Implement strict structured-output parsing with rejection and bounded repair.
 - [ ] Create untrusted-content envelopes and prompt-injection regression tests.
 - [ ] Implement assessment-scoped retrieval with provenance and ACL filters.
