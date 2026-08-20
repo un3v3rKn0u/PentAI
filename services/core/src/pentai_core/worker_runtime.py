@@ -120,7 +120,12 @@ def _network_attachment_error(runtime: str, host: dict[str, object], network: ob
 
 
 def _attached_network_error(
-    host: dict[str, object], network: object, *, network_name: str, network_id: str
+    runtime: str,
+    host: dict[str, object],
+    network: object,
+    *,
+    network_name: str,
+    network_id: str,
 ) -> str | None:
     if not isinstance(network, dict):
         return "document"
@@ -133,7 +138,8 @@ def _attached_network_error(
     if not isinstance(networks, dict) or set(networks) != {network_name}:
         return "networks"
     attachment = networks[network_name]
-    if not isinstance(attachment, dict) or attachment.get("NetworkID") != network_id:
+    expected_identity = network_name if runtime == "podman" else network_id
+    if not isinstance(attachment, dict) or attachment.get("NetworkID") != expected_identity:
         return "identity"
     if network.get("Ports") not in (None, {}):
         return "ports"
@@ -322,7 +328,11 @@ class OciWorkerIsolationController:
         if attached:
             assert network_name is not None and network_id is not None
             network_error = _attached_network_error(
-                host_doc, network, network_name=network_name, network_id=network_id
+                self._runtime,
+                host_doc,
+                network,
+                network_name=network_name,
+                network_id=network_id,
             )
         else:
             network_error = _network_attachment_error(self._runtime, host_doc, network)
@@ -331,7 +341,8 @@ class OciWorkerIsolationController:
             "running": isinstance(state, dict) and state.get("Running") is True,
             "image_identity": image_identity,
             "network_mode": (
-                host_doc.get("NetworkMode") == network_name
+                host_doc.get("NetworkMode")
+                in ({network_name, "bridge"} if podman else {network_name})
                 if attached
                 else host_doc.get("NetworkMode") == "none"
             ),

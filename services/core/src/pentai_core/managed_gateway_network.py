@@ -467,13 +467,11 @@ class WorkerGatewayPeerInspector:
                 raise SnapshotCollectionError(
                     "WORKER_NETWORK_PEERS_INVALID", "worker gateway peer set is invalid"
                 )
-            self._verify_podman_peer(container_id, name, network_id)
+            self._verify_podman_peer(container_id, name)
             peers[container_id] = {"name": name}
         return peers
 
-    def _verify_podman_peer(
-        self, container_id: str, expected_name: str, network_id: str
-    ) -> None:
+    def _verify_podman_peer(self, container_id: str, expected_name: str) -> None:
         result = self._executor.execute(
             (self._executable, "container", "inspect", container_id),
             timeout_seconds=5,
@@ -503,26 +501,37 @@ class WorkerGatewayPeerInspector:
                 "worker gateway peer inspection is invalid",
             )
         state = document.get("State")
-        host = document.get("HostConfig")
         network = document.get("NetworkSettings")
         attachments = network.get("Networks") if isinstance(network, dict) else None
         attachment = (
             attachments.get(self._network_name) if isinstance(attachments, dict) else None
         )
+        if document.get("Id") != container_id or document.get("Name") != expected_name:
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEER_IDENTITY_INVALID",
+                "worker gateway peer identity changed",
+            )
+        if not isinstance(state, dict) or state.get("Running") is not True:
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEER_STATE_INVALID", "worker gateway peer state changed"
+            )
         if (
-            document.get("Id") != container_id
-            or document.get("Name") != expected_name
-            or not isinstance(state, dict)
-            or state.get("Running") is not True
-            or not isinstance(host, dict)
-            or host.get("NetworkMode") != self._network_name
-            or not isinstance(attachments, dict)
+            not isinstance(attachments, dict)
             or set(attachments) != {self._network_name}
             or not isinstance(attachment, dict)
-            or attachment.get("NetworkID") != network_id
         ):
             raise SnapshotCollectionError(
-                "WORKER_NETWORK_PEER_INVALID", "worker gateway peer verification failed"
+                "WORKER_NETWORK_PEER_ATTACHMENT_INVALID",
+                "worker gateway peer attachment changed",
+            )
+        podman_network_identity = attachment.get("NetworkID")
+        if (
+            podman_network_identity is not None
+            and podman_network_identity != self._network_name
+        ):
+            raise SnapshotCollectionError(
+                "WORKER_NETWORK_PEER_ATTACHMENT_IDENTITY_INVALID",
+                "worker gateway peer attachment identity changed",
             )
 
     def _peer_name(self, peer: dict[str, object]) -> object:

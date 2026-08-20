@@ -103,6 +103,18 @@ def podman_documented_inspection() -> dict[str, object]:
     return document
 
 
+def podman_attached_inspection() -> dict[str, object]:
+    document = podman_inspection()
+    host = document["HostConfig"]
+    network = document["NetworkSettings"]
+    assert isinstance(host, dict) and isinstance(network, dict)
+    host["NetworkMode"] = "bridge"
+    network["Networks"] = {
+        "fixture-worker-network": {"NetworkID": "fixture-worker-network"}
+    }
+    return document
+
+
 @dataclass
 class Executor:
     responses: list[CommandResult]
@@ -221,6 +233,23 @@ class WorkerRuntimeTests(unittest.TestCase):
                     capability_monitor=CapabilityMonitor(),
                 )
                 runtime_controller.verify(WORKER, CONTAINER, IMAGE)
+
+    def test_podman_verifies_native_attached_network_representation(self) -> None:
+        runtime_controller = OciWorkerIsolationController(
+            runtime="podman",
+            executable=Path("/usr/bin/podman"),
+            executor=Executor(
+                [CommandResult(0, json.dumps(podman_attached_inspection()).encode())]
+            ),
+            capability_monitor=CapabilityMonitor(),
+        )
+        runtime_controller.verify_attached(
+            WORKER,
+            CONTAINER,
+            IMAGE,
+            network_name="fixture-worker-network",
+            network_id="fixture:worker-network",
+        )
 
     def test_network_namespace_metadata_is_bounded(self) -> None:
         for value in ({"path": "not-text"}, "x" * 4097, "/run/user/1000/netns/bad\nkey"):

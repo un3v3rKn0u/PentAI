@@ -122,9 +122,9 @@ def podman_peer_container(
         "Id": container_id,
         "Name": name,
         "State": {"Running": True},
-        "HostConfig": {"NetworkMode": NAME},
+        "HostConfig": {"NetworkMode": "bridge"},
         "NetworkSettings": {
-            "Networks": {NAME: {"NetworkID": NETWORK_ID}},
+            "Networks": {NAME: {"NetworkID": NAME}},
         },
     }
     document.update(updates)
@@ -338,6 +338,11 @@ class ManagedGatewayNetworkTests(unittest.TestCase):
                 GATEWAY_ID,
                 GATEWAY_NAME,
                 NetworkSettings={"Networks": {"extra": {"NetworkID": NETWORK_ID}}},
+            ),
+            podman_peer_container(
+                GATEWAY_ID,
+                GATEWAY_NAME,
+                NetworkSettings={"Networks": {NAME: {"NetworkID": NETWORK_ID}}},
             ),
             CommandResult(0, b"not-json"),
         )
