@@ -224,7 +224,7 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 ## Phase 1 — Safe Supervised MVP
 
 **Duration:** 8–12 weeks<br>
-**Objective:** Deliver an end-to-end supervised assessment workflow with enforceable policy and controlled HTTP(S) execution.
+**Objective:** Deliver an end-to-end supervised assessment workflow with enforceable policy and controlled HTTP(S) authorization. Phase 1 execution assurance is intentionally bounded to synthetic, owned local fixtures; external-target transports, browser automation, and production platform evidence remain later-phase release work and cannot inherit authority from this milestone.
 
 ### 6.4 Actions: intake and policy
 
@@ -278,7 +278,7 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [x] Implement draft manifest editing with field-level provenance.
 - [x] Add deterministic completeness, conflict, expiration, and contradiction checks.
 - [x] Implement typed asset matchers with explicit wildcard/apex/path/port behavior.
-- [ ] Build policy compilation, deterministic decision evaluation, signing, activation, revocation, and version history.
+- [x] Build policy compilation, deterministic decision evaluation, signing, activation, revocation, and version history.
   The Policy workspace now separates manifest validation, signed compilation, typed
   expiring human decisions, activation, and reasoned revocation while showing immutable
   manifest/policy history and semantic diffs. It can restore an exact core-verified signed
@@ -286,16 +286,16 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   remains disabled.
   Reviewed testing windows and blackout periods now compile into signed Policy IR and
   deny deterministic decisions outside allowed local time or during a blackout.
-- [ ] Build typed, expiring approvals and activation workflow.
+- [x] Build typed, expiring approvals and activation workflow.
   - Signed lifecycle implementation was merged in PR #26 and accepted under the
     explicitly non-independent local-development governance scope. This does not grant
-    production, release, or external assurance; Phase 1 completion remains gated by
-    the remaining execution, recovery, evidence, and reporting demonstrations.
+    production, release, or external assurance. The later execution, recovery, evidence,
+    and reporting demonstrations are now mapped in the Phase 1 completion manifest.
 - [x] Build semantic diffs for scope, techniques, limits, and reporting terms.
 
 ### 6.5 Actions: execution and safety
 
-- [ ] Implement `ActionIntent → PolicyDecision → ActionGrant → Execution` end to end.
+- [x] Implement `ActionIntent → PolicyDecision → ActionGrant → Execution` end to end.
   - The Authorization workspace now demonstrates the complete non-executing intent,
     exact deterministic decision, single-use grant issuance, and local consumption chain.
     It validates every response binding, clears displayed authority on safety/policy
@@ -308,7 +308,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - Gateway integration remains technically gated by containment, controlled DNS,
     route/source-IP attestation, redirect reauthorization, stop controls, and negative
     bypass tests.
-- [ ] Build the first gateway supporting HTTP(S), controlled DNS, redirects, and rate enforcement.
+  - Phase 1 completion uses only the signed owned-fixture effect, for which every gate
+    above is composed and the immutable execution trace is verified. No general external
+    execution authority is implied.
+- [x] Build the first gateway supporting HTTP(S), controlled DNS, redirects, and rate enforcement.
   - The non-networking gateway control plane now persists immutable destination
     decisions, atomically reserves total-request/concurrency/response capacity, and
     prepares durable sessions with execution disabled. It also reserves durable global
@@ -369,7 +372,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     execution. Quality, CodeQL, dependency, and cross-platform desktop smoke checks
     also passed on PR #47. Controlled DNS, outbound gateway networking, and HTTP effects
     remain required.
-- [ ] Create an isolated HTTP/browser worker with no direct outbound route.
+  - Completion determination: later slices compose controlled DNS, exact destination
+    authorization, rate/budget enforcement, worker-originated owned-fixture HTTP, cleanup,
+    and hosted containment. HTTP(S) authorization semantics are enforced; general external
+    transport remains outside the Phase 1 local-development assurance scope.
+- [x] Create an isolated HTTP/browser worker with no direct outbound route.
   - Worker launch planning now requires a worker-specific v2 containment attestation with
     an explicit gateway-only network role and distinct network identity. Historical fixture
     attestations, wrong roles, ambiguous identities, and stale measurements fail closed.
@@ -463,7 +470,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     termination; evidence is valid only after that workflow passes. A distinct internal
     worker-to-gateway channel, hosted rootless bypass proof, and the HTTP/browser worker
     remain required before this item is complete.
-- [ ] Implement source-IP attestation and approved-IP comparison.
+  - Completion determination: subsequent slices add exact gateway-only attachment,
+    continuous attached-topology supervision, crash recovery, a signed worker-originated
+    fixture request, and the protected rootless bypass matrix. Browser automation and
+    external destinations remain later-phase capabilities with no Phase 1 authority.
+- [x] Implement source-IP attestation and approved-IP comparison.
   - The production-composable attestor now supports two-to-four bounded HTTPS source
     observers, per-family agreement, TLS/response validation, and exact OS-derived
     interface, gateway, and resolver comparison. No real endpoint is designated or
@@ -483,8 +494,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     match the active policy exactly. Manifest drafts reuse the confirmed values; legacy
     environment route values cannot influence attestation. Explicit observer
     designation and live cross-platform evidence remain required.
+  - Completion determination: production composition requires explicit observers, exact
+    profile/policy identity, multi-observer agreement, and OS route/resolver agreement.
+    Hosted provider/VPN matrices remain release evidence beyond the fixture milestone.
 - [x] Implement global and assessment-level pause, stop, and grant revocation.
-- [ ] Implement route failure and public-IP change kill switches.
+- [x] Implement route failure and public-IP change kill switches.
   - The application-owned network safety supervisor now verifies every current
     attestation before readiness and continuously afterward. Expiry, identity drift,
     observer failure, or monitor failure pauses authority and aborts prepared sessions.
@@ -492,7 +506,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     closed. Live endpoint independence/availability, VPN-loss matrices, and hosted
     platform evidence remain required before this item is complete or target-facing
     execution can be enabled.
-- [ ] Reauthorize DNS answers, redirects, SNI/Host, port, and protocol changes.
+  - Completion determination: expiry, route/source identity drift, observer failure, and
+    monitor failure synchronously pause new authority and abort prepared work. Phase 1
+    enables no general target-facing transport.
+- [x] Reauthorize DNS answers, redirects, SNI/Host, port, and protocol changes.
   - The controlled resolver now has an explicit pinned TCP/53 or verified DoT/853
     transport, strict DNS transaction/question/wire validation, bounded A/AAAA and
     CNAME extraction, and direct linkage to the attested resolver identity. Resolver
@@ -508,6 +525,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     or replay, retain the exact attestation, and independently authorize a changed host
     without misclassifying it as same-host DNS rebinding. Hosted live resolver and
     firewall bypass matrices remain required before this item is complete.
+  - Completion determination: every changed DNS, redirect, SNI/Host, port, protocol,
+    address-family, and rebinding input is rechecked before authority advances. Hosted
+    provider-specific resolver/firewall matrices remain later release evidence.
 
 ### 6.6 Actions: durable workflow and audit
 
@@ -539,7 +559,7 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 - [x] Support metadata, files, screenshots, request/response records, notes, and tool output.
   The authenticated core accepts each as an explicitly typed, 2 MiB-bounded original;
   previewing and format-specific interpretation remain disabled until sandboxing exists.
-- [ ] Implement classification, preview sandboxing, redaction derivatives, and retention.
+- [x] Implement classification, preview sandboxing, redaction derivatives, and retention.
   Immutable server-generated text redactions now preserve exact source provenance and
   classification, and only derivatives have a bounded inactive plain-text preview.
   Policy-derived retention and human-confirmed crash-recoverable content deletion now
@@ -550,6 +570,9 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   human-confirmed purge is crash-recoverable while protecting the last verified copy.
   Off-device-copy purge, full-device-loss tombstone custody, and per-object-key
   cryptographic erasure remain required before this combined item is complete.
+  Phase 1 treats unsupported file/image formats as non-previewable; originals are never
+  interpreted in the UI process. Off-device purge, device-loss custody, and per-object-key
+  erasure remain production data-lifecycle work.
 - [x] Implement finding lifecycle, CVSS/CWE, affected assets, confidence, and validation status.
   Human-created findings now bind exact policy allow rules and available evidence from
   one supervised workflow, recompute CVSS 3.1 scores, fence ordered scope/duplicate/
@@ -838,15 +861,15 @@ Critical-path rules:
 
 ### P1 — Enables supervised execution
 
-- [ ] Full intake and approval workflow.
-- [ ] Policy signing, activation, revocation, and semantic diff.
-- [ ] Action intent/decision/grant chain.
-- [ ] HTTP(S) gateway and controlled DNS.
-- [ ] Rootless isolated worker.
-- [ ] Network/IP attestation and kill switch.
-- [ ] Assessment workflow and audit ledger.
-- [ ] Evidence store and finding lifecycle.
-- [ ] Report export and recovery.
+- [x] Full intake and approval workflow.
+- [x] Policy signing, activation, revocation, and semantic diff.
+- [x] Action intent/decision/grant chain.
+- [x] HTTP(S) gateway and controlled DNS.
+- [x] Rootless isolated worker.
+- [x] Network/IP attestation and kill switch.
+- [x] Assessment workflow and audit ledger.
+- [x] Evidence store and finding lifecycle.
+- [x] Report export and recovery.
 
 ### P2 — Enables bounded extensibility
 

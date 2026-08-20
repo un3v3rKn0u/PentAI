@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "phase-1",
+  "assurance_scope": "local-development-owned-fixtures",
+  "requirements": [
+    {
+      "id": "P1-POLICY-001",
+      "title": "Signed policy lifecycle and typed expiring activation approval",
+      "status": "implemented",
+      "invariants": ["INV-AUTH-001", "INV-AUTH-002", "INV-AUTH-003", "INV-USER-002"],
+      "implementation": ["packages/policy/src/pentai_policy/compiler.py", "packages/policy/src/pentai_policy/evaluator.py", "services/core/src/pentai_core/authorization.py", "services/core/src/pentai_core/policy_signing.py"],
+      "tests": ["tests/test_authorization_slice.py", "tests/test_policy_signing.py"],
+      "review": "docs/security/policy_workspace.md"
+    },
+    {
+      "id": "P1-AUTH-001",
+      "title": "Action intent, deterministic decision, single-use grant, and execution trace",
+      "status": "implemented",
+      "invariants": ["INV-GRANT-001", "INV-GRANT-002", "INV-GRANT-003", "INV-GRANT-004"],
+      "implementation": ["services/core/src/pentai_core/authorization.py", "services/core/src/pentai_core/worker_fixture_execution.py", "migrations/0020_audit_execution_traces.sql"],
+      "tests": ["tests/test_authorization_slice.py", "tests/test_audit_trace.py", "tests/test_worker_fixture_execution.py"],
+      "review": "docs/security/authorized_worker_fixture_execution_slice.md",
+      "hosted_check": ".github/workflows/network-conformance.yml"
+    },
+    {
+      "id": "P1-GATEWAY-001",
+      "title": "Controlled HTTP gateway, DNS authorization, redirect reauthorization, and limits",
+      "status": "implemented",
+      "invariants": ["INV-SCOPE-003", "INV-NET-003", "INV-NET-005"],
+      "implementation": ["services/core/src/pentai_core/controlled_dns.py", "services/core/src/pentai_core/network_control.py", "services/core/src/pentai_core/gateway_http_fixture.py", "services/core/src/pentai_core/gateway_response.py"],
+      "tests": ["tests/test_controlled_dns_transport.py", "tests/test_gateway_http_fixture.py", "tests/test_gateway_response.py"],
+      "review": "docs/security/controlled_dns_transport.md",
+      "hosted_check": ".github/workflows/network-conformance.yml"
+    },
+    {
+      "id": "P1-WORKER-001",
+      "title": "Rootless isolated worker with gateway-only attachment and bypass proof",
+      "status": "implemented",
+      "invariants": ["INV-NET-001", "INV-ISO-003"],
+      "implementation": ["services/core/src/pentai_core/worker_runtime.py", "services/core/src/pentai_core/worker_gateway_attachment.py", "services/core/src/pentai_core/worker_fixture_execution.py", "tools/network-probe/src/main.rs"],
+      "tests": ["tests/test_worker_runtime.py", "tests/test_worker_gateway_attachment.py", "tests/test_worker_fixture_execution.py"],
+      "review": "docs/security/hosted_worker_gateway_conformance_slice.md",
+      "hosted_check": ".github/workflows/network-conformance.yml"
+    },
+    {
+      "id": "P1-NETWORK-001",
+      "title": "Source-IP and route attestation with continuous fail-closed supervision",
+      "status": "implemented",
+      "invariants": ["INV-NET-002", "INV-REL-002", "INV-USER-001"],
+      "implementation": ["services/core/src/pentai_core/network_attestation.py", "services/core/src/pentai_core/network_attestation_adapters.py", "services/core/src/pentai_core/network_safety_supervisor.py"],
+      "tests": ["tests/test_network_attestation.py", "tests/test_network_attestation_adapters.py", "tests/test_network_safety_supervisor.py"],
+      "review": "docs/security/network_health_kill_switch.md"
+    },
+    {
+      "id": "P1-WORKFLOW-001",
+      "title": "Durable assessment workflow, queue, recovery, and immutable audit ledger",
+      "status": "implemented",
+      "invariants": ["INV-REL-001", "INV-REL-002", "INV-REL-003"],
+      "implementation": ["services/core/src/pentai_core/workflow.py", "services/core/src/pentai_core/audit.py", "migrations/0018_assessment_workflows.sql", "migrations/0020_audit_execution_traces.sql"],
+      "tests": ["tests/test_workflow.py", "tests/test_audit_trace.py"],
+      "review": "docs/security/assessment_task_history_workspace.md"
+    },
+    {
+      "id": "P1-EVIDENCE-001",
+      "title": "Encrypted evidence, classification, redacted preview, retention, and recovery",
+      "status": "implemented",
+      "invariants": ["INV-DATA-002", "INV-DATA-005"],
+      "implementation": ["services/core/src/pentai_core/evidence.py", "services/core/src/pentai_core/evidence_store.py", "services/core/src/pentai_core/backup.py", "migrations/0022_evidence_redaction_previews.sql", "migrations/0023_evidence_retention_deletions.sql"],
+      "tests": ["tests/test_evidence_originals.py", "tests/test_backup.py", "tests/test_storage_safety.py"],
+      "review": "docs/security/storage_failure_recovery_slice.md"
+    },
+    {
+      "id": "P1-REPORT-001",
+      "title": "Finding and no-findings reports with human approval and supervised export",
+      "status": "implemented",
+      "invariants": ["INV-USER-003"],
+      "implementation": ["services/core/src/pentai_core/reports.py", "services/core/src/pentai_core/no_findings_reports.py", "services/core/src/pentai_core/report_approvals.py", "services/core/src/pentai_core/report_exports.py"],
+      "tests": ["tests/test_reports.py", "tests/test_no_findings_reports.py", "tests/test_report_approvals.py", "tests/test_report_exports.py"],
+      "review": "docs/security/reports_workspace.md"
+    },
+    {
+      "id": "P1-RECOVERY-001",
+      "title": "Emergency stop, stale-authority revocation, storage fault handling, backup, and restore",
+      "status": "implemented",
+      "invariants": ["INV-DATA-005", "INV-REL-002", "INV-USER-001"],
+      "implementation": ["services/core/src/pentai_core/authorization.py", "services/core/src/pentai_core/backup.py", "services/core/src/pentai_core/storage_safety.py", "services/core/src/pentai_core/worker_runtime_recovery.py"],
+      "tests": ["tests/test_authorization_slice.py", "tests/test_backup.py", "tests/test_storage_safety.py", "tests/test_worker_runtime_recovery.py"],
+      "review": "docs/security/storage_failure_recovery_slice.md"
+    }
+  ]
+}

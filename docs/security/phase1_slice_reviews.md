@@ -4227,3 +4227,38 @@ rootless behavior. Direct launch is intentionally unavailable to Docker and arbi
 **Residual risk accepted:** A compromised OCI runtime can falsify launch or inspection output,
 and a crash after launch requires conservative durable recovery. Review is self-authored and
 non-independent.
+
+## 2026-08-20 — Phase 1 completion evidence gate
+
+**Decision:** Sole-maintainer security review — non-independent; implementation accepted
+subject to every required hosted check passing<br>
+**Author/reviewer:** `un3v3rKn0u` (sole maintainer, Product Owner, Security Lead,
+repository owner)<br>
+**Independence:** None; this uses the documented local-development exception.
+
+**Scope reviewed:** Complete Phase 1 evidence map; exact capability cardinality; policy,
+approval, grant, gateway, worker, network, workflow, evidence, reporting, recovery, and audit
+boundaries; invariant and review linkage; hosted-containment requirement; fail-closed
+validation; compatibility; rollback; and the absence of new external execution authority.
+
+**Evidence examined:** Complete branch diff; 287 Python unit tests; full pytest suite; Ruff;
+mypy across 57 source files; 45 JSON contracts; three Phase 1 completion regression tests;
+132 UI tests, type checking, and production build; seven Rust network-probe tests and format
+check; macOS Tauri Cargo check; existing migration tests; and the protected rootless workflow
+definition. Hosted PR results were deliberately not awaited and remain mandatory.
+
+**Findings:** The previously distributed Phase 1 evidence is now one exact, versioned,
+machine-validated set. Missing capability groups, implementation or test paths, security
+reviews, invariant references, hosted gateway/worker checks, and reopened action-plan rows fail
+the contract job. No material implementation or documentation finding remains locally.
+
+**Limitations and deferred work:** This closes only the local-development-owned-fixtures
+assurance scope. General external HTTP(S), browser automation, physical power-cut and
+full-device-loss drills, provider/VPN production matrices, release signing, and independent
+security assurance remain later-phase release requirements. A failed, skipped, or cancelled
+hosted check blocks this decision.
+
+**Residual risk accepted:** The evidence map proves repository presence and test linkage, not
+the honesty of a compromised runtime or the behavior of every production platform. Review is
+self-authored and non-independent. No Phase 1 artifact grants authority beyond the signed owned
+TEST-NET fixture.

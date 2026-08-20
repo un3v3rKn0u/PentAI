@@ -2,8 +2,8 @@
 
 **Document ID:** PENTAI-SEC-INV-001<br>
 **Version:** 1.0.0<br>
-**Status:** Phase 0 baseline approved under sole-maintainer exception<br>
-**Date:** 2026-08-08<br>
+**Status:** Phase 1 local-development implementation mapped; final hosted checks required<br>
+**Date:** 2026-08-20<br>
 **Owner:** Security Lead<br>
 
 ## 1. Purpose
@@ -23,12 +23,12 @@ Each invariant has:
 
 AI output, UI state, plugin behavior, and prompt instructions are never authoritative enforcement mechanisms.
 
-The accountable owner, automated evidence, missing downstream enforcement, and
-approval state for every invariant are maintained in `phase0_traceability.md`.
-Acceptance of implementation through a pull request is not itself security approval.
-The Phase 0 approval is a separately recorded, non-independent sole-maintainer review.
-Phase 1 components named below are requirements, not claims that those components
-exist.
+The Phase 0 baseline remains recorded in `phase0_traceability.md`. Phase 1 implementation
+evidence is mapped by stable capability ID in `phase1_completion_manifest.json`, and the
+current assurance decision is recorded in `phase1_status.md`. Acceptance of implementation
+through a pull request is not itself security approval. The final Phase 1 decision remains a
+separately recorded, non-independent sole-maintainer review and requires every applicable
+automated check to pass.
 
 ## 3. Authorization Invariants
 
