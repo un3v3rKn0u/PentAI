@@ -682,6 +682,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 
 - [ ] Implement provider adapters for one approved remote model and one local-model runtime.
 - [ ] Add provider/model allowlists, secret references, privacy classes, and cost/token budgets.
+  - A non-executing AI provider configuration v1 contract and pure deterministic
+    validator now require exact provider/model allowlists, provider-bound secret
+    references, explicit local/remote privacy zones, remote opt-in, expiry, allowed
+    input classes, and request/token/cost/runtime ceilings. Provider adapters, durable
+    configuration, secret brokerage, runtime budget accounting, and model contexts
+    remain required before this item can be completed.
 - [ ] Implement strict structured-output parsing with rejection and bounded repair.
 - [ ] Create untrusted-content envelopes and prompt-injection regression tests.
 - [ ] Implement assessment-scoped retrieval with provenance and ACL filters.
