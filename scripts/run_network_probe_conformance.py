@@ -349,6 +349,7 @@ def _run_worker_gateway_conformance(
                 "--direct-ip=192.0.2.1",
                 "--dns-ip=192.0.2.53",
                 "--ipv6=2001:db8::1",
+                f"--pid1-runtime-id={worker_id}",
             ),
             timeout_seconds=10,
             max_output_bytes=4096,
@@ -373,9 +374,17 @@ def _run_worker_gateway_conformance(
             "host_namespaces_blocked",
             "resource_limits_enforced",
         )
-        if bypass_probe.returncode != 0 or not all(
-            bypass_result.get(key) is True for key in required
-        ):
+        failed_controls = (
+            ["probe_execution"]
+            if bypass_probe.returncode != 0
+            else [key for key in required if bypass_result.get(key) is not True]
+        )
+        if failed_controls:
+            print(
+                "PentAI worker bypass diagnostic: "
+                + json.dumps({"failed_controls": failed_controls}, ensure_ascii=True),
+                file=sys.stderr,
+            )
             raise SnapshotCollectionError(
                 "WORKER_BYPASS_PROBE_FAILED", "worker bypass proof failed"
             )

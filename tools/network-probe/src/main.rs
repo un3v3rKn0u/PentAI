@@ -23,6 +23,7 @@ struct Arguments {
     direct_ip: IpAddr,
     dns_ip: IpAddr,
     ipv6: IpAddr,
+    pid1_runtime_id: Option<String>,
 }
 
 fn main() {
@@ -77,7 +78,7 @@ fn main() {
     let ipv6_blocked = connection_blocked(arguments.ipv6, 9);
     let runtime_socket_blocked = runtime_socket_blocked();
     let host_mounts_blocked = host_mounts_blocked();
-    let host_namespaces_blocked = process::id() == 1;
+    let host_namespaces_blocked = host_namespaces_blocked(arguments.pid1_runtime_id.as_deref());
     let resource_limits_enforced = resource_limits_enforced();
 
     println!(
@@ -590,6 +591,7 @@ fn parse_arguments(arguments: impl Iterator<Item = String>) -> Result<Arguments,
     let mut direct_ip = None;
     let mut dns_ip = None;
     let mut ipv6 = None;
+    let mut pid1_runtime_id = None;
 
     for argument in arguments {
         if argument == "--format=json" && !format_seen {
@@ -605,6 +607,11 @@ fn parse_arguments(arguments: impl Iterator<Item = String>) -> Result<Arguments,
             dns_ip = parse_exact_ip(dns_ip, value, "192.0.2.53")?;
         } else if let Some(value) = argument.strip_prefix("--ipv6=") {
             ipv6 = parse_exact_ip(ipv6, value, "2001:db8::1")?;
+        } else if let Some(value) = argument.strip_prefix("--pid1-runtime-id=") {
+            if pid1_runtime_id.is_some() || !valid_identifier(value) {
+                return Err("invalid PID 1 runtime identity");
+            }
+            pid1_runtime_id = Some(value.to_owned());
         } else {
             return Err("unsupported or duplicate argument");
         }
@@ -616,6 +623,7 @@ fn parse_arguments(arguments: impl Iterator<Item = String>) -> Result<Arguments,
             direct_ip,
             dns_ip,
             ipv6,
+            pid1_runtime_id,
         }),
         _ => Err("required argument is missing"),
     }
@@ -672,6 +680,24 @@ fn host_mounts_blocked() -> bool {
         let mount_point = line.split_whitespace().nth(4).unwrap_or("");
         forbidden_paths.contains(&mount_point)
     })
+}
+
+fn host_namespaces_blocked(pid1_runtime_id: Option<&str>) -> bool {
+    if process::id() == 1 {
+        return pid1_runtime_id.is_none();
+    }
+    let Some(runtime_id) = pid1_runtime_id else {
+        return false;
+    };
+    let Ok(command_line) = fs::read("/proc/1/cmdline") else {
+        return false;
+    };
+    sentinel_command_line_matches(&command_line, runtime_id)
+}
+
+fn sentinel_command_line_matches(command_line: &[u8], runtime_id: &str) -> bool {
+    let expected = format!("/pentai-network-probe\0--mode=sentinel\0--runtime-id={runtime_id}\0");
+    command_line == expected.as_bytes()
 }
 
 fn resource_limits_enforced() -> bool {
@@ -828,6 +854,24 @@ mod tests {
             ]),
             None
         );
+    }
+
+    #[test]
+    fn exec_namespace_proof_binds_the_exact_sentinel_at_pid_one() {
+        let command = b"/pentai-network-probe\0--mode=sentinel\0--runtime-id=runtime-1\0";
+        assert!(sentinel_command_line_matches(command, "runtime-1"));
+        assert!(!sentinel_command_line_matches(command, "runtime-2"));
+        assert!(!sentinel_command_line_matches(b"/sbin/init\0", "runtime-1"));
+
+        let parsed =
+            parse_arguments(approved_arguments().chain(["--pid1-runtime-id=runtime-1".to_owned()]))
+                .expect("exec namespace argument");
+        assert_eq!(parsed.pid1_runtime_id.as_deref(), Some("runtime-1"));
+        assert!(parse_arguments(approved_arguments().chain([
+            "--pid1-runtime-id=runtime-1".to_owned(),
+            "--pid1-runtime-id=runtime-1".to_owned(),
+        ]))
+        .is_err());
     }
 
     #[test]
