@@ -24,6 +24,12 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   origin-bound provenance, digest, classification, lifetime, and injection metadata.
 - `prompt-injection-corpus-v1.schema.json` — bounded synthetic adversarial cases for
   the eleven initial instruction-like content categories.
+- `ai-retrieval-policy-v1.schema.json` — exact assessment, subject, purpose, origin,
+  classification, result-limit, revision, and validity access rules.
+- `ai-retrieval-request-v1.schema.json` — short-lived policy- and catalog-fenced
+  metadata retrieval request with query digest and requested ACL subsets.
+- `ai-retrieval-result-v1.schema.json` — deterministic bounded provenance metadata
+  with content omitted and authority disabled.
 - `engagement-manifest-v2.schema.json` — normalized human-reviewed engagement data.
 - `policy-ir-v1.schema.json` — deterministic compiled authorization policy.
 - `action-intent-v1.schema.json` — immutable request for an external effect.
@@ -113,6 +119,9 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | AIStructuredOutputResult v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | UntrustedContentEnvelope v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
 | PromptInjectionCorpus v1 | AI/Agent Lead | Contract Maintainer | Security Reviewer |
+| AIRetrievalPolicy v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
+| AIRetrievalRequest v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
+| AIRetrievalResult v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
 | Engagement Manifest v2 | Product Safety Lead | Contract Maintainer | Product Owner, Policy Maintainer, Security Reviewer |
 | Policy IR v1 | Policy Maintainer | Contract Maintainer | Core Maintainer, independent Security Reviewer |
 | ActionIntent v1 | Execution Safety Lead | Contract Maintainer | Policy Maintainer, independent Security Reviewer |

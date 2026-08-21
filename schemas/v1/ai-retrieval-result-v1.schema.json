@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/ai-retrieval-result-v1.schema.json",
+  "title": "PentAI AI Retrieval Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "assessment_id", "subject_id", "purpose", "policy_id", "policy_version", "catalog_version", "query_sha256", "result_count", "items", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "request_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "subject_id": {"type": "string", "pattern": "^subject://(human|agent|service)/[a-z0-9][a-z0-9._-]{0,63}$"},
+    "purpose": {"enum": ["scope_analysis", "roe_analysis", "evidence_summary", "validation_support", "reporting_support"]},
+    "policy_id": {"type": "string", "format": "uuid"},
+    "policy_version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "catalog_version": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807},
+    "query_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "result_count": {"type": "integer", "minimum": 0, "maximum": 32},
+    "items": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["envelope_id", "origin", "classification", "provenance_ref", "content_sha256", "acquired_at", "expires_at", "instruction_metadata", "authority", "execution_enabled"],
+        "properties": {
+          "envelope_id": {"type": "string", "format": "uuid"},
+          "origin": {"enum": ["program_page", "retrieved_document", "target_content", "tool_output", "evidence_derivative", "plugin_message", "model_output"]},
+          "classification": {"enum": ["public", "internal", "confidential", "restricted_redacted"]},
+          "provenance_ref": {"type": "string", "pattern": "^provenance://(source|retrieval|target|tool|evidence-derivative|plugin|model)/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+          "content_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+          "acquired_at": {"type": "string", "format": "date-time"},
+          "expires_at": {"type": "string", "format": "date-time"},
+          "instruction_metadata": {"type": "object", "additionalProperties": false, "required": ["suspected", "categories"], "properties": {"suspected": {"type": "boolean"}, "categories": {"type": "array", "maxItems": 11, "uniqueItems": true, "items": {"enum": ["direct", "indirect", "encoded", "obfuscated", "delimiter_breaking", "role_confusion", "authority_claim", "secret_exfiltration", "tool_call", "policy_mutation", "data_poisoning"]}}}},
+          "authority": {"const": "none"},
+          "execution_enabled": {"const": false}
+        }
+      }
+    },
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}
