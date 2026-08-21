@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/prompt-injection-corpus-v1.schema.json",
+  "title": "PentAI Prompt Injection Corpus v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "cases"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "cases": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "category", "content"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^synthetic-[a-z0-9-]{1,63}$"},
+          "category": {"enum": ["direct", "indirect", "encoded", "obfuscated", "delimiter_breaking", "role_confusion", "authority_claim", "secret_exfiltration", "tool_call", "policy_mutation", "data_poisoning"]},
+          "content": {"type": "string", "minLength": 1, "maxLength": 2000}
+        }
+      }
+    }
+  }
+}
