@@ -724,6 +724,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     context construction, active-content handling, and model-level evaluation remain
     required before completion.
 - [ ] Implement assessment-scoped retrieval with provenance and ACL filters.
+  - A non-executing metadata-only retrieval v1 boundary now compiles immutable exact-
+    subject permissions and requires assessment, purpose, policy/catalog version,
+    query digest, origin/classification subsets, result ceiling, and expiry on every
+    request. Every envelope is revalidated before deterministic selection; content is
+    omitted, and malformed, stale, cross-scope, privilege-expanding, tampered,
+    duplicate, or replayed state denies. Durable authenticated policy activation,
+    indexing, content retrieval, context assembly, audit, and recovery remain required
+    before completion.
 - [ ] Ensure secrets and raw restricted evidence cannot enter model contexts by default.
 
 ### 6.11 Actions: orchestration

@@ -74,7 +74,10 @@ time boundaries, forbidden privacy classes, unknown authority-bearing fields,
 cross-assessment substitution, provenance mismatch/reuse, digest and metadata tampering,
 replay, identity conflict, concurrency, and all eleven injection categories.
 
-Durable provenance and replay state, live acquisition, retrieval ACLs, source
-authentication, classification assurance, secret scanning, active-content stripping,
-context construction, provider routing, canary traces, model evaluation, and agent
-integration remain deferred. The broader action-plan item therefore remains open.
+An additive metadata-only assessment retrieval boundary now revalidates envelopes and
+applies exact subject, purpose, origin, classification, policy-version, and catalog-
+version filters without returning content. Durable provenance and replay state, trusted
+policy activation, live acquisition, persistent retrieval ACLs, source authentication,
+classification assurance, secret scanning, active-content stripping, context
+construction, provider routing, canary traces, model evaluation, and agent integration
+remain deferred. The broader action-plan item therefore remains open.

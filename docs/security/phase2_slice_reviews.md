@@ -181,6 +181,57 @@ provider usage reconciliation, and runtime deadline enforcement are deferred. Pr
 execution remains disabled. Non-independent review reduces governance assurance; the
 sole maintainer accepts that risk only for this local-development non-executing slice.
 
+## 2026-08-21 — Assessment retrieval metadata and ACL v1
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, author, Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer, Data
+Protection Lead, and Security Reviewer. The `GIT_WORKFLOW.md` exception is used. This
+review is not independent and cannot satisfy an external independence requirement.
+
+**Scope and evidence:** Retrieval policy, request, and result schemas; immutable policy
+compiler; metadata-only assessment catalog; envelope revalidation; ACL, version,
+lifetime, replay, and deterministic ordering logic; synthetic positive, negative,
+tampering, expiry, injection, and concurrency tests; contract/compatibility docs;
+action-plan note; complete diff; contract validation; Python unit and pytest suites;
+Ruff; mypy; and repository scans. Exact results are recorded in the pull request.
+
+**Invariants and boundaries:** `INV-AUTH-003`, `INV-AGENT-001` through
+`INV-AGENT-004`, and `INV-DATA-001`; trusted-core policy injection to immutable ACLs,
+untrusted request to exact subject/purpose filtering, validated envelopes to bounded
+metadata, and instruction-like content to inert annotations. No acquisition, content
+return, index, model context, provider, secret broker, evidence store, plugin, target,
+tool, gateway, agent, or network boundary is crossed, and no execution authority is
+created.
+
+**Threat and abuse cases:** malformed/future/stale/overlong policy, duplicate subject,
+untrusted policy substitution, unknown or child subject, cross-purpose reuse, requested
+origin/classification/limit expansion, secret/raw classification, cross-assessment
+request or envelope, stale policy/catalog/request, invalid envelope provenance/digest/
+metadata/lifetime, duplicate identity/provenance, result ambiguity, exact/conflicting/
+concurrent replay, and prompt-injection attempts to mutate filters or authority.
+
+**Default deny and findings:** Closed contracts precede semantic checks. Policy,
+catalog, subject, purpose, query digest, filter subsets, result ceiling, and time are
+exactly bound. Every envelope is revalidated before selection, any invalid member
+denies the entire request, ordering is deterministic, and content is omitted. Request
+identity consumption is locked. No material finding is accepted.
+
+**Compatibility, privacy, secrets, migration, and rollback:** Additive v1 contracts;
+existing AI boundaries remain compatible. Secret and restricted-raw classifications
+are unrepresentable, and results expose only bounded provenance metadata rather than
+content. No secret resolution, content logging, persistence, or migration exists.
+Rollback removes the additive boundary without conversion or authority recovery.
+
+**Limitations and residual risk:** Policy injection is trusted but not authenticated;
+ACL/catalog/request state and replay fencing are process-local. Durable policy
+activation, indexing, acquisition, persistent ACLs, idempotent recovery, audit,
+retention/deletion, content retrieval, query matching, embeddings, context construction,
+provider routing, and agent integration are deferred. Provider execution remains
+disabled. Non-independent review reduces governance assurance; the sole maintainer
+accepts that risk only for this local-development non-executing slice.
+
 ## 2026-08-21 — Strict AI structured output v1
 
 **Review record:** Sole-maintainer security review — non-independent.
