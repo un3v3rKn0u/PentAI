@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/ai-candidate-observation-v1.schema.json",
+  "title": "PentAI AI Candidate Observation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "response_type", "summary", "observations", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "response_type": {"const": "candidate_observation"},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "observations": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "detail", "confidence_millis"],
+        "properties": {
+          "category": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+          "detail": {"type": "string", "minLength": 1, "maxLength": 1000},
+          "confidence_millis": {"type": "integer", "minimum": 0, "maximum": 1000}
+        }
+      }
+    },
+    "execution_enabled": {"const": false}
+  }
+}
