@@ -136,3 +136,47 @@ just-in-time and single-use resolution, rotation, durable revocation, audit, rec
 redaction scans, UI, adapters, and runtime execution remain deferred. Non-independent
 review reduces governance assurance; the sole maintainer accepts that risk only for
 this local-development non-resolving slice.
+
+## 2026-08-21 — Deterministic AI budget reservation v1
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, author, Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer, Data
+Protection Lead, and Security Reviewer. The `GIT_WORKFLOW.md` exception is used. This
+review is not independent and cannot satisfy an external independence requirement.
+
+**Scope and evidence:** Complete reservation-request and receipt schemas, deterministic
+in-memory ledger, synthetic tests, contract documentation, action-plan note, complete
+diff, contract validation, Python unit and pytest suites, Ruff, mypy, and repository
+scans. Exact results are recorded in the pull request.
+
+**Invariants and boundaries:** `INV-AUTH-003`, `INV-AGENT-001`, and `INV-NET-005`;
+untrusted reservation request to deterministic accounting, trusted configuration and
+registry revision to a fenced ledger, and recovered receipts to fail-closed state. No
+provider, secret broker, model, evidence, target, gateway, or network boundary is
+crossed, and no execution authority is created.
+
+**Threat and abuse cases:** malformed or empty amounts, integer boundary violations,
+cumulative and concurrent oversubscription, duplicate and conflicting replay, stale
+ledger versions, configuration/registry substitution, stale requests, overlong or
+expired reservations, invalid lifecycle transitions, tampered recovery records,
+duplicate recovered identity/version, and recovery of oversubscribed state.
+
+**Default deny and findings:** Contract validation precedes semantic accounting.
+Atomic compare-and-reserve, exact idempotency, monotonic version fencing, bounded
+lifetime, immutable snapshots, and strict recovery validation deny unsafe state with
+stable codes. Expired reservations cannot commit and are released during recovery. No
+material finding is accepted.
+
+**Compatibility, privacy, secrets, migration, and rollback:** Additive v1 contracts;
+provider configuration, registry, and secret-reference v1 remain compatible. Only
+counts and opaque identifiers are accepted; no prompt, evidence, secret value, or
+secret resolution is present. There is no persistence or migration. Rollback removes
+the additive ledger boundary without data conversion or authority recovery.
+
+**Limitations and residual risk:** Durable crash-atomic storage, audit linkage,
+per-task and per-assessment aggregation, cancellation, pricing/version provenance,
+provider usage reconciliation, and runtime deadline enforcement are deferred. Provider
+execution remains disabled. Non-independent review reduces governance assurance; the
+sole maintainer accepts that risk only for this local-development non-executing slice.

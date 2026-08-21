@@ -60,8 +60,11 @@ cross-provider-reference, privacy, opt-in, execution-enable, registry expiry, se
 reference binding/lifecycle, and every budget-boundary case. Contract validation,
 Python tests, Ruff, and mypy are required.
 
-Deferred risks include actual secret brokerage, provider adapters, context construction,
-content classification, prompt-injection defenses, structured-output parsing, budget
-reservation/accounting, persistence, audit events, UI configuration, and model/provider
-availability. No claim is made that this slice completes the Phase 2 AI-foundation
-checkboxes.
+The additive `AIBudgetReservation v1` boundary now provides deterministic in-memory
+reservation accounting against these ceilings. Durable persistence, provider-reported
+usage reconciliation, and runtime deadline enforcement remain deferred.
+
+Other deferred risks include actual secret brokerage, provider adapters, context
+construction, content classification, prompt-injection defenses, structured-output
+parsing, audit events, UI configuration, and model/provider availability. No claim is
+made that these slices complete the Phase 2 AI-foundation checkboxes.
