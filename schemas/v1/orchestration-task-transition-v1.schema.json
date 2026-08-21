@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-task-transition-v1.schema.json",
+  "title": "PentAI OrchestrationTaskTransition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command_id", "plan_id", "assessment_id", "task_id", "expected_plan_revision", "expected_task_revision", "target_state", "requested_at", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "expected_plan_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "expected_task_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "target_state": {"enum": ["running", "cancelling", "cancelled", "succeeded", "failed"]},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

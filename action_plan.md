@@ -737,6 +737,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 ### 6.11 Actions: orchestration
 
 - [ ] Build the durable plan graph and Master Orchestrator.
+  - An additive non-executing durable plan-graph v1 foundation now binds bounded typed
+    task DAGs to one assessment, rejects cycles and ambiguous references, derives
+    readiness deterministically, persists immutable identities, fences every command
+    by plan/task revision, and fails interrupted tasks during recovery without resume.
+    Master Orchestrator planning/authorship, audit integration, approvals, leases,
+    budgets, dispatch, agents, and execution remain required before completion.
 - [ ] Require all agent tool requests to become typed `ActionIntent` records.
 - [ ] Add task dependency, lease, cancellation, budget, checkpoint, and human-approval handling.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.

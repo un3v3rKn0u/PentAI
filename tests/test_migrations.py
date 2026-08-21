@@ -51,6 +51,7 @@ class MigrationTests(unittest.TestCase):
                     "0032",
                     "0033",
                     "0034",
+                    "0035",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -106,6 +107,10 @@ class MigrationTests(unittest.TestCase):
                     "worker_network_attachments",
                     "worker_attachment_recoveries",
                     "worker_fixture_executions",
+                    "orchestration_plans",
+                    "orchestration_tasks",
+                    "orchestration_dependencies",
+                    "orchestration_commands",
                 }
                 <= tables
             )
