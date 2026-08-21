@@ -762,6 +762,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     only stale reservations with immutable audit linkage. Provider usage reconciliation,
     per-action debit/commit, leases, checkpoints, human approval, dispatch, and
     end-to-end runtime enforcement remain required before this item is complete.
+  - An additive orchestration task-approval v1 foundation now creates exact, expiring
+    trusted-core requests and immutable Ed25519-signed decisions with explicit human
+    confirmation, current assessment/policy/plan/task revision fencing, and audit/outbox
+    linkage. Approval grants no authority and intentionally leaves the task awaiting
+    human so the shared transition fence is not broadened; rejection uses the existing
+    cancellation path. Authenticated API/UI composition, approval consumption into a
+    dedicated readiness transition, leases, checkpoints, dispatch, and effect-specific
+    policy approval remain required.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.

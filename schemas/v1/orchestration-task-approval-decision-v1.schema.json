@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-task-approval-decision-v1.schema.json",
+  "title": "PentAI OrchestrationTaskApprovalDecision v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "decision_id", "request_id", "request_digest", "assessment_id", "plan_id", "plan_revision", "task_id", "task_revision", "policy_bundle_id", "policy_hash", "decision", "reason", "approver", "authentication_context", "explicit_confirmation", "decided_at", "expires_at", "resulting_task_state", "signature", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "decision_id": {"type": "string", "format": "uuid"},
+    "request_id": {"type": "string", "format": "uuid"},
+    "request_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 1},
+    "task_id": {"type": "string", "format": "uuid"},
+    "task_revision": {"type": "integer", "minimum": 1},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "decision": {"enum": ["approved", "rejected"]},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "approver": {"type": "object", "additionalProperties": false, "required": ["actor_type", "actor_id"], "properties": {"actor_type": {"const": "human"}, "actor_id": {"type": "string", "minLength": 1, "maxLength": 128}}},
+    "authentication_context": {"const": "trusted_core_caller_assertion"},
+    "explicit_confirmation": {"const": true},
+    "decided_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "resulting_task_state": {"enum": ["awaiting_human", "cancelled"]},
+    "signature": {"type": "object", "additionalProperties": false, "required": ["algorithm", "key_id", "value"], "properties": {"algorithm": {"const": "Ed25519"}, "key_id": {"type": "string", "minLength": 1}, "value": {"type": "string", "minLength": 1}}},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  },
+  "allOf": [{
+    "if": {"properties": {"decision": {"const": "approved"}}},
+    "then": {"properties": {"resulting_task_state": {"const": "awaiting_human"}}},
+    "else": {"properties": {"resulting_task_state": {"const": "cancelled"}}}
+  }]
+}

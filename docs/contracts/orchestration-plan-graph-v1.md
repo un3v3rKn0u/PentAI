@@ -55,10 +55,14 @@ history; the migration is not reversed. Stored values are bounded coordination
 metadata and opaque references only. Raw secrets, evidence content, prompts, provider
 payloads, model output, targets, and tool arguments are absent.
 
-Plan authorship/authentication, Master Orchestrator decisions, human approval,
+Plan authorship/authentication, Master Orchestrator decisions, approval consumption,
 leases, checkpoints, general retry scheduling, and plan-transition audit/outbox events,
 retention/deletion, agents, provider calls, worker assignment, `ActionIntent`
 conversion, and execution remain deferred. The broader orchestration action remains
 open. A separate additive task-budget boundary now composes current plan/task state,
 capability manifests, cancellation fencing, durable integer reservations, and recovery;
 provider usage charging and end-to-end action budget enforcement remain deferred.
+An additive task-approval boundary can persist an exact signed human decision, but
+approval deliberately leaves the task in `awaiting_human`; only rejection uses the
+existing cancellation transition. A later slice must add a narrowly gated
+approval-consuming readiness transition without broadening the shared state fence.
