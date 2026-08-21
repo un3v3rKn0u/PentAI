@@ -744,6 +744,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Master Orchestrator planning/authorship, audit integration, approvals, leases,
     budgets, dispatch, agents, and execution remain required before completion.
 - [ ] Require all agent tool requests to become typed `ActionIntent` records.
+  - A first non-executing conversion boundary now accepts one closed Validation Agent
+    HTTP GET proposal, revalidates exact assessment/policy/plan/task/safety state, and
+    persists an immutable pending ActionIntent with durable provenance and audit
+    linkage. Agent runtime authentication, capability manifests, other request types,
+    cancellation/budget composition, and end-to-end evaluation remain required.
 - [ ] Add task dependency, lease, cancellation, budget, checkpoint, and human-approval handling.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
