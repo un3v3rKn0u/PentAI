@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/agent-action-intent-request-v1.schema.json",
+  "title": "PentAI AgentActionIntentRequest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "assessment_id", "plan_id", "expected_plan_revision", "task_id", "expected_task_revision", "agent", "purpose", "policy_bundle_id", "policy_hash", "input_sha256", "action_sha256", "action", "created_at", "expires_at", "delegation_requested", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "request_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "expected_plan_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "task_id": {"type": "string", "format": "uuid"},
+    "expected_task_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "agent": {"type": "object", "additionalProperties": false, "required": ["agent_type", "agent_id"], "properties": {"agent_type": {"const": "validation"}, "agent_id": {"type": "string", "pattern": "^agent://validation/[a-z0-9][a-z0-9._-]{0,63}$"}}},
+    "purpose": {"const": "propose_supervised_http_validation"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "input_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "action_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "action": {
+      "type": "object", "additionalProperties": false,
+      "required": ["capability", "target", "http", "impact", "requested_limits"],
+      "properties": {
+        "capability": {"const": "network.http.get"},
+        "target": {"type": "object", "additionalProperties": false, "required": ["scheme", "host", "port", "path", "canonical_url"], "properties": {"scheme": {"enum": ["http", "https"]}, "host": {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"enum": ["domain", "ipv4", "ipv6"]}, "value": {"type": "string", "minLength": 1, "maxLength": 253}}}, "port": {"type": "integer", "minimum": 1, "maximum": 65535}, "path": {"type": "string", "pattern": "^/", "maxLength": 2048}, "query": {"type": "string", "maxLength": 2048}, "canonical_url": {"type": "string", "format": "uri", "maxLength": 4096}}},
+        "http": {"type": "object", "additionalProperties": false, "required": ["method", "headers_digest", "body_digest", "follow_redirects"], "properties": {"method": {"const": "GET"}, "headers_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "body_digest": {"type": "null"}, "follow_redirects": {"const": false}}},
+        "impact": {"enum": ["passive", "benign"]},
+        "requested_limits": {"type": "object", "additionalProperties": false, "required": ["timeout_seconds", "maximum_response_bytes"], "properties": {"timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 30}, "maximum_response_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576}}}
+      }
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "delegation_requested": {"const": false},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

@@ -1,5 +1,44 @@
 # Phase 2 slice security reviews
 
+## 2026-08-21 — Agent request to pending ActionIntent v1
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, author, Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer,
+Execution Safety Lead, Data Protection Lead, and Security Reviewer. The
+`GIT_WORKFLOW.md` exception is used. This review is not independent.
+
+**Scope and evidence:** Closed request schema, migration 0036, deterministic conversion
+service, immutable provenance/audit linkage, synthetic positive/default-deny/replay/
+concurrency/tampering tests, migration checks, documentation, complete diff, quality
+checks, and repository scans.
+
+**Invariants and boundaries:** `INV-AUTH-003`, `INV-AGENT-001` through
+`INV-AGENT-003`, `INV-DATA-001`, `INV-DATA-003`, and `INV-REL-001`; untrusted agent
+proposal to trusted deterministic validation, then immutable pending intent,
+provenance, audit, and outbox persistence. No evaluation, approval, grant, provider,
+plugin, worker, tool, gateway, target, or network boundary is crossed.
+
+**Threat/default-deny review:** Unknown fields, raw-secret/command-shaped input,
+delegation, unsupported agent/capability/method, action-digest or canonical-target
+tampering, stale/expired input, cross-assessment/policy/plan/task substitution, stale
+revisions, cancelled/terminal/non-validation tasks, paused safety, replay conflict,
+concurrency, and database mutation deny. Exact replay is idempotent. No material
+finding is accepted.
+
+**Compatibility, privacy, migration, and rollback:** Additive schema/table/service;
+ActionIntent v1 and prior producers are unchanged. Metadata and opaque digests only;
+no content or secrets. Rollback disables conversion and retains immutable records;
+migration 0036 is not reversed.
+
+**Limitations and residual risk:** Agent/runtime identity is structurally bound but not
+transport-authenticated. The input digest has no source artifact in this slice. Master
+Orchestrator authorship, general capability manifests, approval, budgets, cancellation,
+provider/model/runtime integration, and end-to-end evaluation remain deferred.
+Non-independent review reduces governance assurance; the sole maintainer accepts that
+risk only for this local-development non-executing slice.
+
 ## 2026-08-21 — Durable orchestration plan graph v1
 
 **Review record:** Sole-maintainer security review — non-independent.
