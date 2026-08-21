@@ -754,6 +754,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Agent runtime authentication, generalized capabilities and request types,
     approval/budget composition, and end-to-end evaluation remain required.
 - [ ] Add task dependency, lease, cancellation, budget, checkpoint, and human-approval handling.
+  - A durable non-executing task-budget v1 foundation now derives assessment ceilings
+    from one validated provider configuration/registry revision and atomically reserves
+    integer token, request, micro-USD, runtime, and retry capacity for one exact current
+    plan/task/agent/policy/capability-manifest binding. Version fencing prevents
+    concurrent oversubscription; cancellation and recovery deny new use and release
+    only stale reservations with immutable audit linkage. Provider usage reconciliation,
+    per-action debit/commit, leases, checkpoints, human approval, dispatch, and
+    end-to-end runtime enforcement remain required before this item is complete.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.

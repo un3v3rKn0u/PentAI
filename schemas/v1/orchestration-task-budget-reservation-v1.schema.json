@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-task-budget-reservation-v1.schema.json",
+  "title": "PentAI OrchestrationTaskBudgetReservation v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "reservation_id", "request_id", "request_digest", "account_id", "account_version", "assessment_id", "plan_id", "plan_revision", "task_id", "task_revision", "agent_id", "capability_manifest_id", "manifest_revision", "policy_bundle_id", "policy_hash", "purpose", "amounts", "state", "created_at", "expires_at", "released_at", "release_reason", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "reservation_id": {"type": "string", "format": "uuid"},
+    "request_id": {"type": "string", "format": "uuid"},
+    "request_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "account_id": {"type": "string", "format": "uuid"},
+    "account_version": {"type": "integer", "minimum": 2},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 1},
+    "task_id": {"type": "string", "format": "uuid"},
+    "task_revision": {"type": "integer", "minimum": 1},
+    "agent_id": {"type": "string", "pattern": "^agent://validation/[a-z0-9][a-z0-9._-]{0,63}$"},
+    "capability_manifest_id": {"type": "string", "format": "uuid"},
+    "manifest_revision": {"const": 1},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "purpose": {"const": "reserve_validation_task_budget"},
+    "amounts": {"$ref": "#/$defs/amounts"},
+    "state": {"enum": ["reserved", "released"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "released_at": {"type": ["string", "null"], "format": "date-time"},
+    "release_reason": {"enum": ["none", "cancelled", "expired", "recovery"]},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  },
+  "allOf": [{
+    "if": {"properties": {"state": {"const": "reserved"}}},
+    "then": {"properties": {"released_at": {"const": null}, "release_reason": {"const": "none"}}},
+    "else": {"properties": {"released_at": {"type": "string", "format": "date-time"}, "release_reason": {"enum": ["cancelled", "expired", "recovery"]}}}
+  }],
+  "$defs": {"amounts": {
+    "type": "object", "additionalProperties": false,
+    "required": ["input_tokens", "output_tokens", "requests", "cost_microusd", "runtime_seconds", "retries"],
+    "properties": {
+      "input_tokens": {"type": "integer", "minimum": 0, "maximum": 1000000},
+      "output_tokens": {"type": "integer", "minimum": 0, "maximum": 1000000},
+      "requests": {"type": "integer", "minimum": 0, "maximum": 10000},
+      "cost_microusd": {"type": "integer", "minimum": 0, "maximum": 1000000000},
+      "runtime_seconds": {"type": "integer", "minimum": 0, "maximum": 86400},
+      "retries": {"type": "integer", "minimum": 0, "maximum": 100}
+    }
+  }}
+}
