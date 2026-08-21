@@ -16,6 +16,7 @@ from pentai_core.orchestration_approval import (
     OrchestrationApprovalService,
 )
 from pentai_policy import canonical_json
+from pentai_policy import content_hash as document_content_hash
 from pentai_policy.document import contract_issues
 
 from scripts.owned_fixture_authority import prepare_owned_fixture_session
@@ -23,6 +24,9 @@ from scripts.owned_fixture_authority import prepare_owned_fixture_session
 NOW = datetime.now(UTC).replace(microsecond=0)
 PLAN = "33333333-3333-4333-8333-333333333333"
 TASK = "44444444-4444-4444-8444-444444444444"
+ACTOR = "local-desktop-session"
+SESSION = "77777777-7777-4777-8777-777777777777"
+CONSUMPTION = "99999999-9999-4999-8999-999999999999"
 
 
 def setup(tmp_path: Path) -> tuple[OrchestrationApprovalService, dict[str, Any]]:
@@ -77,6 +81,163 @@ def setup(tmp_path: Path) -> tuple[OrchestrationApprovalService, dict[str, Any]]
         "policy_bundle_id": policy_id,
         "policy_hash": policy_hash,
     }
+
+
+def authenticated_approval(
+    service: OrchestrationApprovalService, binding: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    request = service.create_request(
+        **binding,
+        authenticated_actor_id=ACTOR,
+        authenticated_session_id=SESSION,
+        now=NOW,
+    )
+    decision = service.decide(
+        request["request_id"],
+        decision="approved",
+        reason="Synthetic authenticated readiness approval.",
+        explicit_confirmation=True,
+        approver_id=ACTOR,
+        authenticated_session=True,
+        authenticated_session_id=SESSION,
+        now=NOW,
+    )
+    return request, decision
+
+
+def consumption_arguments(request: dict[str, Any], decision: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "consumption_id": CONSUMPTION,
+        "decision_id": decision["decision_id"],
+        "request_digest": "sha256:" + document_content_hash(request),
+        "decision_digest": "sha256:" + document_content_hash(decision),
+        "expected_plan_revision": 1,
+        "expected_task_revision": 1,
+        "authenticated_actor_id": ACTOR,
+        "authenticated_session_id": SESSION,
+        "now": NOW,
+    }
+
+
+def test_authenticated_approval_consumption_atomically_sets_readiness(tmp_path: Path) -> None:
+    service, binding = setup(tmp_path)
+    request, decision = authenticated_approval(service, binding)
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        grants_before = connection.execute("SELECT count(*) FROM action_grants").fetchone()[0]
+        intents_before = connection.execute("SELECT count(*) FROM action_intents").fetchone()[0]
+    receipt = service.consume(request["request_id"], **consumption_arguments(request, decision))
+    assert contract_issues(receipt, "orchestration-task-approval-consumption-v1.schema.json") == ()
+    assert receipt["authority"] == "none" and receipt["execution_enabled"] is False
+    assert receipt["resulting_task_state"] == "ready"
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        task = connection.execute(
+            "SELECT state, revision FROM orchestration_tasks WHERE task_id = ?", (TASK,)
+        ).fetchone()
+        plan = connection.execute(
+            "SELECT state, revision FROM orchestration_plans WHERE plan_id = ?", (PLAN,)
+        ).fetchone()
+        assert (task["state"], task["revision"]) == ("ready", 2)
+        assert (plan["state"], plan["revision"]) == ("active", 2)
+        assert (
+            connection.execute("SELECT count(*) FROM action_grants").fetchone()[0] == grants_before
+        )
+        assert (
+            connection.execute("SELECT count(*) FROM action_intents").fetchone()[0]
+            == intents_before
+        )
+        assert service.authorization.verify_audit_chain()["valid"] is True
+
+
+def test_consumption_replay_concurrency_and_identity_conflicts(tmp_path: Path) -> None:
+    service, binding = setup(tmp_path)
+    request, decision = authenticated_approval(service, binding)
+    arguments = consumption_arguments(request, decision)
+
+    def consume(_: int) -> dict[str, Any]:
+        return service.consume(request["request_id"], **arguments)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(consume, range(2)))
+    assert outcomes[0] == outcomes[1]
+    changed = dict(arguments, consumption_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    with pytest.raises(OrchestrationApprovalError) as reused:
+        service.consume(request["request_id"], **changed)
+    assert reused.value.code == "ORCHESTRATION_APPROVAL_ALREADY_CONSUMED"
+    changed = dict(arguments, decision_digest="sha256:" + "0" * 64)
+    with pytest.raises(OrchestrationApprovalError) as digest:
+        service.consume(request["request_id"], **changed)
+    assert digest.value.code == "ORCHESTRATION_APPROVAL_CONSUMPTION_IDENTITY_CONFLICT"
+
+
+def test_consumption_denies_legacy_cross_session_expiry_and_direct_transition(
+    tmp_path: Path,
+) -> None:
+    service, binding = setup(tmp_path)
+    legacy_request = service.create_request(**binding, now=NOW)
+    legacy_decision = service.decide(
+        legacy_request["request_id"],
+        decision="approved",
+        reason="Synthetic legacy approval.",
+        explicit_confirmation=True,
+        approver_id="human://legacy",
+        now=NOW,
+    )
+    legacy = consumption_arguments(legacy_request, legacy_decision)
+    with pytest.raises(OrchestrationApprovalError) as version:
+        service.consume(legacy_request["request_id"], **legacy)
+    assert version.value.code == "ORCHESTRATION_APPROVAL_CONSUMPTION_RECORD_INVALID"
+
+    service, binding = setup(tmp_path / "authenticated")
+    request, decision = authenticated_approval(service, binding)
+    arguments = consumption_arguments(request, decision)
+    with pytest.raises(OrchestrationApprovalError) as session:
+        service.consume(
+            request["request_id"],
+            **dict(arguments, authenticated_session_id="88888888-8888-4888-8888-888888888888"),
+        )
+    assert session.value.code == "ORCHESTRATION_APPROVAL_ACTOR_MISMATCH"
+    with pytest.raises(OrchestrationApprovalError) as expired:
+        service.consume(request["request_id"], **dict(arguments, now=NOW + timedelta(minutes=16)))
+    assert expired.value.code == "ORCHESTRATION_APPROVAL_CONSUMPTION_EXPIRED"
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "UPDATE orchestration_tasks SET state='ready', revision=2 WHERE task_id=?", (TASK,)
+            )
+
+
+def test_consumption_receipt_is_immutable_and_stale_replay_denies(tmp_path: Path) -> None:
+    service, binding = setup(tmp_path)
+    request, decision = authenticated_approval(service, binding)
+    arguments = consumption_arguments(request, decision)
+    service.consume(request["request_id"], **arguments)
+    DurablePlanGraphService(service.database_path).transition(
+        {
+            "schema_version": "1.0.0",
+            "command_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "plan_id": PLAN,
+            "assessment_id": binding["assessment_id"],
+            "task_id": TASK,
+            "expected_plan_revision": 2,
+            "expected_task_revision": 2,
+            "target_state": "cancelled",
+            "requested_at": NOW.isoformat(),
+            "authority": "none",
+            "execution_enabled": False,
+        },
+        now=NOW,
+    )
+    with pytest.raises(OrchestrationApprovalError) as stale:
+        service.consume(request["request_id"], **arguments)
+    assert stale.value.code == "ORCHESTRATION_APPROVAL_CONSUMPTION_REPLAY_STALE"
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute("DELETE FROM orchestration_task_approval_consumptions")
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "UPDATE orchestration_task_approval_consumptions SET actor_id='forged'"
+            )
 
 
 def test_approved_condition_is_signed_audited_and_non_authoritative(tmp_path: Path) -> None:

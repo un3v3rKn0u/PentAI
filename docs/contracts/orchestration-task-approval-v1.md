@@ -8,12 +8,10 @@ those bindings, requires explicit confirmation, identifies the authenticated loc
 actor, and is signed with the existing Ed25519 policy signer. Authenticated session
 composition is deliberately deferred rather than falsely asserted by this service.
 
-Approval satisfies only a recorded readiness condition. It deliberately leaves the task
-in `awaiting_human`; it is not a task transition, policy decision, ActionIntent approval,
-ActionGrant, dispatch instruction, or execution authority. Rejection atomically cancels
-the task using the existing allowed transition and recomputes the plan state. A later
-slice must design a dedicated approval-consuming readiness transition without weakening
-the shared orchestration transition fence.
+Approval satisfies only a recorded readiness condition. A dedicated consumption operation
+may atomically move the exact approved v2 task from `awaiting_human` to `ready`; it is not
+a policy decision, ActionIntent approval, ActionGrant, dispatch instruction, or execution
+authority. Rejection atomically cancels the task using the existing allowed transition.
 
 Both records fix `authority` to `none` and `execution_enabled` to `false`. Exact replay is
 idempotent only while the signed decision, expiry, plan/task revisions, policy, assessment,
@@ -45,5 +43,23 @@ and requires no migration because the existing immutable tables store canonical 
 documents and their digests. Rollback removes the routes and v2 production while
 retaining both v1 and v2 records. The current transport represents one local desktop
 actor rather than multiple user accounts, but each process session is independently
-fenced. Richer user identity and UI remain deferred. Approval consumption remains
-separately blocked behind the unchanged task transition fence.
+fenced. Richer user identity and UI remain deferred. Legacy v1 and mixed-version approvals
+cannot be consumed.
+
+## Approval consumption v1
+
+The closed consumption command is accepted only through the authenticated local-core API.
+The server derives the same actor and process session, then revalidates the signed v2
+decision, request and decision digests, assessment safety, active policy, exact plan/task
+revisions, purpose, capability, parameters, cancellation state, and expiry. The receipt,
+task revision, plan revision, audit event, and outbox entry commit atomically.
+
+Migration 0040 adds an immutable receipt table and replaces the storage transition trigger
+with the same transition set plus one exact receipt-backed `awaiting_human` to `ready`
+predicate. The general transition service still denies that edge. Exact replay is
+idempotent only while the ready task and plan revisions remain current; changed identity,
+cross-session use, stale state, signature failure, legacy records, cancellation, and
+recovery-stale reuse deny. Rollback disables consumption while retaining receipts and
+ready-state history; migration reversal is unsupported. No secret or evidence content is
+stored. Leases, checkpoints, dispatch, provider execution, UI, and effect-specific approval
+remain deferred.

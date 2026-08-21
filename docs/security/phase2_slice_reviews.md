@@ -1,5 +1,43 @@
 # Phase 2 slice security reviews
 
+## 2026-08-22 — Authenticated orchestration approval consumption v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author and security reviewer; the `GIT_WORKFLOW.md` exception is used and
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed receipt schema, migration 0040, dedicated authenticated
+API/service operation, exact storage predicate, atomic state/receipt/audit/outbox writes,
+and synthetic positive, malformed, legacy-version, digest, signature, actor/session,
+expiry, replay, concurrency, immutability, direct-transition, cancellation, and
+recovery-stale tests.
+
+**Invariants and trust boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-AUTH-005`, `INV-GRANT-003`, `INV-AGENT-001` through `INV-AGENT-003`,
+`INV-DATA-001`, `INV-DATA-003`, and `INV-REL-001`. The authenticated local principal
+and process session cross into trusted core; only verified v2 request/decision records
+can satisfy the exact readiness predicate. No model, agent, plugin, worker, gateway,
+target, secret, or network boundary is trusted or crossed.
+
+**Threat/default-deny review:** Missing authentication, v1/mixed versions, rejection,
+invalid signatures or digests, caller identity, cross-scope/principal/session reuse,
+expiry, cancellation, safety pause, policy or revision replacement, conflicting replay,
+direct general transitions, direct storage writes without a receipt, and stale recovery
+deny. Consumption changes coordination readiness only and creates no policy decision,
+grant, dispatch, budget debit, network route, or external effect.
+
+**Compatibility, privacy, migration, and rollback:** The schema, route, service method,
+and receipt table are additive. Migration 0040 replaces the task transition trigger with
+its prior rules plus one exact receipt-backed predicate. Rollback disables the route and
+retains immutable receipts and state history; migration reversal is unsupported. Stored
+data is bounded identity, provenance, hashes, revisions, and timestamps; credentials,
+prompts, evidence, secrets, providers, and targets are absent.
+
+**Limitations and residual risk:** One local desktop principal remains the identity
+model. Leases, checkpoints, dispatch, UI, provider/plugin execution, and effect-specific
+policy approval remain deferred. Non-independent review reduces governance assurance and
+is accepted only for this local-development, non-executing slice.
+
 ## 2026-08-21 — Authenticated orchestration approval API v2
 
 **Review record:** Sole-maintainer security review — non-independent. The reviewer is
