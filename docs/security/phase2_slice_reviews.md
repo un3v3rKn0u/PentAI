@@ -1,5 +1,43 @@
 # Phase 2 slice security reviews
 
+## 2026-08-21 — Orchestration task approval v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author and security reviewer; the `GIT_WORKFLOW.md` exception is used and
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed request/decision schemas, migration 0039, deterministic
+request and signed-decision service, immutable persistence, audit/outbox linkage, and
+synthetic positive, malformed, confirmation, replay, conflict, concurrency, expiry,
+cancellation, signer, transition, and recovery-fencing tests.
+
+**Invariants and trust boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`, `INV-DATA-003`, and
+`INV-REL-001`; trusted core creates the request, then its asserted human actor identifier
+crosses into an immutable signed non-authoritative decision. Authentication remains a
+documented prerequisite rather than a claim made by this slice. No provider, model,
+plugin, worker, tool, gateway, target, secret, or network boundary is crossed.
+
+**Threat/default-deny review:** Missing confirmation, malformed identity, unsupported
+decision, stale policy/plan/task revisions, cross-scope substitution, changed replay,
+expiry, cancellation, terminal state, signature/content tampering, and signer
+unavailability deny with stable codes. Approval cannot alter task state, scope, policy,
+capability, budget, privacy, or authority. Rejection can only use the pre-existing
+`awaiting_human -> cancelled` transition.
+
+**Compatibility, privacy, migration, and rollback:** Additive schemas, service, and
+migration; no existing ActionIntent, approval, grant, or orchestration contract changes.
+Only bounded metadata, identities, hashes, timestamps, decision reason, and signature
+are stored. No prompts, evidence, targets, credentials, or secret references are stored.
+Rollback disables the service and retains security history; migration 0039 is not
+reversed.
+
+**Limitations and residual risk:** Authenticated API/UI composition and a dedicated
+approval-consuming readiness transition are deferred, as are leases, checkpoints,
+dispatch, provider execution, and effect-specific policy approval. Non-independent
+review reduces governance assurance and is accepted only for this local-development,
+non-executing slice.
+
 ## 2026-08-21 — Durable orchestration task budget v1
 
 **Review record:** Sole-maintainer security review — non-independent. The reviewer is

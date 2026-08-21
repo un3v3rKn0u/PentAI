@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-task-approval-request-v1.schema.json",
+  "title": "PentAI OrchestrationTaskApprovalRequest v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "request_id", "assessment_id", "plan_id", "plan_revision", "task_id", "task_revision", "task_type", "policy_bundle_id", "policy_hash", "purpose", "requested_capability", "parameters_digest", "requested_at", "expires_at", "requires_human_approval", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "request_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 1},
+    "task_id": {"type": "string", "format": "uuid"},
+    "task_revision": {"type": "integer", "minimum": 1},
+    "task_type": {"enum": ["scope", "rules_of_engagement", "evidence", "validation", "reporting"]},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "purpose": {"const": "authorize_task_readiness"},
+    "requested_capability": {"const": "orchestration.task.ready"},
+    "parameters_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "requires_human_approval": {"const": true},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

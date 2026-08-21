@@ -34,6 +34,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   typed dependencies, deterministic readiness, revision fencing, and no authority.
 - `orchestration-task-transition-v1.schema.json` — short-lived idempotent task-state
   command with exact assessment, plan, task, and revision bindings.
+- `orchestration-task-approval-request-v1.schema.json` — trusted-core-created,
+  short-lived readiness condition bound to one approval-gated task and active policy.
+- `orchestration-task-approval-decision-v1.schema.json` — signed immutable human
+  decision that grants no authority and leaves approval consumption deferred.
 - `orchestration-task-budget-request-v1.schema.json` — version-fenced integer budget
   request bound to one current task, capability manifest, policy, and assessment account.
 - `orchestration-task-budget-reservation-v1.schema.json` — durable non-authoritative
