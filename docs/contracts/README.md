@@ -38,6 +38,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   short-lived readiness condition bound to one approval-gated task and active policy.
 - `orchestration-task-approval-decision-v1.schema.json` — signed immutable human
   decision that grants no authority and leaves approval consumption deferred.
+- `orchestration-task-approval-request-v2.schema.json` — authenticated local-core
+  request binding its server-derived human principal without accepting caller identity.
+- `orchestration-task-approval-decision-v2.schema.json` — authenticated-session
+  decision bound to the same requesting principal and still granting no authority.
 - `orchestration-task-budget-request-v1.schema.json` — version-fenced integer budget
   request bound to one current task, capability manifest, policy, and assessment account.
 - `orchestration-task-budget-reservation-v1.schema.json` — durable non-authoritative

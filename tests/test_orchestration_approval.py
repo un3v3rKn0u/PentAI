@@ -302,3 +302,47 @@ def test_cancelled_task_and_missing_signer_deny(tmp_path: Path) -> None:
             now=NOW,
         )
     assert signer.value.code == "ORCHESTRATION_APPROVAL_SIGNER_UNAVAILABLE"
+
+
+def test_authenticated_request_denies_changed_human_identity(tmp_path: Path) -> None:
+    service, binding = setup(tmp_path)
+    request = service.create_request(
+        **binding,
+        authenticated_actor_id="local-desktop-session",
+        authenticated_session_id="77777777-7777-4777-8777-777777777777",
+        now=NOW,
+    )
+    with pytest.raises(OrchestrationApprovalError) as mismatch:
+        service.decide(
+            request["request_id"],
+            decision="approved",
+            reason="Synthetic impersonation attempt.",
+            explicit_confirmation=True,
+            approver_id="different-local-session",
+            authenticated_session=True,
+            authenticated_session_id="77777777-7777-4777-8777-777777777777",
+            now=NOW,
+        )
+    assert mismatch.value.code == "ORCHESTRATION_APPROVAL_ACTOR_MISMATCH"
+
+
+def test_authenticated_request_denies_changed_session(tmp_path: Path) -> None:
+    service, binding = setup(tmp_path)
+    request = service.create_request(
+        **binding,
+        authenticated_actor_id="local-desktop-session",
+        authenticated_session_id="77777777-7777-4777-8777-777777777777",
+        now=NOW,
+    )
+    with pytest.raises(OrchestrationApprovalError) as mismatch:
+        service.decide(
+            request["request_id"],
+            decision="approved",
+            reason="Synthetic cross-session replay attempt.",
+            explicit_confirmation=True,
+            approver_id="local-desktop-session",
+            authenticated_session=True,
+            authenticated_session_id="88888888-8888-4888-8888-888888888888",
+            now=NOW,
+        )
+    assert mismatch.value.code == "ORCHESTRATION_APPROVAL_ACTOR_MISMATCH"

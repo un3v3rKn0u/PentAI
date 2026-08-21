@@ -1,5 +1,51 @@
 # Phase 2 slice security reviews
 
+## 2026-08-21 — Authenticated orchestration approval API v2
+
+**Review record:** Sole-maintainer security review — non-independent. The reviewer is
+the repository owner, author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, Execution
+Safety Lead, Desktop Maintainer, and Security Reviewer. The `GIT_WORKFLOW.md` exception
+is used and does not satisfy independent review or dual control.
+
+**Scope and evidence:** Additive closed request/decision v2 schemas, two narrowly typed
+authenticated local-core routes, server-derived principal and per-process session
+composition, v1/v2 replay
+separation, synthetic authenticated/unauthenticated/forged-identity/confirmation/
+changed-principal/stale-state tests, compatibility documentation, complete diff,
+quality checks, and repository scans. No migration is required.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`, `INV-AUTH-005`,
+`INV-GRANT-003`, `INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`,
+`INV-DATA-003`, and `INV-REL-001`; the existing bearer middleware authenticates before
+body parsing, installs the local human principal, and the route passes only that
+server-derived identity into the approval service. No caller identity, model, agent,
+plugin, worker, tool, gateway, target, secret, or network boundary is trusted.
+
+**Threat/default-deny review:** Missing or malformed credentials deny uniformly before
+routing. Closed bodies reject actor, requester, role, authentication-context,
+delegation, proxy, wildcard, and batch claims. Missing/false confirmation, changed
+principal or session, v1/v2 mixing, malformed or unsupported data, stale policy/plan/task state,
+expiry, cancellation, terminal state, changed replay, signature/content tampering, and
+signer failure deny with stable codes. Approval remains non-authoritative and cannot
+move a task out of `awaiting_human`.
+
+**Compatibility, privacy, migration, and rollback:** V2 schemas and routes are
+additive; v1 records remain readable and trusted-internal v1 production remains
+compatible, while mixed-version use denies. Existing tables already store immutable
+canonical documents, so no database migration is needed. Only the fixed local actor,
+random per-process session UUID, and bounded approval metadata are added; credentials, prompts, evidence,
+targets, secrets, and provider payloads are absent. Rollback removes the routes and v2
+production while preserving immutable history.
+
+**Limitations and residual risk:** The current launch credential maps to one local
+desktop actor rather than multiple human accounts or OS-backed user identity; process
+sessions are separately fenced.
+Approval consumption, UI, leases, checkpoints, dispatch, provider execution, and
+effect-specific policy approval remain deferred. Non-independent review reduces
+governance assurance and is accepted only for this local-development, non-executing
+slice.
+
 ## 2026-08-21 — Orchestration task approval v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository

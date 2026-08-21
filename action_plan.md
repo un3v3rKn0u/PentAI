@@ -770,6 +770,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     cancellation path. Authenticated API/UI composition, approval consumption into a
     dedicated readiness transition, leases, checkpoints, dispatch, and effect-specific
     policy approval remain required.
+  - Authenticated local-core API composition now derives the human identity exclusively
+    from the existing bearer-credential middleware and emits additive approval request
+    and decision v2 records. Closed request bodies reject caller identity, role,
+    delegation, proxy, and authentication-context fields; decisions require the same
+    principal, per-process session, and explicit confirmation. Approved tasks remain
+    `awaiting_human` with
+    no authority. Multi-user session identity, UI, approval consumption, leases,
+    checkpoints, dispatch, and effect-specific policy approval remain required.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.
