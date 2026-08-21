@@ -26,6 +26,7 @@ audit data, and the ability to keep execution disabled when bootstrap is invalid
 |---|---|---|---|
 | Unrelated local process calls the API | Approval impersonation or policy mutation | Per-launch 256-bit credential on every API route; constant-time validation; packaged lifecycle smoke passed on Windows, macOS, and Ubuntu | Same-user process hardening remains outside Phase 0 |
 | Caller submits a forged actor ID | False human attribution | Actor authority removed from request models and bound to the authenticated server-side session | Add future OS-user confirmation for stronger human identity |
+| Caller forges or delegates an orchestration approval identity | Approval impersonation, proxy approval, cross-session reuse, or false provenance | Closed approval API bodies omit identity fields; middleware-derived principal and fresh per-process session UUID are persisted in request/decision v2 and must match on decision/replay | Current transport represents one desktop actor; multi-user and OS-user identity remain future work |
 | Token leaks through logs, errors, audits, URLs, or persistence | Session takeover | No access log, uniform errors, header transport, in-memory bootstrap, no audit/database storage; packaged output is checked | Platform review of crash reporting and diagnostics |
 | Process occupies or races the selected port | Core substitution or denial of service | Dynamic loopback selection plus credential-authenticated readiness; failed bind/readiness is fatal; collision smoke passed on Windows, macOS, and Ubuntu | Crash/orphan and additional platform hardening remain future work |
 | Rogue process returns fake readiness | Desktop connects to substituted core | Readiness requires the unpredictable launch credential; packaged sidecar SHA-256 is verified before spawn | Production platform signing |
@@ -45,6 +46,8 @@ audit data, and the ability to keep execution disabled when bootstrap is invalid
 5. A production web build has no default port or credential.
 6. Credential material never enters an audit event or persisted domain object.
 7. Failure to prove authenticated readiness prevents desktop startup.
+8. Orchestration approval request bodies cannot supply actor, role, delegation, proxy,
+   or authentication-context claims; the server-derived principal is the only identity.
 
 ## Review gate
 

@@ -40,6 +40,10 @@ from pentai_core.network_safety_supervisor import (
     NetworkSafetySupervisorControl,
 )
 from pentai_core.no_findings_reports import NoFindingsReportError, NoFindingsReportService
+from pentai_core.orchestration_approval import (
+    OrchestrationApprovalError,
+    OrchestrationApprovalService,
+)
 from pentai_core.policy_signing import PolicySigner
 from pentai_core.report_approvals import ReportApprovalError, ReportApprovalService
 from pentai_core.report_exports import ReportExportError, ReportExportService
@@ -62,6 +66,7 @@ class HealthResponse(BaseModel):
 @dataclass(frozen=True)
 class LocalPrincipal:
     principal_id: str
+    session_id: str
     actor_type: str = "human"
 
 
@@ -311,6 +316,20 @@ class ReportExportApprovalRequest(StrictRequest):
     confirm_export_ready: bool
 
 
+class OrchestrationApprovalCreateRequest(StrictRequest):
+    assessment_id: str
+    expected_plan_revision: int = Field(ge=1)
+    expected_task_revision: int = Field(ge=1)
+    policy_bundle_id: str
+    policy_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class OrchestrationApprovalDecisionRequest(StrictRequest):
+    decision: str
+    reason: str = Field(min_length=1, max_length=1000)
+    explicit_confirmation: bool
+
+
 class ReportFileExportRequest(StrictRequest):
     report_kind: str
     format: str
@@ -402,6 +421,16 @@ def report_approval_call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
     except ReportApprovalError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
+def orchestration_approval_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except OrchestrationApprovalError as exc:
         raise HTTPException(
             status_code=409,
             detail={"code": exc.code, "message": str(exc)},
@@ -507,6 +536,7 @@ def create_app(
     coverage = AssessmentCoverageService(runtime.database_path)
     no_findings_reports = NoFindingsReportService(runtime.database_path)
     report_approvals = ReportApprovalService(runtime.database_path)
+    orchestration_approvals = OrchestrationApprovalService(authorization)
     report_exports = ReportExportService(runtime.database_path)
     backups = BackupService(
         runtime.database_path,
@@ -556,6 +586,7 @@ def create_app(
     app.state.reports = reports
     app.state.backups = backups
     app.state.storage_safety = storage_safety
+    local_session_id = str(uuid4())
     app.router.add_event_handler("shutdown", network_supervisor.stop)
     app.router.add_event_handler("shutdown", supervisor.stop)
     app.router.add_event_handler("shutdown", worker_supervisor.stop)
@@ -572,7 +603,7 @@ def create_app(
         if not request.url.path.startswith("/api/v1/") or request.method == "OPTIONS":
             return await call_next(request)
         if runtime.test_mode:
-            request.state.principal = LocalPrincipal("test-session")
+            request.state.principal = LocalPrincipal("test-session", local_session_id)
             return await call_next(request)
         authorization_header = request.headers.get("authorization", "")
         prefix = "Bearer "
@@ -582,7 +613,7 @@ def create_app(
         expected = runtime.launch_credential or ""
         if not supplied or not secrets.compare_digest(supplied, expected):
             return _unauthorized()
-        request.state.principal = LocalPrincipal("local-desktop-session")
+        request.state.principal = LocalPrincipal("local-desktop-session", local_session_id)
         return await call_next(request)
 
     def principal(request: Request) -> LocalPrincipal:
@@ -1128,6 +1159,47 @@ def create_app(
                 reason=requested.reason,
                 confirm_export_ready=requested.confirm_export_ready,
                 actor_id=actor.principal_id,
+            )
+        )
+
+    @app.post("/api/v1/orchestration/plans/{plan_id}/tasks/{task_id}/approval-request")
+    def create_orchestration_task_approval_request(
+        plan_id: str,
+        task_id: str,
+        requested: OrchestrationApprovalCreateRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return orchestration_approval_call(
+            lambda: orchestration_approvals.create_request(
+                assessment_id=requested.assessment_id,
+                plan_id=plan_id,
+                expected_plan_revision=requested.expected_plan_revision,
+                task_id=task_id,
+                expected_task_revision=requested.expected_task_revision,
+                policy_bundle_id=requested.policy_bundle_id,
+                policy_hash=requested.policy_hash,
+                authenticated_actor_id=actor.principal_id,
+                authenticated_session_id=actor.session_id,
+            )
+        )
+
+    @app.post("/api/v1/orchestration/task-approval-requests/{request_id}/decision")
+    def decide_orchestration_task_approval(
+        request_id: str,
+        requested: OrchestrationApprovalDecisionRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return orchestration_approval_call(
+            lambda: orchestration_approvals.decide(
+                request_id,
+                decision=requested.decision,
+                reason=requested.reason,
+                explicit_confirmation=requested.explicit_confirmation,
+                approver_id=actor.principal_id,
+                authenticated_session=True,
+                authenticated_session_id=actor.session_id,
             )
         )
 

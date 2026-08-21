@@ -42,9 +42,13 @@ class OrchestrationApprovalService:
         expected_task_revision: int,
         policy_bundle_id: str,
         policy_hash: str,
+        authenticated_actor_id: str | None = None,
+        authenticated_session_id: str | None = None,
         now: datetime | None = None,
     ) -> dict[str, Any]:
         instant = _instant(now)
+        normalized_actor = _authenticated_actor(authenticated_actor_id)
+        normalized_session = _authenticated_session(authenticated_session_id, normalized_actor)
         self.authorization._require_storage_safe()
         verified_policy = self._verified_policy(assessment_id, policy_bundle_id, policy_hash)
         with transaction(self.database_path) as connection:
@@ -79,8 +83,8 @@ class OrchestrationApprovalService:
                     "requires_human_approval": True,
                 }
             )
-            document = {
-                "schema_version": "1.0.0",
+            document: dict[str, Any] = {
+                "schema_version": "2.0.0" if normalized_actor is not None else "1.0.0",
                 "request_id": request_id,
                 "assessment_id": assessment_id,
                 "plan_id": plan_id,
@@ -99,7 +103,15 @@ class OrchestrationApprovalService:
                 "authority": "none",
                 "execution_enabled": False,
             }
-            if contract_issues(document, "orchestration-task-approval-request-v1.schema.json"):
+            if normalized_actor is not None:
+                document["requester"] = {
+                    "actor_type": "human",
+                    "actor_id": normalized_actor,
+                    "session_id": normalized_session,
+                }
+                document["authentication_context"] = "local_core_authenticated_session"
+            request_schema = _request_schema(document)
+            if contract_issues(document, request_schema):
                 raise OrchestrationApprovalError(
                     "ORCHESTRATION_APPROVAL_REQUEST_INVALID", "approval request is invalid"
                 )
@@ -138,7 +150,14 @@ class OrchestrationApprovalService:
                     canonical_json(document),
                 ),
             )
-            _record(connection, "orchestration.task_approval_requested", request_id, document)
+            _record(
+                connection,
+                "orchestration.task_approval_requested",
+                request_id,
+                document,
+                actor_id=normalized_actor or "pentai-core",
+                actor_type="human" if normalized_actor is not None else "service",
+            )
         return copy.deepcopy(document)
 
     def decide(
@@ -149,6 +168,8 @@ class OrchestrationApprovalService:
         reason: str,
         explicit_confirmation: bool,
         approver_id: str,
+        authenticated_session: bool = False,
+        authenticated_session_id: str | None = None,
         now: datetime | None = None,
     ) -> dict[str, Any]:
         if decision not in {"approved", "rejected"}:
@@ -162,6 +183,9 @@ class OrchestrationApprovalService:
             )
         normalized_reason = reason.strip()
         normalized_actor = approver_id.strip()
+        normalized_session = _authenticated_session(
+            authenticated_session_id, normalized_actor if authenticated_session else None
+        )
         if not 1 <= len(normalized_reason) <= 1000:
             raise OrchestrationApprovalError(
                 "ORCHESTRATION_APPROVAL_REASON_INVALID", "reason is invalid"
@@ -187,14 +211,24 @@ class OrchestrationApprovalService:
                     "ORCHESTRATION_APPROVAL_REQUEST_MISSING", "approval request is missing"
                 )
             request_document = json.loads(request_row["document_json"])
+            request_authenticated = request_document.get("schema_version") == "2.0.0"
             if (
-                contract_issues(
-                    request_document, "orchestration-task-approval-request-v1.schema.json"
-                )
+                contract_issues(request_document, _request_schema(request_document))
                 or "sha256:" + content_hash(request_document) != request_row["request_digest"]
             ):
                 raise OrchestrationApprovalError(
                     "ORCHESTRATION_APPROVAL_REQUEST_INVALID", "approval request is invalid"
+                )
+            if request_authenticated != authenticated_session or (
+                request_authenticated
+                and (
+                    request_document["requester"]["actor_id"] != normalized_actor
+                    or request_document["requester"]["session_id"] != normalized_session
+                )
+            ):
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_ACTOR_MISMATCH",
+                    "authenticated human actor does not match the approval request",
                 )
             self._verified_policy(
                 request_document["assessment_id"],
@@ -217,6 +251,12 @@ class OrchestrationApprovalService:
                     content_hash_value=existing["content_hash"],
                     instant=instant,
                     signer=self.authorization.policy_signer,
+                    authentication_context=(
+                        "local_core_authenticated_session"
+                        if authenticated_session
+                        else "trusted_core_caller_assertion"
+                    ),
+                    session_id=normalized_session,
                 )
                 return stored
             requested_at = parse_time(request_document["requested_at"])
@@ -246,7 +286,7 @@ class OrchestrationApprovalService:
             revision_increment = 0 if decision == "approved" else 1
             decided_at = _timestamp(instant)
             document: dict[str, Any] = {
-                "schema_version": "1.0.0",
+                "schema_version": "2.0.0" if authenticated_session else "1.0.0",
                 "decision_id": str(uuid5(_NAMESPACE, "decision:" + request_id)),
                 "request_id": request_id,
                 "request_digest": request_row["request_digest"],
@@ -259,8 +299,16 @@ class OrchestrationApprovalService:
                 "policy_hash": request_document["policy_hash"],
                 "decision": decision,
                 "reason": normalized_reason,
-                "approver": {"actor_type": "human", "actor_id": normalized_actor},
-                "authentication_context": "trusted_core_caller_assertion",
+                "approver": {
+                    "actor_type": "human",
+                    "actor_id": normalized_actor,
+                    **({"session_id": normalized_session} if authenticated_session else {}),
+                },
+                "authentication_context": (
+                    "local_core_authenticated_session"
+                    if authenticated_session
+                    else "trusted_core_caller_assertion"
+                ),
                 "explicit_confirmation": True,
                 "decided_at": decided_at,
                 "expires_at": request_document["expires_at"],
@@ -273,7 +321,7 @@ class OrchestrationApprovalService:
                 "key_id": self.authorization.policy_signer.key_id,
                 "value": self.authorization.policy_signer.sign(canonical_json(document).encode()),
             }
-            if contract_issues(document, "orchestration-task-approval-decision-v1.schema.json"):
+            if contract_issues(document, _decision_schema(document)):
                 raise OrchestrationApprovalError(
                     "ORCHESTRATION_APPROVAL_RESULT_INVALID", "approval decision is invalid"
                 )
@@ -348,10 +396,12 @@ class OrchestrationApprovalService:
         content_hash_value: str,
         instant: datetime,
         signer: Any,
+        authentication_context: str,
+        session_id: str | None,
     ) -> None:
         unsigned = {key: value for key, value in document.items() if key != "signature"}
         if (
-            contract_issues(document, "orchestration-task-approval-decision-v1.schema.json")
+            contract_issues(document, _decision_schema(document))
             or content_hash(document) != content_hash_value
             or not signer.verify(
                 canonical_json(unsigned).encode(),
@@ -361,6 +411,8 @@ class OrchestrationApprovalService:
             or document["decision"] != decision
             or document["reason"] != reason
             or document["approver"]["actor_id"] != approver_id
+            or document["authentication_context"] != authentication_context
+            or document["approver"].get("session_id") != session_id
         ):
             raise OrchestrationApprovalError(
                 "ORCHESTRATION_APPROVAL_IDENTITY_CONFLICT", "decision identity conflicts"
@@ -472,6 +524,52 @@ def _plan_state(connection: sqlite3.Connection, plan_id: str) -> str:
     if all(state in {"cancelled", "succeeded", "failed"} for state in states):
         return "failed" if "failed" in states else "cancelled"
     return "active"
+
+
+def _authenticated_actor(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not 1 <= len(normalized) <= 128:
+        raise OrchestrationApprovalError(
+            "ORCHESTRATION_APPROVAL_ACTOR_INVALID", "human actor is invalid"
+        )
+    return normalized
+
+
+def _authenticated_session(value: str | None, actor: str | None) -> str | None:
+    if actor is None:
+        if value is not None:
+            raise OrchestrationApprovalError(
+                "ORCHESTRATION_APPROVAL_ACTOR_INVALID", "session requires a human actor"
+            )
+        return None
+    try:
+        return str(UUID(value or ""))
+    except ValueError as exc:
+        raise OrchestrationApprovalError(
+            "ORCHESTRATION_APPROVAL_ACTOR_INVALID", "authenticated session is invalid"
+        ) from exc
+
+
+def _request_schema(document: dict[str, Any]) -> str:
+    if document.get("schema_version") == "1.0.0":
+        return "orchestration-task-approval-request-v1.schema.json"
+    if document.get("schema_version") == "2.0.0":
+        return "orchestration-task-approval-request-v2.schema.json"
+    raise OrchestrationApprovalError(
+        "ORCHESTRATION_APPROVAL_REQUEST_INVALID", "approval request version is unsupported"
+    )
+
+
+def _decision_schema(document: dict[str, Any]) -> str:
+    if document.get("schema_version") == "1.0.0":
+        return "orchestration-task-approval-decision-v1.schema.json"
+    if document.get("schema_version") == "2.0.0":
+        return "orchestration-task-approval-decision-v2.schema.json"
+    raise OrchestrationApprovalError(
+        "ORCHESTRATION_APPROVAL_RESULT_INVALID", "approval decision version is unsupported"
+    )
 
 
 def _record(

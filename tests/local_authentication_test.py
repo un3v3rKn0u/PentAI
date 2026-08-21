@@ -6,10 +6,13 @@ import json
 import os
 import secrets
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
+from contextlib import closing
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +20,16 @@ import pytest
 from fastapi import FastAPI
 from pentai_core.config import Settings, allowed_origins
 from pentai_core.main import create_app
+from pentai_core.migrate import migrate
 from pentai_core.network_attestation_adapters import HostRouteSnapshot
 from pentai_core.network_profile_setup import NetworkProfileSetupService
+from pentai_core.orchestration import DurablePlanGraphService
+from pentai_core.policy_signing import PolicySigner
+
+from scripts.owned_fixture_authority import prepare_owned_fixture_session
+
+APPROVAL_PLAN = "33333333-3333-4333-8333-333333333333"
+APPROVAL_TASK = "44444444-4444-4444-8444-444444444444"
 
 
 def runtime_settings(database_path: Path, credential: str | None = None) -> Settings:
@@ -174,6 +185,95 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
     return create_app(settings), settings.launch_credential or ""
 
 
+def orchestration_approval_client(
+    tmp_path: Path,
+) -> tuple[FastAPI, str, dict[str, Any]]:
+    database = tmp_path / "orchestration-approval-api.db"
+    seed = b"\x07" * 32
+    settings = runtime_settings(database)
+    settings = Settings(**{**settings.__dict__, "policy_signing_key": seed})
+    migrate(database)
+    _, session = prepare_owned_fixture_session(
+        database_path=database,
+        source_store_path=tmp_path / "approval-sources",
+        policy_signer=PolicySigner(seed),
+    )
+    with closing(sqlite3.connect(database)) as connection:
+        assessment_id, policy_id, policy_hash = connection.execute(
+            """SELECT e.id, e.active_policy_id, p.content_hash FROM engagements e
+            JOIN policy_bundles p ON p.id = e.active_policy_id
+            JOIN budget_reservations b ON b.engagement_id = e.id
+            WHERE b.reservation_id = ?""",
+            (session["reservation_id"],),
+        ).fetchone()
+    now = datetime.now(UTC).replace(microsecond=0).isoformat()
+    DurablePlanGraphService(database).create(
+        {
+            "schema_version": "1.0.0",
+            "plan_id": APPROVAL_PLAN,
+            "assessment_id": assessment_id,
+            "idempotency_key": "synthetic-authenticated-approval-plan",
+            "revision": 1,
+            "state": "active",
+            "tasks": [
+                {
+                    "task_id": APPROVAL_TASK,
+                    "task_type": "validation",
+                    "objective": "Review synthetic authenticated approval metadata.",
+                    "input_refs": [],
+                    "requires_human_approval": True,
+                    "state": "pending",
+                    "revision": 1,
+                    "created_at": now,
+                    "updated_at": now,
+                    "authority": "none",
+                    "execution_enabled": False,
+                }
+            ],
+            "dependencies": [],
+            "created_at": now,
+            "updated_at": now,
+            "authority": "none",
+            "execution_enabled": False,
+        }
+    )
+    app = create_app(settings)
+    credential = settings.launch_credential or ""
+    resumed = app_request(
+        app,
+        "POST",
+        "/api/v1/safety-state",
+        authorization=f"Bearer {credential}",
+        json_body={
+            "status": "active",
+            "reason": "Synthetic authenticated approval API fixture setup.",
+        },
+    )
+    assert resumed.status_code == 200
+    assessment_resumed = app_request(
+        app,
+        "POST",
+        f"/api/v1/engagements/{assessment_id}/safety-state",
+        authorization=f"Bearer {credential}",
+        json_body={
+            "status": "active",
+            "reason": "Synthetic authenticated approval assessment setup.",
+        },
+    )
+    assert assessment_resumed.status_code == 200
+    return (
+        app,
+        credential,
+        {
+            "assessment_id": assessment_id,
+            "expected_plan_revision": 1,
+            "expected_task_revision": 1,
+            "policy_bundle_id": policy_id,
+            "policy_hash": policy_hash,
+        },
+    )
+
+
 @pytest.mark.parametrize(
     ("method", "path"),
     [
@@ -219,6 +319,11 @@ def authenticated_client(tmp_path: Path) -> tuple[FastAPI, str]:
         ("GET", "/api/v1/report-drafts/unknown"),
         ("GET", "/api/v1/report-drafts/unknown/artifacts/json"),
         ("POST", "/api/v1/report-drafts/unknown/file-exports"),
+        (
+            "POST",
+            "/api/v1/orchestration/plans/unknown/tasks/unknown/approval-request",
+        ),
+        ("POST", "/api/v1/orchestration/task-approval-requests/unknown/decision"),
     ],
 )
 def test_every_api_route_rejects_missing_credentials(
@@ -518,6 +623,103 @@ def test_caller_actor_identity_is_not_accepted_as_authority(
         json_body={"decision": "approved", "approver_id": "forged-human"},
     )
     assert response.status_code == 422
+
+
+def test_authenticated_orchestration_approval_derives_human_identity(tmp_path: Path) -> None:
+    app, credential, create_body = orchestration_approval_client(tmp_path)
+    created = app_request(
+        app,
+        "POST",
+        f"/api/v1/orchestration/plans/{APPROVAL_PLAN}/tasks/{APPROVAL_TASK}/approval-request",
+        authorization=f"Bearer {credential}",
+        json_body=create_body,
+    )
+    assert created.status_code == 200
+    request_document = created.json()
+    assert request_document["schema_version"] == "2.0.0"
+    assert request_document["requester"]["actor_type"] == "human"
+    assert request_document["requester"]["actor_id"] == "local-desktop-session"
+    assert request_document["requester"]["session_id"]
+    assert request_document["authentication_context"] == "local_core_authenticated_session"
+
+    decided = app_request(
+        app,
+        "POST",
+        f"/api/v1/orchestration/task-approval-requests/{request_document['request_id']}/decision",
+        authorization=f"Bearer {credential}",
+        json_body={
+            "decision": "approved",
+            "reason": "Synthetic authenticated review complete.",
+            "explicit_confirmation": True,
+        },
+    )
+    assert decided.status_code == 200
+    decision = decided.json()
+    assert decision["schema_version"] == "2.0.0"
+    assert decision["approver"]["actor_id"] == "local-desktop-session"
+    assert decision["approver"]["session_id"] == request_document["requester"]["session_id"]
+    assert decision["authentication_context"] == "local_core_authenticated_session"
+    assert decision["resulting_task_state"] == "awaiting_human"
+    assert decision["authority"] == "none" and decision["execution_enabled"] is False
+
+
+@pytest.mark.parametrize(
+    "forged_field",
+    ["approver_id", "requester", "authentication_context", "actor_type", "delegated_by"],
+)
+def test_orchestration_approval_rejects_caller_identity_fields(
+    tmp_path: Path, forged_field: str
+) -> None:
+    app, credential, create_body = orchestration_approval_client(tmp_path)
+    forged = {**create_body, forged_field: "forged-human"}
+    response = app_request(
+        app,
+        "POST",
+        f"/api/v1/orchestration/plans/{APPROVAL_PLAN}/tasks/{APPROVAL_TASK}/approval-request",
+        authorization=f"Bearer {credential}",
+        json_body=forged,
+    )
+    assert response.status_code == 422
+
+
+def test_orchestration_approval_requires_explicit_confirmation(tmp_path: Path) -> None:
+    app, credential, create_body = orchestration_approval_client(tmp_path)
+    created = app_request(
+        app,
+        "POST",
+        f"/api/v1/orchestration/plans/{APPROVAL_PLAN}/tasks/{APPROVAL_TASK}/approval-request",
+        authorization=f"Bearer {credential}",
+        json_body=create_body,
+    ).json()
+    cases = (
+        ({"decision": "approved", "reason": "Synthetic missing confirmation."}, 422),
+        (
+            {
+                "decision": "approved",
+                "reason": "Synthetic false confirmation.",
+                "explicit_confirmation": False,
+            },
+            409,
+        ),
+        (
+            {
+                "decision": "approved",
+                "reason": "Synthetic forged actor.",
+                "explicit_confirmation": True,
+                "approver_id": "forged-human",
+            },
+            422,
+        ),
+    )
+    for body, expected_status in cases:
+        response = app_request(
+            app,
+            "POST",
+            f"/api/v1/orchestration/task-approval-requests/{created['request_id']}/decision",
+            authorization=f"Bearer {credential}",
+            json_body=body,
+        )
+        assert response.status_code == expected_status
 
 
 def test_report_draft_api_exposes_no_submission_capability(
