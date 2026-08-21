@@ -56,7 +56,9 @@ metadata and opaque references only. Raw secrets, evidence content, prompts, pro
 payloads, model output, targets, and tool arguments are absent.
 
 Plan authorship/authentication, Master Orchestrator decisions, human approval,
-cancellation propagation, leases, checkpoints, retries, budgets, audit/outbox events,
+leases, checkpoints, general retry scheduling, and plan-transition audit/outbox events,
 retention/deletion, agents, provider calls, worker assignment, `ActionIntent`
 conversion, and execution remain deferred. The broader orchestration action remains
-open.
+open. A separate additive task-budget boundary now composes current plan/task state,
+capability manifests, cancellation fencing, durable integer reservations, and recovery;
+provider usage charging and end-to-end action budget enforcement remain deferred.

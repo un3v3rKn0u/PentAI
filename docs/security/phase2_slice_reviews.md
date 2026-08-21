@@ -1,5 +1,46 @@
 # Phase 2 slice security reviews
 
+## 2026-08-21 — Durable orchestration task budget v1
+
+**Review record:** Sole-maintainer security review — non-independent. The reviewer is
+the repository owner, author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, Execution
+Safety Lead, and Security Reviewer. The `GIT_WORKFLOW.md` exception is used and does
+not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed request/reservation schemas, migration 0038, durable
+account activation, atomic reservation and recovery service, immutable identity,
+hash-chained audit/outbox linkage, synthetic positive/default-deny/replay/concurrency/
+expiry/cancellation/recovery/tampering tests, documentation, complete diff, quality
+checks, and repository scans.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`, `INV-NET-005`,
+`INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`, `INV-DATA-003`,
+`INV-REL-001`, and `INV-REL-002`; validated provider ceilings cross into a trusted
+assessment account, then an untrusted request crosses deterministic current-state and
+atomic accounting checks into a non-authoritative reservation. No provider, model,
+secret broker, worker, tool, gateway, target, or network boundary is crossed.
+
+**Threat/default-deny review:** Missing/unknown fields, floating-point or empty values,
+overflow boundaries, authority-shaped input, stale account/policy/plan/task/manifest
+versions, cross-scope or cross-agent substitution, manifest tampering, changed replay,
+concurrent oversubscription, expiry, cancellation, terminal state, recovery ambiguity,
+and persisted identity mutation deny with stable codes. Exact replay cannot bypass
+fresh current-state checks. No material finding is accepted.
+
+**Compatibility, privacy, migration, and rollback:** Additive contracts/service and
+migration; existing AI and gateway ledgers and ActionIntent producers are unchanged.
+Only identifiers, hashes, timestamps, states, and integer ceilings/amounts are stored;
+no prompts, evidence, targets, credentials, secret references, or provider payloads.
+Rollback disables the service and retains security history; migration 0038 is not
+reversed.
+
+**Limitations and residual risk:** Trusted account activation is not yet reached
+through an authenticated Master Orchestrator. Provider usage reconciliation,
+committed debit, per-action budget composition, leases, checkpoints, approvals,
+dispatch, and execution remain deferred. Non-independent review reduces governance
+assurance and is accepted only for this local-development non-executing slice.
+
 ## 2026-08-21 — Task capability manifest v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository

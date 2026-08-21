@@ -1,0 +1,389 @@
+from __future__ import annotations
+
+import copy
+import sqlite3
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+import pytest
+from pentai_core.agent_intent import AgentActionIntentService
+from pentai_core.ai_provider_config import ProviderPolicy
+from pentai_core.ai_provider_registry import build_provider_policy
+from pentai_core.migrate import migrate
+from pentai_core.orchestration import DurablePlanGraphService
+from pentai_core.orchestration_budget import (
+    OrchestrationBudgetError,
+    OrchestrationBudgetService,
+)
+from pentai_policy.document import contract_issues
+
+from scripts.owned_fixture_authority import prepare_owned_fixture_session
+
+NOW = datetime.now(UTC).replace(microsecond=0)
+PLAN_ID = "33333333-3333-4333-8333-333333333333"
+TASK_ID = "44444444-4444-4444-8444-444444444444"
+
+
+def _provider_policy() -> ProviderPolicy:
+    return build_provider_policy(
+        {
+            "schema_version": "1.0.0",
+            "registry_id": "55555555-5555-4555-8555-555555555555",
+            "revision": 3,
+            "providers": [
+                {
+                    "provider_id": "local-approved",
+                    "provider_type": "local_runtime",
+                    "models": ["local-model-v1"],
+                    "allowed_input_classifications": ["public"],
+                    "state": "enabled",
+                }
+            ],
+            "budget_ceilings": {
+                "max_input_tokens": 100,
+                "max_output_tokens": 50,
+                "max_requests": 2,
+                "max_cost_microusd": 1000,
+                "max_runtime_seconds": 30,
+            },
+            "remote_providers_enabled": False,
+            "configured_at": (NOW - timedelta(days=1)).isoformat(),
+            "expires_at": (NOW + timedelta(days=10)).isoformat(),
+            "execution_enabled": False,
+        },
+        now=NOW,
+    )
+
+
+def _configuration() -> dict[str, Any]:
+    return {
+        "schema_version": "1.0.0",
+        "configuration_id": "66666666-6666-4666-8666-666666666666",
+        "provider_type": "local_runtime",
+        "provider_id": "local-approved",
+        "model_id": "local-model-v1",
+        "secret_ref": None,
+        "privacy_classification": "local_device",
+        "allowed_input_classifications": ["public"],
+        "budgets": {
+            "max_input_tokens": 100,
+            "max_output_tokens": 50,
+            "max_requests": 2,
+            "max_cost_microusd": 0,
+            "max_runtime_seconds": 30,
+        },
+        "remote_provider_opt_in": False,
+        "configured_at": NOW.isoformat(),
+        "expires_at": (NOW + timedelta(days=7)).isoformat(),
+        "execution_enabled": False,
+    }
+
+
+def setup(tmp_path: Path) -> tuple[OrchestrationBudgetService, dict[str, Any]]:
+    database = tmp_path / "orchestration-budget.db"
+    migrate(database)
+    authorization, session = prepare_owned_fixture_session(
+        database_path=database, source_store_path=tmp_path / "sources"
+    )
+    with closing(sqlite3.connect(database)) as connection:
+        assessment_id, policy_id, policy_hash = connection.execute(
+            """SELECT e.id, e.active_policy_id, p.content_hash FROM engagements e
+            JOIN policy_bundles p ON p.id = e.active_policy_id
+            JOIN budget_reservations b ON b.engagement_id = e.id
+            WHERE b.reservation_id = ?""",
+            (session["reservation_id"],),
+        ).fetchone()
+    graph = {
+        "schema_version": "1.0.0",
+        "plan_id": PLAN_ID,
+        "assessment_id": assessment_id,
+        "idempotency_key": "synthetic-budget-plan-0001",
+        "revision": 1,
+        "state": "active",
+        "tasks": [
+            {
+                "task_id": TASK_ID,
+                "task_type": "validation",
+                "objective": "Reserve synthetic non-executing task budget.",
+                "input_refs": [],
+                "requires_human_approval": False,
+                "state": "pending",
+                "revision": 1,
+                "created_at": NOW.isoformat(),
+                "updated_at": NOW.isoformat(),
+                "authority": "none",
+                "execution_enabled": False,
+            }
+        ],
+        "dependencies": [],
+        "created_at": NOW.isoformat(),
+        "updated_at": NOW.isoformat(),
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    plans = DurablePlanGraphService(database)
+    plans.create(graph)
+    plans.transition(
+        {
+            "schema_version": "1.0.0",
+            "command_id": str(uuid4()),
+            "plan_id": PLAN_ID,
+            "assessment_id": assessment_id,
+            "task_id": TASK_ID,
+            "expected_plan_revision": 1,
+            "expected_task_revision": 1,
+            "target_state": "running",
+            "requested_at": NOW.isoformat(),
+            "authority": "none",
+            "execution_enabled": False,
+        },
+        now=NOW,
+    )
+    manifest = AgentActionIntentService(authorization).issue_capability_manifest(
+        assessment_id=assessment_id,
+        plan_id=PLAN_ID,
+        expected_plan_revision=2,
+        task_id=TASK_ID,
+        expected_task_revision=2,
+        agent_id="agent://validation/budget-fixture",
+        policy_bundle_id=policy_id,
+        policy_hash=policy_hash,
+        now=NOW,
+    )
+    service = OrchestrationBudgetService(authorization)
+    account = service.activate_account(
+        assessment_id=assessment_id,
+        policy_bundle_id=policy_id,
+        policy_hash=policy_hash,
+        configuration=_configuration(),
+        provider_policy=_provider_policy(),
+        maximum_retries=3,
+        maximum_task_amounts={
+            "input_tokens": 60,
+            "output_tokens": 30,
+            "requests": 2,
+            "cost_microusd": 0,
+            "runtime_seconds": 20,
+            "retries": 2,
+        },
+        now=NOW,
+    )
+    request = {
+        "schema_version": "1.0.0",
+        "request_id": str(uuid4()),
+        "account_id": account["account_id"],
+        "expected_account_version": 1,
+        "assessment_id": assessment_id,
+        "plan_id": PLAN_ID,
+        "expected_plan_revision": 2,
+        "task_id": TASK_ID,
+        "expected_task_revision": 2,
+        "agent_id": "agent://validation/budget-fixture",
+        "capability_manifest_id": manifest["manifest_id"],
+        "expected_manifest_revision": 1,
+        "policy_bundle_id": policy_id,
+        "policy_hash": policy_hash,
+        "purpose": "reserve_validation_task_budget",
+        "amounts": {
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "requests": 1,
+            "cost_microusd": 0,
+            "runtime_seconds": 3,
+            "retries": 1,
+        },
+        "requested_at": NOW.isoformat(),
+        "expires_at": (NOW + timedelta(minutes=2)).isoformat(),
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    return service, request
+
+
+def test_reserves_durable_non_authoritative_budget_with_audit(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        grants_before = connection.execute("SELECT COUNT(*) FROM action_grants").fetchone()[0]
+    receipt = service.reserve(request, now=NOW)
+    assert contract_issues(
+        receipt, "orchestration-task-budget-reservation-v1.schema.json"
+    ) == ()
+    assert receipt["state"] == "reserved"
+    assert receipt["authority"] == "none" and receipt["execution_enabled"] is False
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM orchestration_task_budget_reservations"
+        ).fetchone()[0] == 1
+        assert (
+            connection.execute("SELECT COUNT(*) FROM action_grants").fetchone()[0]
+            == grants_before
+        )
+        assert connection.execute(
+            """SELECT COUNT(*) FROM audit_events
+            WHERE action = 'orchestration.task_budget_reserved'"""
+        ).fetchone()[0] == 1
+    assert service.authorization.verify_audit_chain()["valid"] is True
+
+
+def test_account_activation_replay_and_conflicting_ceiling_deny(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    arguments: dict[str, Any] = {
+        "assessment_id": request["assessment_id"],
+        "policy_bundle_id": request["policy_bundle_id"],
+        "policy_hash": request["policy_hash"],
+        "configuration": _configuration(),
+        "provider_policy": _provider_policy(),
+        "maximum_retries": 3,
+        "maximum_task_amounts": {
+            "input_tokens": 60,
+            "output_tokens": 30,
+            "requests": 2,
+            "cost_microusd": 0,
+            "runtime_seconds": 20,
+            "retries": 2,
+        },
+        "now": NOW,
+    }
+    first = service.activate_account(**arguments)
+    assert service.activate_account(**arguments) == first
+    with pytest.raises(OrchestrationBudgetError) as conflict:
+        service.activate_account(**(arguments | {"maximum_retries": 4}))
+    assert conflict.value.code == "ORCHESTRATION_BUDGET_ACCOUNT_CONFLICT"
+
+
+def test_per_task_ceiling_is_stricter_than_assessment_ceiling(tmp_path: Path) -> None:
+    service, first_request = setup(tmp_path)
+    service.reserve(first_request, now=NOW)
+    second = copy.deepcopy(first_request)
+    second["request_id"] = str(uuid4())
+    second["expected_account_version"] = 2
+    second["amounts"]["input_tokens"] = 51
+    with pytest.raises(OrchestrationBudgetError) as exceeded:
+        service.reserve(second, now=NOW)
+    assert exceeded.value.code == "ORCHESTRATION_TASK_BUDGET_EXCEEDED"
+
+
+def test_malformed_empty_cross_binding_version_and_limit_deny(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    cases: list[tuple[dict[str, Any], str]] = []
+    malformed = copy.deepcopy(request)
+    malformed["authority"] = "grant"
+    cases.append((malformed, "ORCHESTRATION_BUDGET_REQUEST_MALFORMED"))
+    fractional = copy.deepcopy(request)
+    fractional["amounts"]["cost_microusd"] = 1.5
+    cases.append((fractional, "ORCHESTRATION_BUDGET_REQUEST_MALFORMED"))
+    empty = copy.deepcopy(request)
+    empty["amounts"] = {field: 0 for field in empty["amounts"]}
+    cases.append((empty, "ORCHESTRATION_BUDGET_AMOUNT_INVALID"))
+    stale_version = copy.deepcopy(request)
+    stale_version["expected_account_version"] = 2
+    cases.append((stale_version, "ORCHESTRATION_BUDGET_VERSION_STALE"))
+    cross_agent = copy.deepcopy(request)
+    cross_agent["agent_id"] = "agent://validation/other"
+    cases.append((cross_agent, "ORCHESTRATION_BUDGET_MANIFEST_MISMATCH"))
+    over = copy.deepcopy(request)
+    over["amounts"]["input_tokens"] = 101
+    cases.append((over, "ORCHESTRATION_BUDGET_EXCEEDED"))
+    for document, code in cases:
+        with pytest.raises(OrchestrationBudgetError) as raised:
+            service.reserve(document, now=NOW)
+        assert raised.value.code == code
+
+
+def test_replay_conflict_and_concurrency_prevent_double_reservation(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    first = service.reserve(request, now=NOW)
+    assert service.reserve(request, now=NOW) == first
+    conflict = copy.deepcopy(request)
+    conflict["amounts"]["input_tokens"] = 11
+    with pytest.raises(OrchestrationBudgetError) as raised:
+        service.reserve(conflict, now=NOW)
+    assert raised.value.code == "ORCHESTRATION_BUDGET_IDENTITY_CONFLICT"
+
+    other, contender = setup(tmp_path / "concurrent")
+    contender["amounts"]["input_tokens"] = 60
+    second = copy.deepcopy(contender)
+    second["request_id"] = str(uuid4())
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(
+            pool.map(
+                lambda item: _reserve_code(other, item),
+                (contender, second),
+            )
+        )
+    assert outcomes.count("reserved") == 1
+    assert outcomes.count("ORCHESTRATION_BUDGET_VERSION_STALE") == 1
+
+
+def _reserve_code(service: OrchestrationBudgetService, request: dict[str, Any]) -> str:
+    try:
+        return str(service.reserve(request, now=NOW)["state"])
+    except OrchestrationBudgetError as error:
+        return error.code
+
+
+def test_cancellation_and_recovery_release_without_resuming_authority(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    service.reserve(request, now=NOW)
+    plans = DurablePlanGraphService(service.database_path)
+    plans.transition(
+        {
+            "schema_version": "1.0.0",
+            "command_id": str(uuid4()),
+            "plan_id": PLAN_ID,
+            "assessment_id": request["assessment_id"],
+            "task_id": TASK_ID,
+            "expected_plan_revision": 2,
+            "expected_task_revision": 2,
+            "target_state": "cancelling",
+            "requested_at": NOW.isoformat(),
+            "authority": "none",
+            "execution_enabled": False,
+        },
+        now=NOW,
+    )
+    with pytest.raises(OrchestrationBudgetError) as cancelled:
+        service.reserve(request, now=NOW)
+    assert cancelled.value.code == "ORCHESTRATION_BUDGET_PLAN_FENCED"
+    released = service.recover(now=NOW)
+    assert len(released) == 1 and released[0]["state"] == "released"
+    assert released[0]["release_reason"] == "cancelled"
+    assert service.recover(now=NOW) == ()
+
+
+def test_expiry_recovery_and_immutable_identity(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    request["expires_at"] = (NOW + timedelta(seconds=1)).isoformat()
+    receipt = service.reserve(request, now=NOW)
+    released = service.recover(now=NOW + timedelta(seconds=2))
+    assert released[0]["reservation_id"] == receipt["reservation_id"]
+    assert released[0]["release_reason"] == "expired"
+    with (
+        closing(sqlite3.connect(service.database_path)) as connection,
+        pytest.raises(sqlite3.IntegrityError),
+    ):
+        connection.execute(
+            "UPDATE orchestration_task_budget_reservations SET agent_id = 'changed'"
+        )
+    with (
+        closing(sqlite3.connect(service.database_path)) as connection,
+        pytest.raises(sqlite3.IntegrityError),
+    ):
+        connection.execute("DELETE FROM orchestration_budget_accounts")
+
+
+def test_recovery_rejects_tampered_receipt_state(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    service.reserve(request, now=NOW)
+    with closing(sqlite3.connect(service.database_path)) as connection, connection:
+        connection.execute(
+            """UPDATE orchestration_task_budget_reservations
+            SET receipt_json = '{"tampered":true}'"""
+        )
+    with pytest.raises(OrchestrationBudgetError) as invalid:
+        service.recover(now=NOW + timedelta(minutes=3))
+    assert invalid.value.code == "ORCHESTRATION_BUDGET_RECOVERY_INVALID"
