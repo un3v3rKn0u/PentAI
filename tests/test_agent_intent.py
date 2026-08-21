@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import copy
+import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -13,7 +15,7 @@ from pentai_core.agent_intent import AgentActionIntentService, AgentIntentError
 from pentai_core.migrate import migrate
 from pentai_core.orchestration import DurablePlanGraphService
 from pentai_policy import canonicalize_url, content_hash
-from pentai_policy.document import contract_issues
+from pentai_policy.document import contract_issues, parse_time
 
 from scripts.owned_fixture_authority import prepare_owned_fixture_session
 
@@ -22,7 +24,9 @@ PLAN_ID = "11111111-1111-4111-8111-111111111111"
 TASK_ID = "22222222-2222-4222-8222-222222222222"
 
 
-def setup(tmp_path: Path) -> tuple[AgentActionIntentService, dict[str, object]]:
+def setup(
+    tmp_path: Path, *, maximum_timeout_seconds: int = 30
+) -> tuple[AgentActionIntentService, dict[str, Any]]:
     database = tmp_path / "agent-intent.db"
     migrate(database)
     authorization, session = prepare_owned_fixture_session(
@@ -94,8 +98,21 @@ def setup(tmp_path: Path) -> tuple[AgentActionIntentService, dict[str, object]]:
         "impact": "benign",
         "requested_limits": {"timeout_seconds": 5, "maximum_response_bytes": 4096},
     }
+    service = AgentActionIntentService(authorization)
+    manifest = service.issue_capability_manifest(
+        assessment_id=engagement_id,
+        plan_id=PLAN_ID,
+        expected_plan_revision=2,
+        task_id=TASK_ID,
+        expected_task_revision=2,
+        agent_id="agent://validation/fixture",
+        policy_bundle_id=policy_id,
+        policy_hash=policy_hash,
+        maximum_timeout_seconds=maximum_timeout_seconds,
+        now=NOW,
+    )
     request = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "request_id": str(uuid4()),
         "assessment_id": engagement_id,
         "plan_id": PLAN_ID,
@@ -106,6 +123,8 @@ def setup(tmp_path: Path) -> tuple[AgentActionIntentService, dict[str, object]]:
         "purpose": "propose_supervised_http_validation",
         "policy_bundle_id": policy_id,
         "policy_hash": policy_hash,
+        "capability_manifest_id": manifest["manifest_id"],
+        "expected_manifest_revision": manifest["manifest_revision"],
         "input_sha256": "sha256:" + "a" * 64,
         "action_sha256": "sha256:" + content_hash(action),
         "action": action,
@@ -115,7 +134,7 @@ def setup(tmp_path: Path) -> tuple[AgentActionIntentService, dict[str, object]]:
         "authority": "none",
         "execution_enabled": False,
     }
-    return AgentActionIntentService(authorization), request
+    return service, request
 
 
 def test_converts_to_pending_intent_with_exact_provenance_and_audit(tmp_path: Path) -> None:
@@ -135,6 +154,8 @@ def test_converts_to_pending_intent_with_exact_provenance_and_audit(tmp_path: Pa
         )
         link = connection.execute("SELECT * FROM agent_action_intent_links").fetchone()
         assert link["authority"] == "none" and link["execution_enabled"] == 0
+        assert link["capability_manifest_id"] == request["capability_manifest_id"]
+        assert link["capability_manifest_revision"] == 1
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM action_grants WHERE intent_id = ?", (intent["intent_id"],)
@@ -148,6 +169,110 @@ def test_converts_to_pending_intent_with_exact_provenance_and_audit(tmp_path: Pa
             == 1
         )
     assert service.authorization.verify_audit_chain()["valid"] is True
+
+
+def test_trusted_core_issues_immutable_non_authoritative_manifest(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT * FROM task_capability_manifests").fetchone()
+        assert row is not None
+        manifest = json.loads(row["manifest_json"])
+        assert (
+            connection.execute(
+                """SELECT COUNT(*) FROM audit_events
+                WHERE action = 'orchestration.task_capability_manifest_issued'"""
+            ).fetchone()[0]
+            == 1
+        )
+    assert contract_issues(manifest, "task-capability-manifest-v1.schema.json") == ()
+    assert manifest["manifest_id"] == request["capability_manifest_id"]
+    assert manifest["authority"] == "none"
+    assert manifest["execution_enabled"] is False
+    assert service.authorization.verify_audit_chain()["valid"] is True
+    with (
+        closing(sqlite3.connect(service.database_path)) as connection,
+        pytest.raises(sqlite3.IntegrityError),
+    ):
+        connection.execute(
+            "UPDATE task_capability_manifests SET delegation_allowed = 1"
+        )
+    with (
+        closing(sqlite3.connect(service.database_path)) as connection,
+        pytest.raises(sqlite3.IntegrityError),
+    ):
+        connection.execute("DELETE FROM task_capability_manifests")
+
+
+def test_v1_and_missing_unknown_or_mismatched_manifest_deny(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    legacy = copy.deepcopy(request)
+    legacy["schema_version"] = "1.0.0"
+    legacy.pop("capability_manifest_id")
+    legacy.pop("expected_manifest_revision")
+    with pytest.raises(AgentIntentError) as required:
+        service.convert(legacy, now=NOW)
+    assert required.value.code == "AGENT_INTENT_CAPABILITY_MANIFEST_REQUIRED"
+
+    cases = (
+        ("capability_manifest_id", str(uuid4()), "AGENT_INTENT_MANIFEST_MISSING"),
+        ("expected_manifest_revision", 2, "AGENT_INTENT_REQUEST_MALFORMED"),
+    )
+    for field, value, code in cases:
+        changed = copy.deepcopy(request)
+        changed[field] = value
+        with pytest.raises(AgentIntentError) as raised:
+            service.convert(changed, now=NOW)
+        assert raised.value.code == code
+
+    changed = copy.deepcopy(request)
+    changed["agent"]["agent_id"] = "agent://validation/other"
+    with pytest.raises(AgentIntentError) as mismatch:
+        service.convert(changed, now=NOW)
+    assert mismatch.value.code == "AGENT_INTENT_MANIFEST_MISMATCH"
+
+
+def test_manifest_limits_and_expiry_deny(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        manifest = json.loads(
+            connection.execute(
+                "SELECT manifest_json FROM task_capability_manifests"
+            ).fetchone()[0]
+        )
+    request["created_at"] = (NOW + timedelta(minutes=14)).isoformat()
+    request["expires_at"] = (NOW + timedelta(minutes=16)).isoformat()
+    with pytest.raises(AgentIntentError) as stale:
+        service.convert(request, now=NOW + timedelta(minutes=15))
+    assert stale.value.code == "AGENT_INTENT_MANIFEST_STALE"
+    assert parse_time(manifest["expires_at"]) <= NOW + timedelta(minutes=15)
+
+    limited_service, limited_request = setup(
+        tmp_path / "limited", maximum_timeout_seconds=4
+    )
+    with pytest.raises(AgentIntentError) as exceeded:
+        limited_service.convert(limited_request, now=NOW)
+    assert exceeded.value.code == "AGENT_INTENT_MANIFEST_LIMIT_EXCEEDED"
+
+
+def test_manifest_issuance_replay_and_conflict_are_deterministic(tmp_path: Path) -> None:
+    service, request = setup(tmp_path)
+    arguments: dict[str, Any] = {
+        "assessment_id": str(request["assessment_id"]),
+        "plan_id": PLAN_ID,
+        "expected_plan_revision": 2,
+        "task_id": TASK_ID,
+        "expected_task_revision": 2,
+        "agent_id": "agent://validation/fixture",
+        "policy_bundle_id": str(request["policy_bundle_id"]),
+        "policy_hash": str(request["policy_hash"]),
+        "now": NOW,
+    }
+    first = service.issue_capability_manifest(**arguments)
+    assert service.issue_capability_manifest(**arguments) == first
+    with pytest.raises(AgentIntentError) as conflict:
+        service.issue_capability_manifest(**arguments, maximum_timeout_seconds=4)
+    assert conflict.value.code == "TASK_CAPABILITY_IDENTITY_CONFLICT"
 
 
 def test_malformed_unsupported_secret_command_and_tampering_deny(tmp_path: Path) -> None:

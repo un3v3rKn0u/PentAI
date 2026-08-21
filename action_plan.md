@@ -747,8 +747,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - A first non-executing conversion boundary now accepts one closed Validation Agent
     HTTP GET proposal, revalidates exact assessment/policy/plan/task/safety state, and
     persists an immutable pending ActionIntent with durable provenance and audit
-    linkage. Agent runtime authentication, capability manifests, other request types,
-    cancellation/budget composition, and end-to-end evaluation remain required.
+    linkage. A trusted-core-issued immutable task-capability manifest now replaces the
+    fixed task-type permission assumption and binds exact plan/task/agent/policy
+    revisions, purpose, capability, limits, and expiry. Cancellation, terminal state,
+    recovery fencing, safety pause, and policy replacement deny new manifest use.
+    Agent runtime authentication, generalized capabilities and request types,
+    approval/budget composition, and end-to-end evaluation remain required.
 - [ ] Add task dependency, lease, cancellation, budget, checkpoint, and human-approval handling.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.

@@ -35,7 +35,11 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `orchestration-task-transition-v1.schema.json` — short-lived idempotent task-state
   command with exact assessment, plan, task, and revision bindings.
 - `agent-action-intent-request-v1.schema.json` — non-authoritative Validation Agent
-  proposal converted into a provenance-bound pending ActionIntent.
+  proposal retained for compatibility and denied for new conversion without a manifest.
+- `agent-action-intent-request-v2.schema.json` — manifest-bound, non-authoritative
+  Validation Agent proposal converted into a provenance-bound pending ActionIntent.
+- `task-capability-manifest-v1.schema.json` — trusted-core-issued immutable ceiling for
+  one exact assessment, plan, task, agent, policy, purpose, capability, and limit set.
 - `engagement-manifest-v2.schema.json` — normalized human-reviewed engagement data.
 - `policy-ir-v1.schema.json` — deterministic compiled authorization policy.
 - `action-intent-v1.schema.json` — immutable request for an external effect.
