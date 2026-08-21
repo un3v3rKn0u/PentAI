@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/ai-output-repair-request-v1.schema.json",
+  "title": "PentAI AI Output Repair Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "repair_id", "response_type", "initial_output_sha256", "initial_failure_code", "attempt_number", "max_output_bytes", "max_nesting_depth", "max_observations", "issued_at", "expires_at", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "repair_id": {"type": "string", "format": "uuid"},
+    "response_type": {"const": "candidate_observation"},
+    "initial_output_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "initial_failure_code": {"enum": ["AI_OUTPUT_MALFORMED", "AI_OUTPUT_SCHEMA_INVALID"]},
+    "attempt_number": {"const": 2},
+    "max_output_bytes": {"const": 32768},
+    "max_nesting_depth": {"const": 6},
+    "max_observations": {"const": 32},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "execution_enabled": {"const": false}
+  }
+}

@@ -707,6 +707,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     provider usage reconciliation, runtime deadline enforcement, and audit integration
     remain required before this item can be completed.
 - [ ] Implement strict structured-output parsing with rejection and bounded repair.
+  - A non-executing structured-output v1 boundary now strictly decodes one bounded
+    candidate-observation type and records direct acceptance, one-repair acceptance,
+    or denial. Duplicate keys, trailing content, invalid encoding, non-finite values,
+    coercion, unknown/unsupported fields, excessive size/depth/collections, tampered or
+    stale repair binding, replay, concurrency, and repair exhaustion deny with stable
+    codes. Provider-mediated repair, durable replay fencing/audit, additional response
+    types, and end-to-end consumer integration remain required before completion.
 - [ ] Create untrusted-content envelopes and prompt-injection regression tests.
 - [ ] Implement assessment-scoped retrieval with provenance and ACL filters.
 - [ ] Ensure secrets and raw restricted evidence cannot enter model contexts by default.

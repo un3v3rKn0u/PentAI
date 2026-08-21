@@ -14,6 +14,12 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   to reserve bounded AI token, request, integer-cost, and runtime capacity.
 - `ai-budget-reservation-v1.schema.json` — immutable non-executing reservation,
   commit, or release receipt with exact configuration and registry provenance.
+- `ai-candidate-observation-v1.schema.json` — bounded non-authoritative candidate data
+  accepted from strict model-output parsing.
+- `ai-output-repair-request-v1.schema.json` — short-lived, digest-bound, one-repair
+  request with fixed parser limits and execution disabled.
+- `ai-structured-output-result-v1.schema.json` — deterministic direct, repaired, or
+  denied parse result linked to the exact output bytes.
 - `engagement-manifest-v2.schema.json` — normalized human-reviewed engagement data.
 - `policy-ir-v1.schema.json` — deterministic compiled authorization policy.
 - `action-intent-v1.schema.json` — immutable request for an external effect.
@@ -98,6 +104,9 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | AISecretReference v1 | Data Protection Lead | Contract Maintainer | AI/Agent Lead, Security Reviewer |
 | AIBudgetReservationRequest v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | AIBudgetReservation v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
+| AICandidateObservation v1 | AI/Agent Lead | Contract Maintainer | Security Reviewer |
+| AIOutputRepairRequest v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
+| AIStructuredOutputResult v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | Engagement Manifest v2 | Product Safety Lead | Contract Maintainer | Product Owner, Policy Maintainer, Security Reviewer |
 | Policy IR v1 | Policy Maintainer | Contract Maintainer | Core Maintainer, independent Security Reviewer |
 | ActionIntent v1 | Execution Safety Lead | Contract Maintainer | Policy Maintainer, independent Security Reviewer |

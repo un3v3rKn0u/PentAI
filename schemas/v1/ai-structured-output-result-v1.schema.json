@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/ai-structured-output-result-v1.schema.json",
+  "title": "PentAI AI Structured Output Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "response_type", "outcome", "parse_path", "attempt_count", "output_sha256", "payload", "failure_code", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "response_type": {"const": "candidate_observation"},
+    "outcome": {"enum": ["accepted", "denied"]},
+    "parse_path": {"enum": ["direct", "repaired", "none"]},
+    "attempt_count": {"type": "integer", "minimum": 1, "maximum": 2},
+    "output_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "payload": {"oneOf": [{"$ref": "#/$defs/candidate"}, {"type": "null"}]},
+    "failure_code": {"oneOf": [{"type": "string", "pattern": "^AI_OUTPUT_[A-Z0-9_]+$"}, {"type": "null"}]},
+    "execution_enabled": {"const": false}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"outcome": {"const": "accepted"}}},
+      "then": {
+        "properties": {
+          "parse_path": {"enum": ["direct", "repaired"]},
+          "payload": {"$ref": "#/$defs/candidate"},
+          "failure_code": {"const": null}
+        }
+      },
+      "else": {
+        "properties": {
+          "parse_path": {"const": "none"},
+          "payload": {"const": null},
+          "failure_code": {"type": "string", "pattern": "^AI_OUTPUT_[A-Z0-9_]+$"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "response_type", "summary", "observations", "execution_enabled"],
+      "properties": {
+        "schema_version": {"const": "1.0.0"},
+        "response_type": {"const": "candidate_observation"},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "observations": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["category", "detail", "confidence_millis"],
+            "properties": {
+              "category": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+              "detail": {"type": "string", "minLength": 1, "maxLength": 1000},
+              "confidence_millis": {"type": "integer", "minimum": 0, "maximum": 1000}
+            }
+          }
+        },
+        "execution_enabled": {"const": false}
+      }
+    }
+  }
+}
