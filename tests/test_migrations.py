@@ -53,6 +53,7 @@ class MigrationTests(unittest.TestCase):
                     "0034",
                     "0035",
                     "0036",
+                    "0037",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -113,6 +114,7 @@ class MigrationTests(unittest.TestCase):
                     "orchestration_dependencies",
                     "orchestration_commands",
                     "agent_action_intent_links",
+                    "task_capability_manifests",
                 }
                 <= tables
             )

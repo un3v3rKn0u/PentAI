@@ -1,5 +1,44 @@
 # Phase 2 slice security reviews
 
+## 2026-08-21 — Task capability manifest v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author and security reviewer; the `GIT_WORKFLOW.md` exception is used and
+does not satisfy an independent-review requirement.
+
+**Scope and evidence:** Closed manifest and request-v2 schemas, migration 0037,
+trusted-core issuance and conversion composition, immutable provenance, synthetic
+positive/default-deny/replay/tampering/expiry/limit/cancellation/recovery tests,
+contract and action-plan documentation, complete diff, quality checks, and repository
+scans.
+
+**Invariants and trust boundaries:** `INV-AUTH-003`, `INV-AGENT-001` through
+`INV-AGENT-003`, `INV-DATA-001`, `INV-DATA-003`, and `INV-REL-001`; trusted core issues
+a non-authoritative ceiling after current-state validation, then treats each agent
+proposal as untrusted input and revalidates every binding before creating only a
+pending ActionIntent. No provider, model, plugin, worker, tool, gateway, target, or
+network boundary is crossed.
+
+**Threat/default-deny review:** Wildcards, caller issuance, delegation, privilege
+inheritance, unsupported operations, secret/credential/raw-evidence fields, malformed
+or unknown data, stale policy/plan/task/manifest revisions, cross-scope or cross-agent
+substitution, changed replay, expiry, limit expansion, cancellation, terminal state,
+safety pause, and recovery reuse deny with stable codes. Exact replay is idempotent
+only while current security bindings remain valid. No material finding is accepted.
+
+**Compatibility, privacy, migration, and rollback:** Request v2 is additive; request
+v1 is retained for stored-document compatibility but denied for new conversion.
+ActionIntent v1 and other producers are unchanged. Migration 0037 preserves old rows
+with nullable linkage and adds immutable manifest records. Only bounded metadata and
+opaque digests are stored; no secrets or content. Rollback disables issuance and new
+v2 conversion while retaining immutable history; the migration is not reversed.
+
+**Limitations and residual risk:** Agent transport authentication, authenticated Master
+Orchestrator authorship, generalized capability issuance, approvals, budget charging,
+leases, dispatch, and execution remain deferred. Non-independent review reduces
+governance assurance and is accepted only for this local-development non-executing
+slice.
+
 ## 2026-08-21 — Agent request to pending ActionIntent v1
 
 **Review record:** Sole-maintainer security review — non-independent.

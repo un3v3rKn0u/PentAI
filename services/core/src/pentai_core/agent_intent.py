@@ -14,6 +14,7 @@ from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.database import transaction
 
 MAX_REQUEST_LIFETIME = timedelta(minutes=5)
+MAX_MANIFEST_LIFETIME = timedelta(minutes=15)
 _INTENT_NAMESPACE = UUID("9a60a844-e45a-49f1-9606-b7a923057ce6")
 
 
@@ -30,9 +31,129 @@ class AgentActionIntentService:
         self.authorization = authorization
         self.database_path = authorization.database_path
 
+    def issue_capability_manifest(
+        self,
+        *,
+        assessment_id: str,
+        plan_id: str,
+        expected_plan_revision: int,
+        task_id: str,
+        expected_task_revision: int,
+        agent_id: str,
+        policy_bundle_id: str,
+        policy_hash: str,
+        maximum_impact: str = "benign",
+        maximum_timeout_seconds: int = 30,
+        maximum_response_bytes: int = 1_048_576,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        instant = _instant(now)
+        issued_at = _timestamp(instant)
+        expires_at = _timestamp(instant + MAX_MANIFEST_LIFETIME)
+        manifest_id = str(
+            uuid5(
+                _INTENT_NAMESPACE,
+                f"manifest:{plan_id}:{task_id}:{expected_task_revision}:{agent_id}",
+            )
+        )
+        manifest = {
+            "schema_version": "1.0.0",
+            "manifest_id": manifest_id,
+            "manifest_revision": 1,
+            "assessment_id": assessment_id,
+            "plan_id": plan_id,
+            "plan_revision": expected_plan_revision,
+            "task_id": task_id,
+            "task_revision": expected_task_revision,
+            "task_type": "validation",
+            "agent_id": agent_id,
+            "policy_bundle_id": policy_bundle_id,
+            "policy_hash": policy_hash,
+            "allowed_purposes": ["propose_supervised_http_validation"],
+            "allowed_capabilities": ["network.http.get"],
+            "limits": {
+                "maximum_impact": maximum_impact,
+                "maximum_timeout_seconds": maximum_timeout_seconds,
+                "maximum_response_bytes": maximum_response_bytes,
+            },
+            "issued_at": issued_at,
+            "expires_at": expires_at,
+            "issued_by": "pentai-core",
+            "delegation_allowed": False,
+            "authority": "none",
+            "execution_enabled": False,
+        }
+        if contract_issues(manifest, "task-capability-manifest-v1.schema.json"):
+            raise AgentIntentError(
+                "TASK_CAPABILITY_MANIFEST_MALFORMED", "capability manifest is malformed"
+            )
+        self.authorization._require_storage_safe()
+        try:
+            verified = self.authorization.get_policy(assessment_id, policy_bundle_id)
+        except DomainError as error:
+            raise AgentIntentError("TASK_CAPABILITY_POLICY_INVALID", "policy is invalid") from error
+        if verified["status"] != "active" or verified["content_hash"] != policy_hash:
+            raise AgentIntentError("TASK_CAPABILITY_POLICY_STALE", "policy is stale")
+        policy_expiry = parse_time(verified["policy"]["validity"]["not_after"])
+        if policy_expiry <= instant:
+            raise AgentIntentError("TASK_CAPABILITY_POLICY_STALE", "policy is stale")
+        expires_at = _timestamp(min(instant + MAX_MANIFEST_LIFETIME, policy_expiry))
+        manifest["expires_at"] = expires_at
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._revalidate_binding(
+                connection,
+                assessment_id=assessment_id,
+                plan_id=plan_id,
+                plan_revision=expected_plan_revision,
+                task_id=task_id,
+                task_revision=expected_task_revision,
+                policy_bundle_id=policy_bundle_id,
+                policy_hash=policy_hash,
+                instant=instant,
+            )
+            existing = connection.execute(
+                """SELECT manifest_hash, manifest_json
+                FROM task_capability_manifests WHERE manifest_id = ?""",
+                (manifest_id,),
+            ).fetchone()
+            manifest_hash = content_hash(manifest)
+            if existing is not None:
+                if existing["manifest_hash"] != manifest_hash:
+                    raise AgentIntentError(
+                        "TASK_CAPABILITY_IDENTITY_CONFLICT", "manifest identity conflicts"
+                    )
+                return cast(dict[str, Any], json.loads(str(existing["manifest_json"])))
+            connection.execute(
+                """INSERT INTO task_capability_manifests VALUES
+                (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pentai-core', 0, 'none', 0)""",
+                (
+                    manifest_id,
+                    assessment_id,
+                    plan_id,
+                    expected_plan_revision,
+                    task_id,
+                    expected_task_revision,
+                    agent_id,
+                    policy_bundle_id,
+                    policy_hash,
+                    canonical_json(manifest),
+                    manifest_hash,
+                    issued_at,
+                    expires_at,
+                ),
+            )
+            _record_manifest(connection, manifest)
+        return copy.deepcopy(manifest)
+
     def convert(self, request: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
         document = copy.deepcopy(request)
-        if contract_issues(document, "agent-action-intent-request-v1.schema.json"):
+        if document.get("schema_version") == "1.0.0":
+            raise AgentIntentError(
+                "AGENT_INTENT_CAPABILITY_MANIFEST_REQUIRED",
+                "request v2 capability manifest is required",
+            )
+        if contract_issues(document, "agent-action-intent-request-v2.schema.json"):
             raise AgentIntentError("AGENT_INTENT_REQUEST_MALFORMED", "agent request is malformed")
         instant = _instant(now)
         created_at = parse_time(document["created_at"])
@@ -96,6 +217,7 @@ class AgentActionIntentService:
         with transaction(self.database_path) as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._revalidate_state(connection, document, instant)
+            self._revalidate_manifest(connection, document, instant)
             replay = connection.execute(
                 "SELECT * FROM agent_action_intent_links WHERE request_id = ?",
                 (document["request_id"],),
@@ -131,8 +253,13 @@ class AgentActionIntentService:
                     ),
                 )
                 connection.execute(
-                    """INSERT INTO agent_action_intent_links VALUES
-                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', 0)""",
+                    """INSERT INTO agent_action_intent_links(
+                    request_id, request_digest, intent_id, assessment_id, plan_id,
+                    plan_revision, task_id, task_revision, agent_id, purpose,
+                    policy_bundle_id, policy_hash, input_sha256, action_sha256,
+                    created_at, authority, execution_enabled, capability_manifest_id,
+                    capability_manifest_revision
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', 0, ?, ?)""",
                     (
                         document["request_id"],
                         request_digest,
@@ -149,6 +276,8 @@ class AgentActionIntentService:
                         document["input_sha256"],
                         document["action_sha256"],
                         document["created_at"],
+                        document["capability_manifest_id"],
+                        document["expected_manifest_revision"],
                     ),
                 )
             except sqlite3.IntegrityError as error:
@@ -205,6 +334,76 @@ class AgentActionIntentService:
             raise AgentIntentError("AGENT_INTENT_TASK_FENCED", "task is stale")
         if task["state"] != "running" or task["task_type"] != "validation":
             raise AgentIntentError("AGENT_INTENT_TASK_DENIED", "task cannot propose actions")
+
+    @staticmethod
+    def _revalidate_binding(
+        connection: sqlite3.Connection,
+        *,
+        assessment_id: str,
+        plan_id: str,
+        plan_revision: int,
+        task_id: str,
+        task_revision: int,
+        policy_bundle_id: str,
+        policy_hash: str,
+        instant: datetime,
+    ) -> None:
+        document = {
+            "assessment_id": assessment_id,
+            "plan_id": plan_id,
+            "expected_plan_revision": plan_revision,
+            "task_id": task_id,
+            "expected_task_revision": task_revision,
+            "policy_bundle_id": policy_bundle_id,
+            "policy_hash": policy_hash,
+        }
+        AgentActionIntentService._revalidate_state(connection, document, instant)
+
+    @staticmethod
+    def _revalidate_manifest(
+        connection: sqlite3.Connection, document: dict[str, Any], instant: datetime
+    ) -> None:
+        row = connection.execute(
+            """SELECT manifest_json FROM task_capability_manifests
+            WHERE manifest_id = ? AND manifest_revision = ?""",
+            (document["capability_manifest_id"], document["expected_manifest_revision"]),
+        ).fetchone()
+        if row is None:
+            raise AgentIntentError(
+                "AGENT_INTENT_MANIFEST_MISSING", "capability manifest is missing"
+            )
+        manifest = json.loads(str(row["manifest_json"]))
+        if contract_issues(manifest, "task-capability-manifest-v1.schema.json"):
+            raise AgentIntentError(
+                "AGENT_INTENT_MANIFEST_INVALID", "capability manifest is invalid"
+            )
+        exact = (
+            manifest["assessment_id"] == document["assessment_id"]
+            and manifest["plan_id"] == document["plan_id"]
+            and manifest["plan_revision"] == document["expected_plan_revision"]
+            and manifest["task_id"] == document["task_id"]
+            and manifest["task_revision"] == document["expected_task_revision"]
+            and manifest["agent_id"] == document["agent"]["agent_id"]
+            and manifest["policy_bundle_id"] == document["policy_bundle_id"]
+            and manifest["policy_hash"] == document["policy_hash"]
+            and document["purpose"] in manifest["allowed_purposes"]
+            and document["action"]["capability"] in manifest["allowed_capabilities"]
+        )
+        if not exact:
+            raise AgentIntentError("AGENT_INTENT_MANIFEST_MISMATCH", "manifest binding mismatches")
+        if parse_time(manifest["expires_at"]) <= instant:
+            raise AgentIntentError("AGENT_INTENT_MANIFEST_STALE", "capability manifest is stale")
+        impact_rank = {"passive": 0, "benign": 1}
+        limits = manifest["limits"]
+        requested = document["action"]["requested_limits"]
+        if (
+            impact_rank[document["action"]["impact"]] > impact_rank[limits["maximum_impact"]]
+            or requested["timeout_seconds"] > limits["maximum_timeout_seconds"]
+            or requested["maximum_response_bytes"] > limits["maximum_response_bytes"]
+        ):
+            raise AgentIntentError(
+                "AGENT_INTENT_MANIFEST_LIMIT_EXCEEDED", "manifest limits exceeded"
+            )
 
 
 def _record(
@@ -275,8 +474,78 @@ def _record(
     )
 
 
+def _record_manifest(connection: sqlite3.Connection, manifest: dict[str, Any]) -> None:
+    previous = connection.execute(
+        "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+    ).fetchone()
+    previous_hash = previous["event_hash"] if previous else None
+    data = {
+        "assessment_id": manifest["assessment_id"],
+        "plan_id": manifest["plan_id"],
+        "plan_revision": manifest["plan_revision"],
+        "task_id": manifest["task_id"],
+        "task_revision": manifest["task_revision"],
+        "manifest_revision": manifest["manifest_revision"],
+        "policy_hash": manifest["policy_hash"],
+        "allowed_purposes": manifest["allowed_purposes"],
+        "allowed_capabilities": manifest["allowed_capabilities"],
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    event = {
+        "event_id": str(uuid4()),
+        "occurred_at": manifest["issued_at"],
+        "actor_type": "service",
+        "actor_id": "pentai-core",
+        "action": "orchestration.task_capability_manifest_issued",
+        "subject_type": "task_capability_manifest",
+        "subject_id": manifest["manifest_id"],
+        "data": data,
+        "previous_hash": previous_hash,
+    }
+    event_hash = content_hash(event)
+    connection.execute(
+        """INSERT INTO audit_events(event_id, occurred_at, actor_type, actor_id, action,
+        subject_type, subject_id, data_json, previous_hash, event_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            event["event_id"],
+            event["occurred_at"],
+            event["actor_type"],
+            event["actor_id"],
+            event["action"],
+            event["subject_type"],
+            event["subject_id"],
+            canonical_json(data),
+            previous_hash,
+            event_hash,
+        ),
+    )
+    connection.execute(
+        """INSERT INTO outbox(id, aggregate_type, aggregate_id, event_type, payload_json)
+        VALUES (?, ?, ?, ?, ?)""",
+        (
+            str(uuid4()),
+            "task_capability_manifest",
+            manifest["manifest_id"],
+            "orchestration.task_capability_manifest_issued",
+            canonical_json(
+                {
+                    "event_hash": event_hash,
+                    "occurred_at": manifest["issued_at"],
+                    "subject_id": manifest["manifest_id"],
+                }
+            ),
+        ),
+    )
+
+
 def _instant(value: datetime | None) -> datetime:
     instant = value or datetime.now(UTC)
     if instant.tzinfo is None:
         raise AgentIntentError("AGENT_INTENT_CLOCK_INVALID", "clock is invalid")
     return instant.astimezone(UTC)
+
+
+def _timestamp(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
