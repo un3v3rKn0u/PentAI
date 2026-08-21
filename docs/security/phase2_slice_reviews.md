@@ -1,5 +1,50 @@
 # Phase 2 slice security reviews
 
+## 2026-08-21 — Durable orchestration plan graph v1
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, author, Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer, Data
+Protection Lead, and Security Reviewer. The `GIT_WORKFLOW.md` exception is used. This
+review is not independent and cannot satisfy an external independence requirement.
+
+**Scope and evidence:** Plan-graph and transition schemas, migration 0035, deterministic
+service, synthetic graph/transition/concurrency/recovery tests, migration tests,
+contract and action-plan documentation, complete diff, quality checks, and repository
+scans. Exact validation results are recorded in the pull request.
+
+**Invariants and boundaries:** `INV-AUTH-003`, `INV-AGENT-001` through
+`INV-AGENT-003`, `INV-DATA-001`, `INV-REL-001`, and `INV-REL-002`; untrusted graph and
+command documents to deterministic validation, validated coordination state to SQLite,
+and interrupted state to fail-closed recovery. No provider, secret, evidence-content,
+agent, worker, plugin, tool, gateway, target, or network boundary is crossed.
+
+**Threat and abuse cases:** malformed/oversized graphs, duplicate or conflicting
+identity, missing/cross-plan references, self/cyclic/duplicate edges, unsupported task
+or dependency type, privilege inheritance, stale plan/task revision, cross-assessment
+substitution, changed command replay, invalid or terminal transition, concurrent
+mutation, database tampering/deletion, and restart attempts to resume interrupted work.
+
+**Default-deny findings:** Closed contracts precede semantic checks. Exact assessment,
+plan, task, revision, command identity, transition, and request time are bound. Graph
+creation derives readiness rather than trusting caller state. Database constraints and
+triggers retain non-authority, immutable identity/history, and monotonic revisions.
+Recovery only fails interrupted tasks. No material finding is accepted.
+
+**Compatibility, privacy, secrets, migration, and rollback:** Additive v1 contracts and
+migration; existing workflow and authorization records are unchanged. Only bounded
+metadata and opaque references are stored. Raw secrets/evidence/model content are
+absent. Application rollback disables the new service and retains immutable records;
+the migration is not reversed.
+
+**Limitations and residual risk:** Plan authorship and activation are not authenticated;
+human approval, audit/outbox linkage, cancellation propagation, leases, checkpoints,
+retries, budgets, retention, Master Orchestrator logic, agents, tool-to-`ActionIntent`
+conversion, and execution are deferred. No task is dispatched. Non-independent review
+reduces governance assurance; the sole maintainer accepts that risk only for this
+local-development non-executing slice.
+
 ## 2026-08-20 — AI provider configuration contract v1
 
 **Review record:** Sole-maintainer security review — non-independent.

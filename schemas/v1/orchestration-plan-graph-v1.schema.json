@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-plan-graph-v1.schema.json",
+  "title": "PentAI OrchestrationPlanGraph v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "assessment_id", "idempotency_key", "revision", "state", "tasks", "dependencies", "created_at", "updated_at", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{15,127}$"},
+    "revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "state": {"enum": ["active", "completed", "cancelled", "failed"]},
+    "tasks": {
+      "type": "array", "minItems": 1, "maxItems": 128,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["task_id", "task_type", "objective", "input_refs", "requires_human_approval", "state", "revision", "created_at", "updated_at", "authority", "execution_enabled"],
+        "properties": {
+          "task_id": {"type": "string", "format": "uuid"},
+          "task_type": {"enum": ["scope", "rules_of_engagement", "evidence", "validation", "reporting"]},
+          "objective": {"type": "string", "minLength": 1, "maxLength": 512},
+          "input_refs": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "format": "uuid"}},
+          "requires_human_approval": {"type": "boolean"},
+          "state": {"enum": ["pending", "blocked", "awaiting_human", "ready", "running", "cancelling", "cancelled", "succeeded", "failed"]},
+          "revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "authority": {"const": "none"},
+          "execution_enabled": {"const": false}
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array", "maxItems": 512,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["predecessor_task_id", "successor_task_id", "dependency_type"],
+        "properties": {
+          "predecessor_task_id": {"type": "string", "format": "uuid"},
+          "successor_task_id": {"type": "string", "format": "uuid"},
+          "dependency_type": {"enum": ["requires_success"]}
+        }
+      }
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}
