@@ -699,6 +699,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     stale, revoked, local-runtime, and resolution-enabled input deny. OS credential
     storage, brokered resolution, rotation, persistence, and audit remain required
     before this item can be completed.
+  - A non-executing AI budget reservation v1 ledger now provides atomic integer
+    accounting for input/output tokens, request count, micro-USD cost, and runtime
+    seconds. Idempotency, version fencing, bounded reservation expiry, concurrency,
+    lifecycle transitions, and fail-closed recovery prevent double charging and
+    oversubscription. Durable orchestration storage, per-task/assessment aggregation,
+    provider usage reconciliation, runtime deadline enforcement, and audit integration
+    remain required before this item can be completed.
 - [ ] Implement strict structured-output parsing with rejection and bounded repair.
 - [ ] Create untrusted-content envelopes and prompt-injection regression tests.
 - [ ] Implement assessment-scoped retrieval with provenance and ACL filters.

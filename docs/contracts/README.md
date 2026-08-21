@@ -10,6 +10,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   privacy-route, state, validity, and global budget-ceiling source.
 - `ai-secret-reference-v1.schema.json` — non-resolving opaque provider-secret metadata
   bound to one exact provider configuration, purpose, lifecycle, and validity window.
+- `ai-budget-reservation-request-v1.schema.json` — version-fenced, idempotent request
+  to reserve bounded AI token, request, integer-cost, and runtime capacity.
+- `ai-budget-reservation-v1.schema.json` — immutable non-executing reservation,
+  commit, or release receipt with exact configuration and registry provenance.
 - `engagement-manifest-v2.schema.json` — normalized human-reviewed engagement data.
 - `policy-ir-v1.schema.json` — deterministic compiled authorization policy.
 - `action-intent-v1.schema.json` — immutable request for an external effect.
@@ -92,6 +96,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | AIProviderConfiguration v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
 | AIProviderRegistry v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
 | AISecretReference v1 | Data Protection Lead | Contract Maintainer | AI/Agent Lead, Security Reviewer |
+| AIBudgetReservationRequest v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
+| AIBudgetReservation v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | Engagement Manifest v2 | Product Safety Lead | Contract Maintainer | Product Owner, Policy Maintainer, Security Reviewer |
 | Policy IR v1 | Policy Maintainer | Contract Maintainer | Core Maintainer, independent Security Reviewer |
 | ActionIntent v1 | Execution Safety Lead | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
