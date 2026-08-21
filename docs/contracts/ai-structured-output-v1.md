@@ -64,8 +64,10 @@ empty, duplicate, trailing, malformed, non-finite, version, type, operation, unk
 missing, coercion, collection, and depth denials; tampered binding and limits; stale
 repair; exhaustion; exact replay; and concurrent one-use consumption.
 
-Provider adapters, actual repair prompting, durable repair state and audit, arbitrary
-response-type registration, untrusted-content envelopes, prompt-injection evaluation,
-context privacy enforcement, and agent integration remain deferred. The Phase 2
-structured-output action remains open until those applicable integrations and evidence
-exist.
+An additive `UntrustedContentEnvelope v1` boundary now provides inert assessment scope,
+provenance, classification, digest, lifetime, and prompt-injection metadata for bounded
+text. Provider adapters, actual repair prompting, durable repair state and audit,
+arbitrary response-type registration, context construction, live prompt-injection
+evaluation, context privacy enforcement, and agent integration remain deferred. The
+Phase 2 structured-output action remains open until those applicable integrations and
+evidence exist.

@@ -227,3 +227,55 @@ envelopes, prompt-injection evaluation, context routing, and agent consumers are
 deferred. Provider execution remains disabled. Non-independent review reduces
 governance assurance; the sole maintainer accepts that risk only for this local-
 development non-executing slice.
+
+## 2026-08-21 — Untrusted content envelope v1 and injection corpus
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, author, Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer, Data
+Protection Lead, and Security Reviewer. The `GIT_WORKFLOW.md` exception is used. This
+review is not independent and cannot satisfy an external independence requirement.
+
+**Scope and evidence:** Envelope schema; deterministic builder, validator, indicator
+metadata, and process-local replay registry; eleven-family synthetic prompt-injection
+corpus; positive, negative, boundary, tampering, replay, and concurrency tests; contract
+and compatibility documentation; action-plan note; complete diff; contract validation;
+Python unit and pytest suites; Ruff; mypy; and repository scans. Exact results are
+recorded in the pull request.
+
+**Invariants and boundaries:** `INV-AUTH-003`, `INV-AGENT-001` through
+`INV-AGENT-004`, and `INV-DATA-001`; untrusted origin text to an inert assessment-
+scoped envelope, provenance and digest metadata to deterministic validation, and
+instruction-like text to non-authoritative annotations. No acquisition, provider,
+model context, secret broker, evidence store, plugin, target, tool, gateway, agent, or
+network boundary is crossed, and no execution authority is created.
+
+**Threat and abuse cases:** unknown or forbidden origin/classification, secret or raw-
+evidence classification, oversized UTF-8, cross-assessment substitution, origin/
+provenance mismatch, content-digest and injection-metadata tampering, future/expired/
+overlong lifetime, envelope identity conflict, provenance reuse, exact and concurrent
+replay, authority-shaped unknown fields, and direct, indirect, encoded, obfuscated,
+delimiter-breaking, role-confusion, authority-claim, secret-exfiltration, tool-call,
+policy-mutation, and data-poisoning content.
+
+**Default deny and findings:** Closed schema validation precedes semantic checks. Exact
+scope, origin/provenance namespace, UTF-8 byte ceiling, digest, recomputed metadata, and
+bounded lifetime are mandatory. Registry mutation is locked and rejects replay or
+ambiguous identity/provenance. Detection never changes authority or serves as an
+authorization control. No material finding is accepted.
+
+**Compatibility, privacy, secrets, migration, and rollback:** Additive v1 contract;
+existing AI boundaries remain compatible. Secret and restricted-raw classifications
+are unrepresentable, and no credential/reference field, resolution, logging, or routing
+exists. Arbitrary text can still be misclassified or contain sensitive material, so
+future consumers must authenticate classification. There is no persistence or
+migration. Rollback removes the additive boundary without conversion or authority
+recovery.
+
+**Limitations and residual risk:** Replay and provenance state are process-local;
+source authentication, live acquisition, retrieval ACLs, classification assurance,
+secret scanning, active-content stripping, context construction, provider routing,
+canary traces, live model evaluation, and agent integration are deferred. Provider
+execution remains disabled. Non-independent review reduces governance assurance; the
+sole maintainer accepts that risk only for this local-development non-executing slice.

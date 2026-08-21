@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/untrusted-content-envelope-v1.schema.json",
+  "title": "PentAI Untrusted Content Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "envelope_id", "assessment_id", "origin", "classification", "provenance_ref", "content", "content_sha256", "acquired_at", "expires_at", "instruction_metadata", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "envelope_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "origin": {"enum": ["program_page", "retrieved_document", "target_content", "tool_output", "evidence_derivative", "plugin_message", "model_output"]},
+    "classification": {"enum": ["public", "internal", "confidential", "restricted_redacted"]},
+    "provenance_ref": {"type": "string", "pattern": "^provenance://(source|retrieval|target|tool|evidence-derivative|plugin|model)/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "content": {"type": "string", "minLength": 1, "maxLength": 16384},
+    "content_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "acquired_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "instruction_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suspected", "categories"],
+      "properties": {
+        "suspected": {"type": "boolean"},
+        "categories": {
+          "type": "array",
+          "maxItems": 11,
+          "uniqueItems": true,
+          "items": {"enum": ["direct", "indirect", "encoded", "obfuscated", "delimiter_breaking", "role_confusion", "authority_claim", "secret_exfiltration", "tool_call", "policy_mutation", "data_poisoning"]}
+        }
+      }
+    },
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

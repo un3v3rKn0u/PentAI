@@ -715,6 +715,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     codes. Provider-mediated repair, durable replay fencing/audit, additional response
     types, and end-to-end consumer integration remain required before completion.
 - [ ] Create untrusted-content envelopes and prompt-injection regression tests.
+  - An assessment-scoped, non-executing UntrustedContentEnvelope v1 now binds bounded
+    text to explicit origin, permitted classification, origin-specific provenance,
+    digest, acquisition, and expiry while fixing authority to none. A synthetic corpus
+    covers eleven direct and indirect injection families; detection is metadata only,
+    and replay, scope/provenance substitution, tampering, stale state, forbidden data
+    classes, and authority-shaped fields deny. Durable provenance/replay state, live
+    context construction, active-content handling, and model-level evaluation remain
+    required before completion.
 - [ ] Implement assessment-scoped retrieval with provenance and ACL filters.
 - [ ] Ensure secrets and raw restricted evidence cannot enter model contexts by default.
 
