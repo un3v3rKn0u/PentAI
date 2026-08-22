@@ -82,3 +82,6 @@ resume, retry, completion, dispatch, or execution authority.
 Typed orchestration failure consumption can atomically record one closed failure class
 and fail the exact running task. It cannot declare retry eligibility, reopen the task,
 consume retry capacity, dispatch work, or create execution authority.
+Immutable failed-attempt registration can assign historical attempt number one to the
+exact typed failure lineage. It does not evaluate retryability, create another attempt,
+change task state, consume retry capacity, or schedule work.
