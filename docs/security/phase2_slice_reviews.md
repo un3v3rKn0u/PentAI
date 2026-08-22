@@ -1,5 +1,45 @@
 # Phase 2 slice security reviews
 
+## 2026-08-22 — Durable orchestration task leases and worker fencing v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, AI/Agent Lead, Core Maintainer, Contract Maintainer, Execution
+Safety Lead, and Security Reviewer. The exception does not satisfy independent review
+or dual control.
+
+**Scope and evidence:** Four closed lease contracts, migration 0042, deterministic
+acquire/renew/release/recovery service, one-time raw-token handling, monotonic task
+generations/fencing tokens, immutable lifecycle/audit/outbox records, and synthetic
+positive, malformed, replay, token, revision, concurrency, worker-revocation, safety,
+recovery, storage-tampering, and non-authority tests.
+
+**Invariants and trust boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-GRANT-003`, `INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`,
+`INV-DATA-003`, `INV-REL-001`, and `INV-REL-002`. Trusted core reads an existing
+durable worker-registry identity and exact current readiness prerequisites. It does not
+contact or launch that runtime. Models, agents, workers, plugins, UI, retrieved content,
+and request bodies cannot assert eligibility, inherit authority, or alter fencing.
+
+**Threat/default-deny review:** Unsupported versions, v1/mixed prerequisites, malformed
+or duplicate commands, cross-scope bindings, expired or replaced policy/prerequisites,
+cancelled or non-ready tasks, safety pause, worker ineligibility, token mismatch, stale
+revision/generation/fence, conflicting replay, concurrent acquisition, and recovery-
+stale state deny with stable codes. Only a token digest is persisted; the raw token is
+returned once and is absent from audit/outbox data.
+
+**Compatibility, privacy, migration, and rollback:** The contracts, service, and
+migration are additive and do not alter the separate Phase 1 workflow lease. Application
+rollback disables orchestration lease operations while retaining immutable history;
+migration reversal is unsupported. Stored data is bounded metadata, hashes, versions,
+state, and timestamps—never credentials, secrets, evidence, prompts, targets, provider
+payloads, or raw lease tokens.
+
+**Limitations and residual risk:** A registered `running` worker is used only as durable
+identity; no live liveness proof or contact occurs. Dispatch, task-running transition,
+checkpoints, retries, completion, Master Orchestrator runtime, UI, provider/plugin
+execution, and effect-specific authorization remain deferred. Non-independent review
+reduces governance assurance and is accepted only for this non-executing slice.
+
 ## 2026-08-22 — Orchestration readiness-bound manifest and budget v2
 
 **Review record:** Sole-maintainer security review — non-independent. The reviewer is

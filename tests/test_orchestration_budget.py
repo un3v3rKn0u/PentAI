@@ -20,6 +20,10 @@ from pentai_core.orchestration_budget import (
     OrchestrationBudgetError,
     OrchestrationBudgetService,
 )
+from pentai_core.orchestration_lease import (
+    OrchestrationLeaseError,
+    OrchestrationLeaseService,
+)
 from pentai_policy.document import contract_issues
 
 from scripts.owned_fixture_authority import prepare_owned_fixture_session
@@ -27,6 +31,7 @@ from scripts.owned_fixture_authority import prepare_owned_fixture_session
 NOW = datetime.now(UTC).replace(microsecond=0)
 PLAN_ID = "33333333-3333-4333-8333-333333333333"
 TASK_ID = "44444444-4444-4444-8444-444444444444"
+WORKER_ID = "synthetic-worker-lease"
 
 
 def _provider_policy() -> ProviderPolicy:
@@ -231,7 +236,7 @@ def test_v2_reserves_ready_task_budget_without_transition_or_authority(tmp_path:
         task = connection.execute(
             "SELECT state, revision FROM orchestration_tasks WHERE task_id = ?", (TASK_ID,)
         ).fetchone()
-        assert task == ("ready", 1)
+        assert tuple(task) == ("ready", 1)
         assert (
             connection.execute("SELECT COUNT(*) FROM action_grants").fetchone()[0] == grants_before
         )
@@ -283,6 +288,218 @@ def test_v2_ready_replay_is_exact_and_state_change_is_recovery_fenced(tmp_path: 
     released = service.recover(now=NOW)
     assert released[0]["release_reason"] == "recovery"
     assert released[0]["task_state"] == "ready"
+
+
+def lease_setup(
+    tmp_path: Path,
+) -> tuple[OrchestrationLeaseService, dict[str, Any]]:
+    budget_service, budget_request = setup(tmp_path, task_state="ready")
+    reservation = budget_service.reserve(budget_request, now=NOW)
+    with closing(sqlite3.connect(budget_service.database_path)) as connection, connection:
+        connection.execute(
+            """INSERT INTO worker_runtime_instances(
+            worker_id, containment_attestation_id, oci_runtime, runtime_instance_id,
+            worker_gateway_network_id, image_digest, container_id, status, created_at,
+            updated_at, execution_enabled, version)
+            VALUES (?, ?, 'podman', ?, ?, ?, ?, 'running', ?, ?, 0, 2)""",
+            (
+                WORKER_ID,
+                "synthetic-containment-attestation",
+                "synthetic-runtime-instance",
+                "synthetic-worker-gateway",
+                "sha256:" + "a" * 64,
+                "b" * 64,
+                NOW.isoformat(),
+                NOW.isoformat(),
+            ),
+        )
+    request = {
+        "schema_version": "1.0.0",
+        "request_id": "88888888-8888-4888-8888-888888888888",
+        "assessment_id": budget_request["assessment_id"],
+        "plan_id": PLAN_ID,
+        "expected_plan_revision": 1,
+        "task_id": TASK_ID,
+        "expected_task_revision": 1,
+        "agent_id": budget_request["agent_id"],
+        "capability_manifest_id": budget_request["capability_manifest_id"],
+        "manifest_revision": 1,
+        "budget_reservation_id": reservation["reservation_id"],
+        "budget_account_version": reservation["account_version"],
+        "approval_consumption_id": None,
+        "policy_bundle_id": budget_request["policy_bundle_id"],
+        "policy_hash": budget_request["policy_hash"],
+        "worker_id": WORKER_ID,
+        "expected_worker_version": 2,
+        "expected_recovery_generation": 1,
+        "lease_seconds": 30,
+        "requested_at": NOW.isoformat(),
+        "purpose": "coordinate_validation_task",
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    return OrchestrationLeaseService(budget_service.authorization), request
+
+
+def lease_command(state: dict[str, Any], token: str, operation: str) -> dict[str, Any]:
+    return {
+        "schema_version": "1.0.0",
+        "command_id": str(uuid4()),
+        "operation": operation,
+        "lease_id": state["lease_id"],
+        "lease_token": token,
+        "worker_id": state["worker_id"],
+        "expected_worker_version": state["worker_version"],
+        "expected_lease_version": state["lease_version"],
+        "lease_generation": state["lease_generation"],
+        "fencing_token": state["fencing_token"],
+        "expected_recovery_generation": state["recovery_generation"],
+        "requested_at": (NOW + timedelta(seconds=1)).isoformat(),
+        "lease_seconds": 45 if operation == "renew" else None,
+        "authority": "none",
+        "execution_enabled": False,
+    }
+
+
+def test_lease_acquisition_returns_token_once_without_authority_or_dispatch(tmp_path: Path) -> None:
+    service, request = lease_setup(tmp_path)
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        grants_before = connection.execute("SELECT COUNT(*) FROM action_grants").fetchone()[0]
+    acquired = service.acquire(request, now=NOW)
+    token = acquired.pop("lease_token")
+    assert len(token) >= 43
+    assert contract_issues(acquired, "orchestration-task-lease-state-v1.schema.json") == ()
+    assert acquired["state"] == "active"
+    assert acquired["authority"] == "none" and acquired["execution_enabled"] is False
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT * FROM orchestration_task_leases").fetchone()
+        task = connection.execute(
+            "SELECT state, revision FROM orchestration_tasks WHERE task_id = ?", (TASK_ID,)
+        ).fetchone()
+        persisted = " ".join(
+            str(value)
+            for value in connection.execute(
+                "SELECT state_json, token_hash FROM orchestration_task_leases"
+            ).fetchone()
+        )
+        audits = " ".join(
+            row[0]
+            for row in connection.execute(
+                "SELECT data_json FROM audit_events WHERE action LIKE 'orchestration.task_lease_%'"
+            )
+        )
+        assert token not in persisted and token not in audits
+        assert len(row["token_hash"]) == 64
+        assert tuple(task) == ("ready", 1)
+        assert (
+            connection.execute("SELECT COUNT(*) FROM action_grants").fetchone()[0]
+            == grants_before
+        )
+    with pytest.raises(OrchestrationLeaseError) as replay:
+        service.acquire(request, now=NOW)
+    assert replay.value.code == "ORCHESTRATION_LEASE_ACQUIRE_REPLAY_DENIED"
+
+
+def test_lease_renew_release_and_stale_holder_denials(tmp_path: Path) -> None:
+    service, request = lease_setup(tmp_path)
+    acquired = service.acquire(request, now=NOW)
+    token = acquired.pop("lease_token")
+    wrong = lease_command(acquired, "x" * 43, "renew")
+    with pytest.raises(OrchestrationLeaseError) as token_error:
+        service.mutate(wrong, now=NOW + timedelta(seconds=1))
+    assert token_error.value.code == "ORCHESTRATION_LEASE_TOKEN_MISMATCH"
+    renewed = service.mutate(
+        lease_command(acquired, token, "renew"), now=NOW + timedelta(seconds=1)
+    )
+    assert renewed["event_type"] == "renewed"
+    state = {**acquired, "lease_version": 2, "expires_at": renewed["expires_at"]}
+    released = service.mutate(
+        lease_command(state, token, "release"), now=NOW + timedelta(seconds=2)
+    )
+    assert released["resulting_state"] == "released"
+    with pytest.raises(OrchestrationLeaseError) as stale:
+        service.mutate(
+            lease_command(acquired, token, "release"), now=NOW + timedelta(seconds=2)
+        )
+    assert stale.value.code == "ORCHESTRATION_LEASE_FENCED"
+
+
+def test_lease_concurrency_recovery_and_generation_fencing(tmp_path: Path) -> None:
+    service, request = lease_setup(tmp_path)
+
+    def acquire(_: int) -> str:
+        try:
+            return service.acquire(request, now=NOW)["lease_id"]
+        except OrchestrationLeaseError as error:
+            return error.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(acquire, range(2)))
+    assert outcomes.count("ORCHESTRATION_LEASE_ACQUIRE_REPLAY_DENIED") == 1
+    events = service.recover(now=NOW + timedelta(seconds=1))
+    assert len(events) == 1 and events[0]["reason"] == "recovery"
+    assert service.recover(now=NOW + timedelta(seconds=2)) == ()
+    next_request = dict(
+        request,
+        request_id="99999999-9999-4999-8999-999999999999",
+        expected_recovery_generation=2,
+        requested_at=(NOW + timedelta(seconds=2)).isoformat(),
+    )
+    next_lease = service.acquire(next_request, now=NOW + timedelta(seconds=2))
+    assert next_lease["lease_generation"] == 2
+    assert next_lease["fencing_token"] == 2
+    assert next_lease["recovery_generation"] == 2
+
+
+def test_lease_worker_safety_and_storage_tampering_deny(tmp_path: Path) -> None:
+    service, request = lease_setup(tmp_path)
+    for change, code in (
+        ({"expected_worker_version": 1}, "ORCHESTRATION_LEASE_WORKER_INELIGIBLE"),
+        ({"expected_recovery_generation": 2}, "ORCHESTRATION_LEASE_RECOVERY_FENCED"),
+        ({"lease_seconds": 61}, "ORCHESTRATION_LEASE_REQUEST_MALFORMED"),
+    ):
+        with pytest.raises(OrchestrationLeaseError) as denied:
+            service.acquire(dict(request, **change), now=NOW)
+        assert denied.value.code == code
+    acquired = service.acquire(request, now=NOW)
+    token = acquired.pop("lease_token")
+    with closing(sqlite3.connect(service.database_path)) as connection, connection:
+        connection.execute(
+            """UPDATE worker_runtime_instances SET status='termination_requested',
+            version=version+1 WHERE worker_id=?""",
+            (WORKER_ID,),
+        )
+    with pytest.raises(OrchestrationLeaseError) as worker:
+        service.mutate(
+            lease_command(acquired, token, "renew"), now=NOW + timedelta(seconds=1)
+        )
+    assert worker.value.code == "ORCHESTRATION_LEASE_WORKER_INELIGIBLE"
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute("DELETE FROM orchestration_task_lease_events")
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "UPDATE orchestration_task_leases SET worker_id='forged-worker'"
+            )
+
+
+def test_lease_expiry_is_durable_and_advances_recovery_fence(tmp_path: Path) -> None:
+    service, request = lease_setup(tmp_path)
+    acquired = service.acquire(dict(request, lease_seconds=5), now=NOW)
+    events = service.recover(now=NOW + timedelta(seconds=6))
+    assert len(events) == 1
+    assert events[0]["event_type"] == "expired"
+    assert events[0]["resulting_state"] == "expired"
+    assert events[0]["reason"] == "expired"
+    next_request = dict(
+        request,
+        request_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        expected_recovery_generation=2,
+        requested_at=(NOW + timedelta(seconds=6)).isoformat(),
+    )
+    next_lease = service.acquire(next_request, now=NOW + timedelta(seconds=6))
+    assert next_lease["lease_generation"] == acquired["lease_generation"] + 1
 
 
 def test_reserves_durable_non_authoritative_budget_with_audit(tmp_path: Path) -> None:
