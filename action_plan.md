@@ -803,6 +803,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     linkage. The general transition service and direct storage update remain denied.
     This changes orchestration state only: worker dispatch/contact, checkpoints,
     retries, completion consumption, and runtime enforcement remain required.
+  - Durable metadata-only checkpoints now bind the exact current running task,
+    lease-consumption receipt, worker identity, policy, manifest, budget, approval, and
+    fencing/recovery generations. Atomic monotonic sequences and predecessor digests
+    reject gaps, rollback, forks, and concurrent heads. Artifact data, state changes,
+    retries, resume, completion, dispatch, and authority remain excluded and deferred.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.
