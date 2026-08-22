@@ -149,20 +149,14 @@ def test_graph_rejects_malformed_duplicate_missing_cycle_and_conflict(tmp_path: 
     assert raised.value.code == "ORCHESTRATION_PLAN_IDENTITY_CONFLICT"
 
 
-def test_transitions_fence_versions_unlock_dependencies_and_complete(tmp_path: Path) -> None:
+def test_general_running_transition_is_closed_and_cancellation_remains(tmp_path: Path) -> None:
     planner = service(tmp_path)
     planner.create(graph())
-    running = planner.transition(command(FIRST, 1, 1, "running"), now=NOW)
-    succeeded = planner.transition(command(FIRST, 2, 2, "succeeded"), now=NOW)
-    assert running["tasks"][0]["state"] == "running"
-    assert succeeded["tasks"][1]["state"] == "ready"
-    second_running = planner.transition(command(SECOND, 3, 2, "running"), now=NOW)
-    completed = planner.transition(command(SECOND, 4, 3, "succeeded"), now=NOW)
-    assert second_running["state"] == "active"
-    assert completed["state"] == "completed" and completed["revision"] == 5
-    with pytest.raises(OrchestrationError) as terminal:
-        planner.transition(command(SECOND, 5, 4, "failed"), now=NOW)
-    assert terminal.value.code == "ORCHESTRATION_PLAN_TERMINAL"
+    with pytest.raises(OrchestrationError) as denied:
+        planner.transition(command(FIRST, 1, 1, "running"), now=NOW)
+    assert denied.value.code == "ORCHESTRATION_TRANSITION_DENIED"
+    cancelled = planner.transition(command(FIRST, 1, 1, "cancelled"), now=NOW)
+    assert cancelled["tasks"][0]["state"] == "cancelled"
 
 
 def test_transition_denials_replay_conflict_stale_scope_and_concurrency(tmp_path: Path) -> None:
@@ -190,41 +184,32 @@ def test_transition_denials_replay_conflict_stale_scope_and_concurrency(tmp_path
     with pytest.raises(OrchestrationError) as aged:
         planner.transition(stale, now=NOW)
     assert aged.value.code == "ORCHESTRATION_COMMAND_STALE"
-    accepted = command(FIRST, 1, 1, "running")
+    accepted = command(FIRST, 1, 1, "cancelled")
     result = planner.transition(accepted, now=NOW)
     assert planner.transition(accepted, now=NOW) == result
     assert planner.create(graph()) == result
     changed = copy.deepcopy(accepted)
-    changed["target_state"] = "cancelled"
+    changed["target_state"] = "running"
     with pytest.raises(OrchestrationError) as conflict:
         planner.transition(changed, now=NOW)
     assert conflict.value.code == "ORCHESTRATION_COMMAND_IDENTITY_CONFLICT"
 
     other = service(tmp_path / "concurrent")
     other.create(graph())
-    contender = command(FIRST, 1, 1, "running")
+    contender = command(FIRST, 1, 1, "cancelled")
     with ThreadPoolExecutor(max_workers=2) as pool:
         outcomes = list(pool.map(lambda _: other.transition(contender, now=NOW), range(2)))
     assert outcomes[0] == outcomes[1]
 
 
-def test_cancellation_and_recovery_never_resume_interrupted_work(tmp_path: Path) -> None:
+def test_cancellation_never_unlocks_dependent_work(tmp_path: Path) -> None:
     planner = service(tmp_path)
     planner.create(graph())
     cancelled = planner.transition(command(FIRST, 1, 1, "cancelled"), now=NOW)
     assert cancelled["tasks"][0]["state"] == "cancelled"
     assert cancelled["tasks"][1]["state"] == "blocked"
 
-    recovery = service(tmp_path / "recovery")
-    recovery.create(graph())
-    recovery.transition(command(FIRST, 1, 1, "running"), now=NOW)
-    assert DurablePlanGraphService(recovery.database_path).recover(
-        now=NOW + timedelta(seconds=1)
-    ) == [PLAN]
-    loaded = recovery.get(PLAN)
-    assert loaded["tasks"][0]["state"] == "failed"
-    assert loaded["tasks"][1]["state"] == "blocked"
-    assert recovery.recover(now=NOW + timedelta(seconds=2)) == []
+    assert planner.recover(now=NOW + timedelta(seconds=2)) == []
 
 
 def test_database_guards_identity_authority_and_history(tmp_path: Path) -> None:
