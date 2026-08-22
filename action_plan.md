@@ -784,6 +784,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     `awaiting_human` to `ready` in storage. The general transition service remains
     denied for this edge. Multi-user identity, leases, checkpoints, dispatch, UI, and
     effect-specific policy approval remain required.
+  - A dependency-ordering prerequisite now adds v2 capability-manifest and task-budget
+    contracts that bind exact `ready` or `running` task state. Trusted core can reserve
+    bounded capacity before lease acquisition without transitioning or dispatching the
+    task; v1 remains running-only, and ready-bound manifests cannot propose an action.
+    Durable leases and worker fencing remain deferred until this prerequisite merges.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.

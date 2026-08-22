@@ -45,6 +45,7 @@ class AgentActionIntentService:
         maximum_impact: str = "benign",
         maximum_timeout_seconds: int = 30,
         maximum_response_bytes: int = 1_048_576,
+        task_state: str = "running",
         now: datetime | None = None,
     ) -> dict[str, Any]:
         instant = _instant(now)
@@ -57,7 +58,7 @@ class AgentActionIntentService:
             )
         )
         manifest = {
-            "schema_version": "1.0.0",
+            "schema_version": "1.0.0" if task_state == "running" else "2.0.0",
             "manifest_id": manifest_id,
             "manifest_revision": 1,
             "assessment_id": assessment_id,
@@ -83,7 +84,9 @@ class AgentActionIntentService:
             "authority": "none",
             "execution_enabled": False,
         }
-        if contract_issues(manifest, "task-capability-manifest-v1.schema.json"):
+        if task_state != "running":
+            manifest["task_state"] = task_state
+        if contract_issues(manifest, _manifest_schema(manifest)):
             raise AgentIntentError(
                 "TASK_CAPABILITY_MANIFEST_MALFORMED", "capability manifest is malformed"
             )
@@ -111,6 +114,7 @@ class AgentActionIntentService:
                 policy_bundle_id=policy_bundle_id,
                 policy_hash=policy_hash,
                 instant=instant,
+                task_state=task_state,
             )
             existing = connection.execute(
                 """SELECT manifest_hash, manifest_json
@@ -125,8 +129,13 @@ class AgentActionIntentService:
                     )
                 return cast(dict[str, Any], json.loads(str(existing["manifest_json"])))
             connection.execute(
-                """INSERT INTO task_capability_manifests VALUES
-                (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pentai-core', 0, 'none', 0)""",
+                """INSERT INTO task_capability_manifests(
+                manifest_id, manifest_revision, assessment_id, plan_id, plan_revision,
+                task_id, task_revision, agent_id, policy_bundle_id, policy_hash,
+                manifest_json, manifest_hash, issued_at, expires_at, issued_by,
+                delegation_allowed, authority, execution_enabled, task_state)
+                VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pentai-core', 0,
+                'none', 0, ?)""",
                 (
                     manifest_id,
                     assessment_id,
@@ -141,6 +150,7 @@ class AgentActionIntentService:
                     manifest_hash,
                     issued_at,
                     expires_at,
+                    task_state,
                 ),
             )
             _record_manifest(connection, manifest)
@@ -332,7 +342,8 @@ class AgentActionIntentService:
             raise AgentIntentError("AGENT_INTENT_TASK_MISMATCH", "task does not match")
         if task["revision"] != document["expected_task_revision"]:
             raise AgentIntentError("AGENT_INTENT_TASK_FENCED", "task is stale")
-        if task["state"] != "running" or task["task_type"] != "validation":
+        expected_task_state = document.get("task_state", "running")
+        if task["state"] != expected_task_state or task["task_type"] != "validation":
             raise AgentIntentError("AGENT_INTENT_TASK_DENIED", "task cannot propose actions")
 
     @staticmethod
@@ -347,6 +358,7 @@ class AgentActionIntentService:
         policy_bundle_id: str,
         policy_hash: str,
         instant: datetime,
+        task_state: str = "running",
     ) -> None:
         document = {
             "assessment_id": assessment_id,
@@ -356,6 +368,7 @@ class AgentActionIntentService:
             "expected_task_revision": task_revision,
             "policy_bundle_id": policy_bundle_id,
             "policy_hash": policy_hash,
+            "task_state": task_state,
         }
         AgentActionIntentService._revalidate_state(connection, document, instant)
 
@@ -373,7 +386,7 @@ class AgentActionIntentService:
                 "AGENT_INTENT_MANIFEST_MISSING", "capability manifest is missing"
             )
         manifest = json.loads(str(row["manifest_json"]))
-        if contract_issues(manifest, "task-capability-manifest-v1.schema.json"):
+        if contract_issues(manifest, _manifest_schema(manifest)):
             raise AgentIntentError(
                 "AGENT_INTENT_MANIFEST_INVALID", "capability manifest is invalid"
             )
@@ -386,6 +399,7 @@ class AgentActionIntentService:
             and manifest["agent_id"] == document["agent"]["agent_id"]
             and manifest["policy_bundle_id"] == document["policy_bundle_id"]
             and manifest["policy_hash"] == document["policy_hash"]
+            and manifest.get("task_state", "running") == "running"
             and document["purpose"] in manifest["allowed_purposes"]
             and document["action"]["capability"] in manifest["allowed_capabilities"]
         )
@@ -549,3 +563,14 @@ def _instant(value: datetime | None) -> datetime:
 
 def _timestamp(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
+
+def _manifest_schema(document: dict[str, Any]) -> str:
+    version = document.get("schema_version")
+    if version == "1.0.0":
+        return "task-capability-manifest-v1.schema.json"
+    if version == "2.0.0":
+        return "task-capability-manifest-v2.schema.json"
+    raise AgentIntentError(
+        "TASK_CAPABILITY_MANIFEST_MALFORMED", "capability manifest version is unsupported"
+    )

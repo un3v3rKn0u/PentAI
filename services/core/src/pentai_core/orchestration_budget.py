@@ -186,7 +186,8 @@ class OrchestrationBudgetService:
         self, request: dict[str, Any], *, now: datetime | None = None
     ) -> dict[str, Any]:
         document = copy.deepcopy(request)
-        if contract_issues(document, "orchestration-task-budget-request-v1.schema.json"):
+        request_schema = _request_schema(document)
+        if contract_issues(document, request_schema):
             raise OrchestrationBudgetError(
                 "ORCHESTRATION_BUDGET_REQUEST_MALFORMED", "budget request is malformed"
             )
@@ -264,7 +265,7 @@ class OrchestrationBudgetService:
                     )
             account_version = int(account["version"]) + 1
             receipt = {
-                "schema_version": "1.0.0",
+                "schema_version": document["schema_version"],
                 "reservation_id": reservation_id,
                 "request_id": document["request_id"],
                 "request_digest": request_digest,
@@ -290,9 +291,9 @@ class OrchestrationBudgetService:
                 "authority": "none",
                 "execution_enabled": False,
             }
-            if contract_issues(
-                receipt, "orchestration-task-budget-reservation-v1.schema.json"
-            ):
+            if document["schema_version"] == "2.0.0":
+                receipt["task_state"] = document["task_state"]
+            if contract_issues(receipt, _reservation_schema(receipt)):
                 raise OrchestrationBudgetError(
                     "ORCHESTRATION_BUDGET_RESULT_INVALID", "budget receipt is invalid"
                 )
@@ -306,9 +307,9 @@ class OrchestrationBudgetService:
                 assessment_id, plan_id, plan_revision, task_id, task_revision, agent_id,
                 capability_manifest_id, manifest_revision, policy_bundle_id, policy_hash,
                 purpose, amounts_json, state, created_at, expires_at, released_at,
-                release_reason, receipt_json, authority, execution_enabled
+                release_reason, receipt_json, authority, execution_enabled, task_state
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reserved',
-                ?, ?, NULL, 'none', ?, 'none', 0)""",
+                ?, ?, NULL, 'none', ?, 'none', 0, ?)""",
                 (
                     reservation_id,
                     document["request_id"],
@@ -330,6 +331,7 @@ class OrchestrationBudgetService:
                     document["requested_at"],
                     document["expires_at"],
                     canonical_json(receipt),
+                    document.get("task_state", "running"),
                 ),
             )
             _audit(
@@ -352,16 +354,21 @@ class OrchestrationBudgetService:
             ).fetchall()
             for row in rows:
                 receipt = json.loads(row["receipt_json"])
+                try:
+                    receipt_schema = _reservation_schema(receipt)
+                except OrchestrationBudgetError as error:
+                    raise OrchestrationBudgetError(
+                        "ORCHESTRATION_BUDGET_RECOVERY_INVALID", "reservation is invalid"
+                    ) from error
                 if (
-                    contract_issues(
-                        receipt, "orchestration-task-budget-reservation-v1.schema.json"
-                    )
+                    contract_issues(receipt, receipt_schema)
                     or receipt["reservation_id"] != row["reservation_id"]
                     or receipt["request_id"] != row["request_id"]
                     or receipt["request_digest"] != row["request_digest"]
                     or receipt["account_id"] != row["account_id"]
                     or receipt["state"] != "reserved"
                     or receipt["amounts"] != json.loads(row["amounts_json"])
+                    or receipt.get("task_state", "running") != row["task_state"]
                 ):
                     raise OrchestrationBudgetError(
                         "ORCHESTRATION_BUDGET_RECOVERY_INVALID", "reservation is invalid"
@@ -397,9 +404,7 @@ class OrchestrationBudgetService:
                 receipt["state"] = "released"
                 receipt["released_at"] = _timestamp(instant)
                 receipt["release_reason"] = reason
-                if contract_issues(
-                    receipt, "orchestration-task-budget-reservation-v1.schema.json"
-                ):
+                if contract_issues(receipt, _reservation_schema(receipt)):
                     raise OrchestrationBudgetError(
                         "ORCHESTRATION_BUDGET_RECOVERY_INVALID", "release receipt is invalid"
                     )
@@ -535,8 +540,10 @@ class OrchestrationBudgetService:
             raise OrchestrationBudgetError(
                 "ORCHESTRATION_BUDGET_TASK_MISMATCH", "task binding mismatches"
             )
+        expected_task_state = document.get("task_state", "running")
         if (
-            task["state"] != "running"
+            task["state"] != expected_task_state
+            or expected_task_state not in {"ready", "running"}
             or task["task_type"] != "validation"
             or task["revision"] != document["expected_task_revision"]
         ):
@@ -555,7 +562,7 @@ class OrchestrationBudgetService:
         manifest = json.loads(manifest_row["manifest_json"])
         if (
             content_hash(manifest) != manifest_row["manifest_hash"]
-            or contract_issues(manifest, "task-capability-manifest-v1.schema.json")
+            or contract_issues(manifest, _manifest_schema(manifest))
         ):
             raise OrchestrationBudgetError(
                 "ORCHESTRATION_BUDGET_MANIFEST_INVALID", "manifest is invalid"
@@ -566,6 +573,7 @@ class OrchestrationBudgetService:
             or manifest["plan_revision"] != document["expected_plan_revision"]
             or manifest["task_id"] != document["task_id"]
             or manifest["task_revision"] != document["expected_task_revision"]
+            or manifest.get("task_state", "running") != expected_task_state
             or manifest["agent_id"] != document["agent_id"]
             or manifest["policy_bundle_id"] != document["policy_bundle_id"]
             or manifest["policy_hash"] != document["policy_hash"]
@@ -604,6 +612,7 @@ def _request_from_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
         "expected_plan_revision": receipt["plan_revision"],
         "task_id": receipt["task_id"],
         "expected_task_revision": receipt["task_revision"],
+        **({"task_state": receipt["task_state"]} if "task_state" in receipt else {}),
         "agent_id": receipt["agent_id"],
         "capability_manifest_id": receipt["capability_manifest_id"],
         "expected_manifest_revision": receipt["manifest_revision"],
@@ -686,3 +695,36 @@ def _instant(value: datetime | None) -> datetime:
 
 def _timestamp(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
+
+def _request_schema(document: dict[str, Any]) -> str:
+    version = document.get("schema_version")
+    if version == "1.0.0":
+        return "orchestration-task-budget-request-v1.schema.json"
+    if version == "2.0.0":
+        return "orchestration-task-budget-request-v2.schema.json"
+    raise OrchestrationBudgetError(
+        "ORCHESTRATION_BUDGET_REQUEST_MALFORMED", "budget request version is unsupported"
+    )
+
+
+def _reservation_schema(document: dict[str, Any]) -> str:
+    version = document.get("schema_version")
+    if version == "1.0.0":
+        return "orchestration-task-budget-reservation-v1.schema.json"
+    if version == "2.0.0":
+        return "orchestration-task-budget-reservation-v2.schema.json"
+    raise OrchestrationBudgetError(
+        "ORCHESTRATION_BUDGET_RESULT_INVALID", "budget receipt version is unsupported"
+    )
+
+
+def _manifest_schema(document: dict[str, Any]) -> str:
+    version = document.get("schema_version")
+    if version == "1.0.0":
+        return "task-capability-manifest-v1.schema.json"
+    if version == "2.0.0":
+        return "task-capability-manifest-v2.schema.json"
+    raise OrchestrationBudgetError(
+        "ORCHESTRATION_BUDGET_MANIFEST_INVALID", "manifest version is unsupported"
+    )

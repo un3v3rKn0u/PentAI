@@ -15,6 +15,11 @@ secret or raw-evidence access, provider credentials, plugin permissions, and dir
 network authority are unrepresentable. `authority` is `none` and
 `execution_enabled` is false.
 
+Version 2 adds an exact `task_state` binding and permits trusted-core issuance while a
+validation task is `ready` or `running`. A ready-bound manifest is preparation metadata
+for later budget and lease composition only; agent-to-ActionIntent conversion continues
+to require a current running task and a running-bound manifest.
+
 ## Validation and cancellation composition
 
 Issuance revalidates current assessment/global safety, the active signed policy, and
@@ -38,6 +43,8 @@ historical agent-intent links. Stored v1 links remain readable, but new conversi
 request v1 denies with `AGENT_INTENT_CAPABILITY_MANIFEST_REQUIRED`. Other ActionIntent
 producers and ActionIntent v1 are unchanged. Application rollback disables new
 issuance/conversion and retains immutable history; migration 0037 is not reversed.
+Migration 0041 adds and immutably backfills `task_state=running`; rollback disables v2
+issuance and retains the state binding. V1 remains running-only compatible.
 
 Only bounded action metadata and opaque identifiers/digests are stored. No prompt,
 secret, credential, evidence content, provider payload, or external effect is accepted.

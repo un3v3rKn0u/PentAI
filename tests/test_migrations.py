@@ -57,6 +57,7 @@ class MigrationTests(unittest.TestCase):
                     "0038",
                     "0039",
                     "0040",
+                    "0041",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -124,6 +125,29 @@ class MigrationTests(unittest.TestCase):
                 }
                 <= tables
             )
+            with closing(sqlite3.connect(database)) as connection:
+                manifest_columns = {
+                    row[1]: row[4]
+                    for row in connection.execute(
+                        "PRAGMA table_info(task_capability_manifests)"
+                    )
+                }
+                reservation_columns = {
+                    row[1]: row[4]
+                    for row in connection.execute(
+                        "PRAGMA table_info(orchestration_task_budget_reservations)"
+                    )
+                }
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+                    )
+                }
+            self.assertEqual(manifest_columns["task_state"], "'running'")
+            self.assertEqual(reservation_columns["task_state"], "'running'")
+            self.assertIn("task_capability_manifest_state_immutable", triggers)
+            self.assertIn("orchestration_task_budget_state_immutable", triggers)
 
     def test_failed_migration_rolls_back_its_schema_and_version(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

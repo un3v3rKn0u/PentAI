@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
@@ -83,7 +84,9 @@ def _configuration() -> dict[str, Any]:
     }
 
 
-def setup(tmp_path: Path) -> tuple[OrchestrationBudgetService, dict[str, Any]]:
+def setup(
+    tmp_path: Path, *, task_state: str = "running"
+) -> tuple[OrchestrationBudgetService, dict[str, Any]]:
     database = tmp_path / "orchestration-budget.db"
     migrate(database)
     authorization, session = prepare_owned_fixture_session(
@@ -127,31 +130,35 @@ def setup(tmp_path: Path) -> tuple[OrchestrationBudgetService, dict[str, Any]]:
     }
     plans = DurablePlanGraphService(database)
     plans.create(graph)
-    plans.transition(
-        {
-            "schema_version": "1.0.0",
-            "command_id": str(uuid4()),
-            "plan_id": PLAN_ID,
-            "assessment_id": assessment_id,
-            "task_id": TASK_ID,
-            "expected_plan_revision": 1,
-            "expected_task_revision": 1,
-            "target_state": "running",
-            "requested_at": NOW.isoformat(),
-            "authority": "none",
-            "execution_enabled": False,
-        },
-        now=NOW,
-    )
+    if task_state == "running":
+        plans.transition(
+            {
+                "schema_version": "1.0.0",
+                "command_id": str(uuid4()),
+                "plan_id": PLAN_ID,
+                "assessment_id": assessment_id,
+                "task_id": TASK_ID,
+                "expected_plan_revision": 1,
+                "expected_task_revision": 1,
+                "target_state": "running",
+                "requested_at": NOW.isoformat(),
+                "authority": "none",
+                "execution_enabled": False,
+            },
+            now=NOW,
+        )
+    plan_revision = 2 if task_state == "running" else 1
+    task_revision = 2 if task_state == "running" else 1
     manifest = AgentActionIntentService(authorization).issue_capability_manifest(
         assessment_id=assessment_id,
         plan_id=PLAN_ID,
-        expected_plan_revision=2,
+        expected_plan_revision=plan_revision,
         task_id=TASK_ID,
-        expected_task_revision=2,
+        expected_task_revision=task_revision,
         agent_id="agent://validation/budget-fixture",
         policy_bundle_id=policy_id,
         policy_hash=policy_hash,
+        task_state=task_state,
         now=NOW,
     )
     service = OrchestrationBudgetService(authorization)
@@ -173,15 +180,15 @@ def setup(tmp_path: Path) -> tuple[OrchestrationBudgetService, dict[str, Any]]:
         now=NOW,
     )
     request = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.0.0" if task_state == "running" else "2.0.0",
         "request_id": str(uuid4()),
         "account_id": account["account_id"],
         "expected_account_version": 1,
         "assessment_id": assessment_id,
         "plan_id": PLAN_ID,
-        "expected_plan_revision": 2,
+        "expected_plan_revision": plan_revision,
         "task_id": TASK_ID,
-        "expected_task_revision": 2,
+        "expected_task_revision": task_revision,
         "agent_id": "agent://validation/budget-fixture",
         "capability_manifest_id": manifest["manifest_id"],
         "expected_manifest_revision": 1,
@@ -201,7 +208,81 @@ def setup(tmp_path: Path) -> tuple[OrchestrationBudgetService, dict[str, Any]]:
         "authority": "none",
         "execution_enabled": False,
     }
+    if task_state != "running":
+        request["task_state"] = task_state
     return service, request
+
+
+def test_v2_reserves_ready_task_budget_without_transition_or_authority(tmp_path: Path) -> None:
+    service, request = setup(tmp_path, task_state="ready")
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        grants_before = connection.execute("SELECT COUNT(*) FROM action_grants").fetchone()[0]
+    receipt = service.reserve(request, now=NOW)
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        manifest = json.loads(
+            connection.execute("SELECT manifest_json FROM task_capability_manifests").fetchone()[0]
+        )
+    assert contract_issues(manifest, "task-capability-manifest-v2.schema.json") == ()
+    assert manifest["task_state"] == "ready"
+    assert contract_issues(receipt, "orchestration-task-budget-reservation-v2.schema.json") == ()
+    assert receipt["task_state"] == "ready"
+    assert receipt["authority"] == "none" and receipt["execution_enabled"] is False
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        task = connection.execute(
+            "SELECT state, revision FROM orchestration_tasks WHERE task_id = ?", (TASK_ID,)
+        ).fetchone()
+        assert task == ("ready", 1)
+        assert (
+            connection.execute("SELECT COUNT(*) FROM action_grants").fetchone()[0] == grants_before
+        )
+
+
+def test_v2_ready_binding_denies_missing_ambiguous_and_changed_state(tmp_path: Path) -> None:
+    service, request = setup(tmp_path, task_state="ready")
+    for change in (
+        {"task_state": "blocked"},
+        {"task_state": "running"},
+        {"schema_version": "3.0.0"},
+    ):
+        with pytest.raises(OrchestrationBudgetError) as denied:
+            service.reserve(dict(request, **change), now=NOW)
+        assert denied.value.code in {
+            "ORCHESTRATION_BUDGET_REQUEST_MALFORMED",
+            "ORCHESTRATION_BUDGET_TASK_FENCED",
+        }
+    missing = copy.deepcopy(request)
+    del missing["task_state"]
+    with pytest.raises(OrchestrationBudgetError) as malformed:
+        service.reserve(missing, now=NOW)
+    assert malformed.value.code == "ORCHESTRATION_BUDGET_REQUEST_MALFORMED"
+
+
+def test_v2_ready_replay_is_exact_and_state_change_is_recovery_fenced(tmp_path: Path) -> None:
+    service, request = setup(tmp_path, task_state="ready")
+    receipt = service.reserve(request, now=NOW)
+    assert service.reserve(request, now=NOW) == receipt
+    DurablePlanGraphService(service.database_path).transition(
+        {
+            "schema_version": "1.0.0",
+            "command_id": "77777777-7777-4777-8777-777777777777",
+            "plan_id": PLAN_ID,
+            "assessment_id": request["assessment_id"],
+            "task_id": TASK_ID,
+            "expected_plan_revision": 1,
+            "expected_task_revision": 1,
+            "target_state": "running",
+            "requested_at": NOW.isoformat(),
+            "authority": "none",
+            "execution_enabled": False,
+        },
+        now=NOW,
+    )
+    with pytest.raises(OrchestrationBudgetError) as stale:
+        service.reserve(request, now=NOW)
+    assert stale.value.code == "ORCHESTRATION_BUDGET_PLAN_FENCED"
+    released = service.recover(now=NOW)
+    assert released[0]["release_reason"] == "recovery"
+    assert released[0]["task_state"] == "ready"
 
 
 def test_reserves_durable_non_authoritative_budget_with_audit(tmp_path: Path) -> None:

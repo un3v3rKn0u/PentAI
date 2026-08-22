@@ -15,6 +15,12 @@ amounts, and validity window. Supported units are input/output tokens, requests,
 micro-USD cost, runtime seconds, and retries. Floating-point, unit-free, wildcard,
 delegated, secret-bearing, or authority-shaped input is unrepresentable.
 
+Request and receipt v2 add an exact `task_state` binding and allow reservation while an
+eligible validation task is `ready` as a prerequisite to lease issuance. Version 1
+remains running-only. A ready reservation does not change task state, dispatch work, or
+authorize execution; any state/revision change fences replay and recovery releases stale
+capacity.
+
 ## Accounting, cancellation, and recovery
 
 Migration 0038 stores immutable account identity/ceilings and reservation identity,
@@ -36,6 +42,9 @@ The schemas, service, and migration are additive. The existing in-memory AI budg
 ledger, Phase 1 gateway budgets, ActionIntent contracts, and historical data remain
 unchanged. Application rollback disables new account activation/reservation/recovery
 while retaining immutable history; migration 0038 is not reversed.
+Migration 0041 additively and immutably records task state, backfilling historical rows
+as `running`. Rollback disables v2 production while retaining the binding; migration
+reversal is unsupported.
 
 Only identifiers, hashes, integer ceilings/amounts, timestamps, and states are stored.
 Prompts, model content, evidence, target data, credentials, secret references, and
