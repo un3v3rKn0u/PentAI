@@ -1,5 +1,44 @@
 # Phase 2 slice security reviews
 
+## 2026-08-22 — Orchestration readiness-bound manifest and budget v2
+
+**Review record:** Sole-maintainer security review — non-independent. The reviewer is
+the repository owner, author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, Execution
+Safety Lead, and Security Reviewer. The exception does not satisfy independent review
+or dual control.
+
+**Scope and evidence:** Closed v2 capability-manifest and budget request/receipt schemas,
+migration 0041 immutable task-state bindings, deterministic ready-state validation,
+v1 compatibility, and synthetic positive, malformed, unsupported-state, state mismatch,
+replay, concurrency, recovery, cancellation, tampering, and non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`, `INV-GRANT-003`,
+`INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`, `INV-DATA-003`, and
+`INV-REL-001`. Trusted core may issue preparation metadata for an exact ready task.
+Agents, models, plugins, workers, UI, retrieved content, and request bodies cannot alter
+state, issue authority, or use a ready-bound manifest to create an ActionIntent.
+
+**Threat/default-deny review:** Missing/unknown versions or task state, blocked or
+terminal state, revision mismatch, state-changing replay, policy/safety/manifest/account
+expiry, cross-scope identity, changed request reuse, oversubscription, malformed integer
+units, tampered receipts, cancellation, and recovery-stale state deny with stable codes.
+No lease, dispatch, worker assignment, grant, provider call, gateway request, or network
+effect is introduced.
+
+**Compatibility, privacy, migration, and rollback:** V1 remains running-only. Migration
+0041 additively backfills immutable `task_state=running` for historical manifests and
+reservations. Application rollback disables v2 production while retaining security
+history; reversing the migration is unsupported. Only bounded identifiers, hashes,
+integer amounts, timestamps, and state are stored—no secrets, evidence, prompts,
+credentials, provider payloads, targets, or raw lease tokens.
+
+**Limitations and residual risk:** Durable leases and worker fencing remain blocked on
+this prerequisite’s merge. Checkpoints, retries, dispatch, Master Orchestrator runtime,
+UI, provider/plugin execution, and effect-specific authorization remain deferred.
+Non-independent review reduces governance assurance and is accepted only for this
+local-development, non-executing slice.
+
 ## 2026-08-22 — Authenticated orchestration approval consumption v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository

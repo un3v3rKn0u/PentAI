@@ -48,12 +48,18 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   request bound to one current task, capability manifest, policy, and assessment account.
 - `orchestration-task-budget-reservation-v1.schema.json` — durable non-authoritative
   reservation/release receipt with exact provenance and cancellation recovery state.
+- `orchestration-task-budget-request-v2.schema.json` — v1-compatible request with an
+  exact ready/running task-state binding for pre-lease reservation ordering.
+- `orchestration-task-budget-reservation-v2.schema.json` — immutable task-state-bound
+  reservation/release receipt that grants no execution authority.
 - `agent-action-intent-request-v1.schema.json` — non-authoritative Validation Agent
   proposal retained for compatibility and denied for new conversion without a manifest.
 - `agent-action-intent-request-v2.schema.json` — manifest-bound, non-authoritative
   Validation Agent proposal converted into a provenance-bound pending ActionIntent.
 - `task-capability-manifest-v1.schema.json` — trusted-core-issued immutable ceiling for
   one exact assessment, plan, task, agent, policy, purpose, capability, and limit set.
+- `task-capability-manifest-v2.schema.json` — v1-compatible manifest with an exact
+  ready/running task-state binding; ready manifests cannot produce ActionIntents.
 - `engagement-manifest-v2.schema.json` — normalized human-reviewed engagement data.
 - `policy-ir-v1.schema.json` — deterministic compiled authorization policy.
 - `action-intent-v1.schema.json` — immutable request for an external effect.
@@ -151,6 +157,9 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | OrchestrationTaskApprovalConsumption v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | OrchestrationTaskBudgetRequest v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | OrchestrationTaskBudgetReservation v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
+| OrchestrationTaskBudgetRequest v2 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
+| OrchestrationTaskBudgetReservation v2 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
+| TaskCapabilityManifest v2 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |
 | AgentActionIntentRequest v1 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |
 | Engagement Manifest v2 | Product Safety Lead | Contract Maintainer | Product Owner, Policy Maintainer, Security Reviewer |
 | Policy IR v1 | Policy Maintainer | Contract Maintainer | Core Maintainer, independent Security Reviewer |
