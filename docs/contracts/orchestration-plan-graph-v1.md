@@ -29,7 +29,9 @@ Creation derives root tasks as `ready` or `awaiting_human` and dependent tasks a
 - `awaiting_human` or `blocked` to `cancelled`;
 - `awaiting_human` to `ready` only through an exact authenticated approval-consumption
   receipt and dedicated trusted-core operation;
-- `running` to `cancelling`, `succeeded`, or `failed`;
+- `running` to `cancelling` or `succeeded` through the general transition service;
+- `running` to `failed` only through an exact typed failure-consumption receipt and
+  dedicated trusted-core operation;
 - `cancelling` to `cancelled` or `failed`.
 
 Success recomputes dependent readiness. The general transition command cannot make an
@@ -77,3 +79,6 @@ dispatch or contact the worker, and the general transition service remains denie
 Metadata-only orchestration checkpoints may record monotonic progress for the exact
 running task and lease-consumption receipt. They do not alter plan/task state or provide
 resume, retry, completion, dispatch, or execution authority.
+Typed orchestration failure consumption can atomically record one closed failure class
+and fail the exact running task. It cannot declare retry eligibility, reopen the task,
+consume retry capacity, dispatch work, or create execution authority.

@@ -1,5 +1,46 @@
 # Phase 2 slice security reviews
 
+## 2026-08-22 — Dedicated typed orchestration failure consumption v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, AI/Agent Lead, Core Maintainer, Contract Maintainer, Execution
+Safety Lead, and Security Reviewer. This does not satisfy independent review or dual
+control.
+
+**Scope and evidence:** Closed command/receipt contracts, migration 0045, deterministic
+failure-consumption service, dedicated storage predicate, immutable recovery markers,
+audit/outbox linkage, and synthetic positive, malformed, closed-class, replay,
+concurrency, checkpoint-lineage, cross-binding, safety, recovery, immutability, and
+non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-GRANT-003`, `INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`,
+`INV-DATA-003`, `INV-REL-001`, and `INV-REL-002`. Trusted core revalidates current
+policy, safety, running task, manifest, budget, approval, lease consumption, worker,
+fence, recovery generation, and checkpoint head. No provider, plugin, worker, gateway,
+target, secret, evidence, or network boundary is crossed.
+
+**Threat/default-deny review:** Unknown or free-form failure data, malformed input,
+stale/cross-scope bindings, ambiguous or stale checkpoint lineage, changed replay,
+concurrent consumption, cancellation, safety pause, policy/worker/recovery replacement,
+direct storage mutation, and general transition attempts deny with stable codes. A
+failure class cannot assert retryability or create authority.
+
+**Compatibility, privacy, migration, and rollback:** Additive schemas, service, and
+immutable tables; migration 0045 intentionally closes general `running` to `failed`
+while preserving explicit startup recovery through immutable recovery markers.
+Rollback disables production and retains history; it must not reopen the closed edge,
+and migration reversal is unsupported. Stored data is bounded identifiers, hashes,
+closed classes, versions, and timestamps—never diagnostics, evidence, prompts, paths,
+URLs, commands, credentials, secrets, provider/plugin payloads, targets, or raw tokens.
+
+**Limitations and residual risk:** Failure consumption does not create immutable attempt
+identity, determine retry eligibility, consume retry budget, schedule/activate retries,
+reopen tasks, complete tasks, dispatch/contact workers, or execute providers/plugins.
+Those boundaries and Master Orchestrator/UI integration remain deferred. The
+non-independent review reduces governance assurance and is accepted only for this
+non-executing slice.
+
 ## 2026-08-22 — Durable metadata-only orchestration checkpoints v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository

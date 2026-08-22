@@ -808,6 +808,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     fencing/recovery generations. Atomic monotonic sequences and predecessor digests
     reject gaps, rollback, forks, and concurrent heads. Artifact data, state changes,
     retries, resume, completion, dispatch, and authority remain excluded and deferred.
+  - Dedicated typed failure consumption now binds one exact current running validation
+    task and its lease/checkpoint lineage to a closed failure class, atomically stores
+    immutable audit/outbox evidence, and storage-gates only `running` to `failed`.
+    Free-form diagnostics and caller-declared retryability are excluded. Attempt
+    identity, deterministic retry eligibility, retry-budget consumption, retry
+    scheduling/activation, completion, dispatch, and authority remain deferred.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.

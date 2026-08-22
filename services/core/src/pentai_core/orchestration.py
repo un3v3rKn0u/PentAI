@@ -7,6 +7,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 from pentai_policy import canonical_json
 from pentai_policy.document import contract_issues, parse_time
@@ -17,7 +18,7 @@ MAX_COMMAND_AGE = timedelta(minutes=5)
 _TRANSITIONS = {
     "ready": {"cancelled"},
     "awaiting_human": {"cancelled"},
-    "running": {"cancelling", "succeeded", "failed"},
+    "running": {"cancelling", "succeeded"},
     "cancelling": {"cancelled", "failed"},
     "blocked": {"cancelled"},
 }
@@ -218,10 +219,38 @@ class DurablePlanGraphService:
             ).fetchall()
             for row in plans:
                 plan_id = str(row["plan_id"])
+                interrupted = connection.execute(
+                    """SELECT t.task_id, t.revision, COALESCE(f.recovery_generation, 1)
+                    AS recovery_generation FROM orchestration_tasks t
+                    LEFT JOIN orchestration_task_lease_fences f ON f.task_id = t.task_id
+                    WHERE t.plan_id = ? AND t.state = 'running' ORDER BY t.task_id""",
+                    (plan_id,),
+                ).fetchall()
+                for task in interrupted:
+                    connection.execute(
+                        """INSERT INTO orchestration_task_recovery_failures VALUES
+                        (?, ?, ?, ?, ?, ?, ?, 'none', 0)""",
+                        (
+                            str(uuid4()),
+                            plan_id,
+                            task["task_id"],
+                            task["revision"],
+                            int(task["revision"]) + 1,
+                            task["recovery_generation"],
+                            timestamp,
+                        ),
+                    )
+                    connection.execute(
+                        """UPDATE orchestration_tasks
+                        SET state = 'failed', revision = revision + 1, updated_at = ?
+                        WHERE plan_id = ? AND task_id = ? AND state = 'running'
+                          AND revision = ?""",
+                        (timestamp, plan_id, task["task_id"], task["revision"]),
+                    )
                 connection.execute(
                     """UPDATE orchestration_tasks
                     SET state = 'failed', revision = revision + 1, updated_at = ?
-                    WHERE plan_id = ? AND state IN ('running', 'cancelling')""",
+                    WHERE plan_id = ? AND state = 'cancelling'""",
                     (timestamp, plan_id),
                 )
                 self._refresh_dependents(connection, plan_id, timestamp)
