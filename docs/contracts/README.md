@@ -42,6 +42,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   request binding its server-derived human principal without accepting caller identity.
 - `orchestration-task-approval-decision-v2.schema.json` — authenticated-session
   decision bound to the same requesting principal and still granting no authority.
+- `orchestration-task-approval-consumption-v1.schema.json` — immutable authenticated
+  receipt for the exact storage-gated readiness-only transition.
 - `orchestration-task-budget-request-v1.schema.json` — version-fenced integer budget
   request bound to one current task, capability manifest, policy, and assessment account.
 - `orchestration-task-budget-reservation-v1.schema.json` — durable non-authoritative
@@ -146,6 +148,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | AIRetrievalResult v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
 | OrchestrationPlanGraph v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | OrchestrationTaskTransition v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
+| OrchestrationTaskApprovalConsumption v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | OrchestrationTaskBudgetRequest v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | OrchestrationTaskBudgetReservation v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | AgentActionIntentRequest v1 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |

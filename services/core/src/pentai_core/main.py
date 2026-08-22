@@ -330,6 +330,15 @@ class OrchestrationApprovalDecisionRequest(StrictRequest):
     explicit_confirmation: bool
 
 
+class OrchestrationApprovalConsumptionRequest(StrictRequest):
+    consumption_id: str
+    decision_id: str
+    request_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    decision_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    expected_plan_revision: int = Field(ge=1)
+    expected_task_revision: int = Field(ge=1)
+
+
 class ReportFileExportRequest(StrictRequest):
     report_kind: str
     format: str
@@ -1199,6 +1208,27 @@ def create_app(
                 explicit_confirmation=requested.explicit_confirmation,
                 approver_id=actor.principal_id,
                 authenticated_session=True,
+                authenticated_session_id=actor.session_id,
+            )
+        )
+
+    @app.post("/api/v1/orchestration/task-approval-requests/{request_id}/consume")
+    def consume_orchestration_task_approval(
+        request_id: str,
+        requested: OrchestrationApprovalConsumptionRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return orchestration_approval_call(
+            lambda: orchestration_approvals.consume(
+                request_id,
+                consumption_id=requested.consumption_id,
+                decision_id=requested.decision_id,
+                request_digest=requested.request_digest,
+                decision_digest=requested.decision_digest,
+                expected_plan_revision=requested.expected_plan_revision,
+                expected_task_revision=requested.expected_task_revision,
+                authenticated_actor_id=actor.principal_id,
                 authenticated_session_id=actor.session_id,
             )
         )

@@ -25,11 +25,13 @@ Creation derives root tasks as `ready` or `awaiting_human` and dependent tasks a
 
 - `ready` to `running` or `cancelled`;
 - `awaiting_human` or `blocked` to `cancelled`;
+- `awaiting_human` to `ready` only through an exact authenticated approval-consumption
+  receipt and dedicated trusted-core operation;
 - `running` to `cancelling`, `succeeded`, or `failed`;
 - `cancelling` to `cancelled` or `failed`.
 
-Success recomputes dependent readiness. Human approval is not implemented; an
-`awaiting_human` task cannot be made ready in this slice. Terminal tasks cannot be
+Success recomputes dependent readiness. The general transition command cannot make an
+`awaiting_human` task ready. Terminal tasks cannot be
 reopened. Plans become completed only when every task succeeds, cancelled when all
 tasks terminate without failure, or failed when all tasks terminate and any failed.
 
@@ -55,14 +57,13 @@ history; the migration is not reversed. Stored values are bounded coordination
 metadata and opaque references only. Raw secrets, evidence content, prompts, provider
 payloads, model output, targets, and tool arguments are absent.
 
-Plan authorship/authentication, Master Orchestrator decisions, approval consumption,
-leases, checkpoints, general retry scheduling, and plan-transition audit/outbox events,
+Plan authorship/authentication, Master Orchestrator decisions, leases, checkpoints,
+general retry scheduling, and plan-transition audit/outbox events,
 retention/deletion, agents, provider calls, worker assignment, `ActionIntent`
 conversion, and execution remain deferred. The broader orchestration action remains
 open. A separate additive task-budget boundary now composes current plan/task state,
 capability manifests, cancellation fencing, durable integer reservations, and recovery;
 provider usage charging and end-to-end action budget enforcement remain deferred.
-An additive task-approval boundary can persist an exact signed human decision, but
-approval deliberately leaves the task in `awaiting_human`; only rejection uses the
-existing cancellation transition. A later slice must add a narrowly gated
-approval-consuming readiness transition without broadening the shared state fence.
+An additive task-approval boundary persists and consumes an exact authenticated signed
+v2 human decision through a storage-gated readiness transition. The receipt and state
+change grant no execution authority.

@@ -25,6 +25,7 @@ from pentai_core.network_attestation_adapters import HostRouteSnapshot
 from pentai_core.network_profile_setup import NetworkProfileSetupService
 from pentai_core.orchestration import DurablePlanGraphService
 from pentai_core.policy_signing import PolicySigner
+from pentai_policy import content_hash
 
 from scripts.owned_fixture_authority import prepare_owned_fixture_session
 
@@ -324,6 +325,7 @@ def orchestration_approval_client(
             "/api/v1/orchestration/plans/unknown/tasks/unknown/approval-request",
         ),
         ("POST", "/api/v1/orchestration/task-approval-requests/unknown/decision"),
+        ("POST", "/api/v1/orchestration/task-approval-requests/unknown/consume"),
     ],
 )
 def test_every_api_route_rejects_missing_credentials(
@@ -661,6 +663,45 @@ def test_authenticated_orchestration_approval_derives_human_identity(tmp_path: P
     assert decision["authentication_context"] == "local_core_authenticated_session"
     assert decision["resulting_task_state"] == "awaiting_human"
     assert decision["authority"] == "none" and decision["execution_enabled"] is False
+
+    consumed = app_request(
+        app,
+        "POST",
+        f"/api/v1/orchestration/task-approval-requests/{request_document['request_id']}/consume",
+        authorization=f"Bearer {credential}",
+        json_body={
+            "consumption_id": "99999999-9999-4999-8999-999999999999",
+            "decision_id": decision["decision_id"],
+            "request_digest": "sha256:" + content_hash(request_document),
+            "decision_digest": "sha256:" + content_hash(decision),
+            "expected_plan_revision": 1,
+            "expected_task_revision": 1,
+        },
+    )
+    assert consumed.status_code == 200
+    assert consumed.json()["resulting_task_state"] == "ready"
+    assert consumed.json()["human_actor"]["actor_id"] == "local-desktop-session"
+    assert consumed.json()["authority"] == "none"
+
+
+def test_orchestration_approval_consumption_rejects_caller_identity_fields(tmp_path: Path) -> None:
+    app, credential, create_body = orchestration_approval_client(tmp_path)
+    response = app_request(
+        app,
+        "POST",
+        "/api/v1/orchestration/task-approval-requests/unknown/consume",
+        authorization=f"Bearer {credential}",
+        json_body={
+            "consumption_id": "99999999-9999-4999-8999-999999999999",
+            "decision_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "request_digest": "sha256:" + "0" * 64,
+            "decision_digest": "sha256:" + "1" * 64,
+            "expected_plan_revision": 1,
+            "expected_task_revision": 1,
+            "approver_id": "forged-human",
+        },
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize(

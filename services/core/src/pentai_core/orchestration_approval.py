@@ -370,6 +370,299 @@ class OrchestrationApprovalService:
             )
         return copy.deepcopy(document)
 
+    def consume(
+        self,
+        request_id: str,
+        *,
+        consumption_id: str,
+        decision_id: str,
+        request_digest: str,
+        decision_digest: str,
+        expected_plan_revision: int,
+        expected_task_revision: int,
+        authenticated_actor_id: str,
+        authenticated_session_id: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Consume an authenticated approval into readiness, never execution authority."""
+        normalized_actor = _authenticated_actor(authenticated_actor_id)
+        normalized_session = _authenticated_session(authenticated_session_id, normalized_actor)
+        if normalized_actor is None or normalized_session is None:
+            raise OrchestrationApprovalError(
+                "ORCHESTRATION_APPROVAL_AUTHENTICATION_REQUIRED",
+                "authenticated human approval is required",
+            )
+        try:
+            UUID(consumption_id)
+            UUID(decision_id)
+        except ValueError as exc:
+            raise OrchestrationApprovalError(
+                "ORCHESTRATION_APPROVAL_CONSUMPTION_INVALID", "consumption identity is invalid"
+            ) from exc
+        if not _digest_valid(request_digest) or not _digest_valid(decision_digest):
+            raise OrchestrationApprovalError(
+                "ORCHESTRATION_APPROVAL_CONSUMPTION_INVALID", "consumption digest is invalid"
+            )
+        if expected_plan_revision < 1 or expected_task_revision < 1:
+            raise OrchestrationApprovalError(
+                "ORCHESTRATION_APPROVAL_CONSUMPTION_INVALID", "consumption revision is invalid"
+            )
+        signer = self.authorization.policy_signer
+        if signer is None:
+            raise OrchestrationApprovalError(
+                "ORCHESTRATION_APPROVAL_SIGNER_UNAVAILABLE", "approval signer is unavailable"
+            )
+        instant = _instant(now)
+        self.authorization._require_storage_safe()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            request_row = connection.execute(
+                "SELECT * FROM orchestration_task_approval_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            decision_row = connection.execute(
+                "SELECT * FROM orchestration_task_approval_decisions WHERE decision_id = ?",
+                (decision_id,),
+            ).fetchone()
+            if request_row is None or decision_row is None:
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_CONSUMPTION_MISSING",
+                    "approval request or decision is missing",
+                )
+            request = cast(dict[str, Any], json.loads(request_row["document_json"]))
+            decision = cast(dict[str, Any], json.loads(decision_row["document_json"]))
+            unsigned = {key: value for key, value in decision.items() if key != "signature"}
+            if (
+                request.get("schema_version") != "2.0.0"
+                or decision.get("schema_version") != "2.0.0"
+                or contract_issues(request, _request_schema(request))
+                or contract_issues(decision, _decision_schema(decision))
+                or "sha256:" + content_hash(request) != request_row["request_digest"]
+                or content_hash(decision) != decision_row["content_hash"]
+                or not signer.verify(
+                    canonical_json(unsigned).encode(),
+                    decision["signature"]["value"],
+                    decision["signature"]["key_id"],
+                )
+            ):
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_CONSUMPTION_RECORD_INVALID",
+                    "approval records are invalid",
+                )
+            if (
+                request_row["request_digest"] != request_digest
+                or "sha256:" + decision_row["content_hash"] != decision_digest
+                or decision["request_id"] != request_id
+                or decision["request_digest"] != request_digest
+                or decision_row["request_id"] != request_id
+            ):
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_CONSUMPTION_IDENTITY_CONFLICT",
+                    "approval identity conflicts",
+                )
+            if (
+                decision["decision"] != "approved"
+                or decision["resulting_task_state"] != "awaiting_human"
+            ):
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_CONSUMPTION_DENIED",
+                    "approval does not permit readiness",
+                )
+            actor = decision["approver"]
+            if (
+                request["requester"] != actor
+                or actor["actor_id"] != normalized_actor
+                or actor["session_id"] != normalized_session
+                or request["authentication_context"] != "local_core_authenticated_session"
+                or decision["authentication_context"] != "local_core_authenticated_session"
+            ):
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_ACTOR_MISMATCH", "authenticated human actor mismatches"
+                )
+            if any(
+                decision[field] != request[field]
+                for field in (
+                    "assessment_id",
+                    "plan_id",
+                    "task_id",
+                    "policy_bundle_id",
+                    "policy_hash",
+                )
+            ):
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_CONSUMPTION_IDENTITY_CONFLICT",
+                    "approval security binding conflicts",
+                )
+            if (
+                request["plan_revision"] != expected_plan_revision
+                or request["task_revision"] != expected_task_revision
+                or decision["plan_revision"] != expected_plan_revision
+                or decision["task_revision"] != expected_task_revision
+            ):
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_CONSUMPTION_FENCED", "approval revision is stale"
+                )
+            expires_at = parse_time(decision["expires_at"])
+            if (
+                expires_at != parse_time(request["expires_at"])
+                or expires_at <= instant
+                or parse_time(decision["decided_at"]) > instant
+            ):
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_CONSUMPTION_EXPIRED", "approval is expired"
+                )
+            self._verified_policy(
+                request["assessment_id"], request["policy_bundle_id"], request["policy_hash"]
+            )
+            existing = connection.execute(
+                "SELECT * FROM orchestration_task_approval_consumptions WHERE consumption_id = ?",
+                (consumption_id,),
+            ).fetchone()
+            if existing is not None:
+                stored = cast(dict[str, Any], json.loads(existing["document_json"]))
+                task = connection.execute(
+                    "SELECT revision, state FROM orchestration_tasks WHERE task_id = ?",
+                    (stored["task_id"],),
+                ).fetchone()
+                plan = connection.execute(
+                    "SELECT revision, state FROM orchestration_plans WHERE plan_id = ?",
+                    (stored["plan_id"],),
+                ).fetchone()
+                if (
+                    stored["request_id"] != request_id
+                    or stored["decision_id"] != decision_id
+                    or stored["request_digest"] != request_digest
+                    or stored["decision_digest"] != decision_digest
+                    or stored["human_actor"] != actor
+                ):
+                    raise OrchestrationApprovalError(
+                        "ORCHESTRATION_APPROVAL_CONSUMPTION_IDENTITY_CONFLICT",
+                        "consumption identity conflicts",
+                    )
+                if (
+                    task is None
+                    or plan is None
+                    or (task["state"], task["revision"])
+                    != ("ready", stored["resulting_task_revision"])
+                    or (plan["state"], plan["revision"])
+                    != ("active", stored["resulting_plan_revision"])
+                ):
+                    raise OrchestrationApprovalError(
+                        "ORCHESTRATION_APPROVAL_CONSUMPTION_REPLAY_STALE",
+                        "consumption replay is stale",
+                    )
+                return copy.deepcopy(stored)
+            already_consumed = connection.execute(
+                """SELECT consumption_id FROM orchestration_task_approval_consumptions
+                WHERE request_id = ?""",
+                (request_id,),
+            ).fetchone()
+            if already_consumed is not None:
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_ALREADY_CONSUMED", "approval was already consumed"
+                )
+            task = self._validate_current(
+                connection,
+                assessment_id=request["assessment_id"],
+                plan_id=request["plan_id"],
+                plan_revision=expected_plan_revision,
+                task_id=request["task_id"],
+                task_revision=expected_task_revision,
+                policy_bundle_id=request["policy_bundle_id"],
+                policy_hash=request["policy_hash"],
+                instant=instant,
+                required_state="awaiting_human",
+            )
+            consumed_at = _timestamp(instant)
+            document: dict[str, Any] = {
+                "schema_version": "1.0.0",
+                "consumption_id": consumption_id,
+                "request_id": request_id,
+                "request_digest": request_digest,
+                "decision_id": decision_id,
+                "decision_digest": decision_digest,
+                "assessment_id": request["assessment_id"],
+                "plan_id": request["plan_id"],
+                "expected_plan_revision": expected_plan_revision,
+                "resulting_plan_revision": expected_plan_revision + 1,
+                "task_id": request["task_id"],
+                "expected_task_revision": expected_task_revision,
+                "resulting_task_revision": expected_task_revision + 1,
+                "task_type": task["task_type"],
+                "policy_bundle_id": request["policy_bundle_id"],
+                "policy_hash": request["policy_hash"],
+                "purpose": request["purpose"],
+                "requested_capability": request["requested_capability"],
+                "parameters_digest": request["parameters_digest"],
+                "human_actor": actor,
+                "authentication_context": "local_core_authenticated_session",
+                "approval_expires_at": decision["expires_at"],
+                "consumed_at": consumed_at,
+                "resulting_task_state": "ready",
+                "authority": "none",
+                "execution_enabled": False,
+            }
+            if contract_issues(document, "orchestration-task-approval-consumption-v1.schema.json"):
+                raise OrchestrationApprovalError(
+                    "ORCHESTRATION_APPROVAL_CONSUMPTION_INVALID", "consumption is invalid"
+                )
+            connection.execute(
+                """INSERT INTO orchestration_task_approval_consumptions (
+                consumption_id, request_id, request_digest, decision_id, decision_digest,
+                assessment_id, plan_id, expected_plan_revision, resulting_plan_revision,
+                task_id, expected_task_revision, resulting_task_revision, task_type,
+                policy_bundle_id, policy_hash, purpose, requested_capability,
+                parameters_digest, actor_id, session_id, approval_expires_at, consumed_at,
+                document_json, content_hash, authority, execution_enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, 'none', 0)""",
+                (
+                    consumption_id,
+                    request_id,
+                    request_digest,
+                    decision_id,
+                    decision_digest,
+                    request["assessment_id"],
+                    request["plan_id"],
+                    expected_plan_revision,
+                    expected_plan_revision + 1,
+                    request["task_id"],
+                    expected_task_revision,
+                    expected_task_revision + 1,
+                    task["task_type"],
+                    request["policy_bundle_id"],
+                    request["policy_hash"],
+                    request["purpose"],
+                    request["requested_capability"],
+                    request["parameters_digest"],
+                    normalized_actor,
+                    normalized_session,
+                    decision["expires_at"],
+                    consumed_at,
+                    canonical_json(document),
+                    content_hash(document),
+                ),
+            )
+            connection.execute(
+                """UPDATE orchestration_tasks SET state = 'ready', revision = revision + 1,
+                updated_at = ? WHERE task_id = ? AND revision = ?""",
+                (consumed_at, request["task_id"], expected_task_revision),
+            )
+            connection.execute(
+                """UPDATE orchestration_plans SET revision = revision + 1, updated_at = ?
+                WHERE plan_id = ? AND revision = ?""",
+                (consumed_at, request["plan_id"], expected_plan_revision),
+            )
+            _record(
+                connection,
+                "orchestration.task_approval_consumed",
+                consumption_id,
+                document,
+                actor_id=normalized_actor,
+                actor_type="human",
+            )
+        return copy.deepcopy(document)
+
     def _verified_policy(
         self, assessment_id: str, policy_bundle_id: str, policy_hash: str
     ) -> dict[str, Any]:
@@ -581,7 +874,7 @@ def _record(
     actor_id: str = "pentai-core",
     actor_type: str = "service",
 ) -> None:
-    occurred_at = data.get("decided_at") or data["requested_at"]
+    occurred_at = data.get("consumed_at") or data.get("decided_at") or data["requested_at"]
     event = append_audit_event(
         connection,
         action=action,
@@ -619,3 +912,11 @@ def _instant(value: datetime | None) -> datetime:
 
 def _timestamp(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
+
+def _digest_valid(value: str) -> bool:
+    return (
+        len(value) == 71
+        and value.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )

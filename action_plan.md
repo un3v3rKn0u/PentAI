@@ -778,6 +778,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     `awaiting_human` with
     no authority. Multi-user session identity, UI, approval consumption, leases,
     checkpoints, dispatch, and effect-specific policy approval remain required.
+  - Authenticated approval consumption now accepts only current signed v2 request and
+    approved-decision records for the same server-derived actor/session, atomically
+    stores an immutable receipt, advances exact plan/task revisions, and gates only
+    `awaiting_human` to `ready` in storage. The general transition service remains
+    denied for this edge. Multi-user identity, leases, checkpoints, dispatch, UI, and
+    effect-specific policy approval remain required.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.
