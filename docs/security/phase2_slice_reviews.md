@@ -1,5 +1,40 @@
 # Phase 2 slice security reviews
 
+## 2026-08-22 — Durable metadata-only orchestration checkpoints v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, AI/Agent Lead, Core Maintainer, Contract Maintainer, Data
+Protection Lead, Execution Safety Lead, and Security Reviewer. This does not satisfy
+independent review or dual control.
+
+**Scope and evidence:** Closed command/receipt contracts, migration 0044, deterministic
+checkpoint service, immutable audit/outbox linkage, and synthetic positive, malformed,
+replay, conflict, sequence, predecessor, progress rollback, concurrency, cross-worker,
+safety, recovery-fencing, storage-immutability, and non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-GRANT-003`, `INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`,
+`INV-DATA-003`, `INV-DATA-005`, and `INV-REL-001` through `INV-REL-003`. Trusted core
+revalidates durable policy, safety, running task, prerequisite, consumption, worker, and
+fencing records without contacting any external component.
+
+**Threat/default-deny review:** Unknown/malformed, stale, cross-scope, expired,
+authority-shaped, sequence-gapped, forked, predecessor-mismatched, progress-decreasing,
+concurrent, worker-revoked, safety-paused, cancelled/terminal, and recovery-stale input
+denies with stable codes. Checkpoints cannot alter state or authorize an effect.
+
+**Compatibility, privacy, migration, and rollback:** Additive schemas/service/table;
+Phase 1 workflow checkpoints remain unchanged. Rollback disables production and retains
+immutable history; migration reversal is unsupported. Only bounded identifiers, hashes,
+integer progress, closed status, and timestamps are stored. Artifact references, raw
+evidence, prompts, paths, URLs, commands, credentials, secrets, tokens, provider/plugin
+content, and targets are excluded.
+
+**Limitations and residual risk:** Artifact references, retries, completion, resume,
+dispatch, worker contact, Master Orchestrator runtime, UI, provider/plugin execution,
+and effect-specific authorization remain deferred. Non-independent review reduces
+governance assurance and is accepted only for this non-executing slice.
+
 ## 2026-08-22 — Dedicated orchestration lease consumption v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
