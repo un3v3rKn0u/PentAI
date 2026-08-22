@@ -74,3 +74,6 @@ ownership to an exact ready validation task using the v2 manifest/budget prerequ
 and a trusted worker-registry identity. Dedicated lease consumption can move that task
 to durable running coordination state while atomically releasing the lease. It does not
 dispatch or contact the worker, and the general transition service remains denied.
+Metadata-only orchestration checkpoints may record monotonic progress for the exact
+running task and lease-consumption receipt. They do not alter plan/task state or provide
+resume, retry, completion, dispatch, or execution authority.
