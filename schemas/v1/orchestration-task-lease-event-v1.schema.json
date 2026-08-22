@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-task-lease-event-v1.schema.json",
+  "title": "PentAI OrchestrationTaskLeaseEvent v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "event_id", "command_id", "lease_id", "event_type", "lease_generation", "fencing_token", "previous_lease_version", "resulting_lease_version", "worker_id", "worker_version", "recovery_generation", "occurred_at", "resulting_state", "expires_at", "reason", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "event_id": {"type": "string", "format": "uuid"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "lease_id": {"type": "string", "format": "uuid"},
+    "event_type": {"enum": ["acquired", "renewed", "released", "expired", "invalidated"]},
+    "lease_generation": {"type": "integer", "minimum": 1},
+    "fencing_token": {"type": "integer", "minimum": 1},
+    "previous_lease_version": {"type": "integer", "minimum": 0},
+    "resulting_lease_version": {"type": "integer", "minimum": 1},
+    "worker_id": {"type": "string"},
+    "worker_version": {"type": "integer", "minimum": 1},
+    "recovery_generation": {"type": "integer", "minimum": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "resulting_state": {"enum": ["active", "released", "expired", "invalidated"]},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "reason": {"enum": ["acquired", "renewed", "released", "expired", "cancelled", "recovery", "worker_ineligible", "security_state"]},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

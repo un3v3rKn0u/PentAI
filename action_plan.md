@@ -789,6 +789,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     bounded capacity before lease acquisition without transitioning or dispatching the
     task; v1 remains running-only, and ready-bound manifests cannot propose an action.
     Durable leases and worker fencing remain deferred until this prerequisite merges.
+  - Durable non-executing orchestration task leases now bind one exact current `ready`
+    validation task, v2 manifest and budget reservation, approval receipt when required,
+    active policy/safety state, and trusted durable worker-runtime identity. Atomic
+    monotonic generations and fencing tokens prevent overlapping holders; renewal,
+    release, and startup recovery deny stale use, and only a token digest is retained.
+    Leases grant no authority and do not dispatch or transition tasks to `running`.
+    Checkpoints, retries, running-transition consumption, dispatch, and end-to-end
+    Master Orchestrator enforcement remain required before this item is complete.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.

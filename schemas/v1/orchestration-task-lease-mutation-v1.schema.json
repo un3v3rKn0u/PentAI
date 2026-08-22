@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-task-lease-mutation-v1.schema.json",
+  "title": "PentAI OrchestrationTaskLeaseMutation v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "command_id", "operation", "lease_id", "lease_token", "worker_id", "expected_worker_version", "expected_lease_version", "lease_generation", "fencing_token", "expected_recovery_generation", "requested_at", "lease_seconds", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "operation": {"enum": ["renew", "release"]},
+    "lease_id": {"type": "string", "format": "uuid"},
+    "lease_token": {"type": "string", "minLength": 43, "maxLength": 128},
+    "worker_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "expected_worker_version": {"type": "integer", "minimum": 1},
+    "expected_lease_version": {"type": "integer", "minimum": 1},
+    "lease_generation": {"type": "integer", "minimum": 1},
+    "fencing_token": {"type": "integer", "minimum": 1},
+    "expected_recovery_generation": {"type": "integer", "minimum": 1},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "lease_seconds": {"type": ["integer", "null"], "minimum": 5, "maximum": 60},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  },
+  "allOf": [{
+    "if": {"properties": {"operation": {"const": "renew"}}},
+    "then": {"properties": {"lease_seconds": {"type": "integer"}}},
+    "else": {"properties": {"lease_seconds": {"const": null}}}
+  }]
+}

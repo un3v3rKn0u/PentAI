@@ -57,7 +57,7 @@ history; the migration is not reversed. Stored values are bounded coordination
 metadata and opaque references only. Raw secrets, evidence content, prompts, provider
 payloads, model output, targets, and tool arguments are absent.
 
-Plan authorship/authentication, Master Orchestrator decisions, leases, checkpoints,
+Plan authorship/authentication, Master Orchestrator decisions, checkpoints,
 general retry scheduling, and plan-transition audit/outbox events,
 retention/deletion, agents, provider calls, worker assignment, `ActionIntent`
 conversion, and execution remain deferred. The broader orchestration action remains
@@ -67,3 +67,7 @@ provider usage charging and end-to-end action budget enforcement remain deferred
 An additive task-approval boundary persists and consumes an exact authenticated signed
 v2 human decision through a storage-gated readiness transition. The receipt and state
 change grant no execution authority.
+An additive orchestration lease boundary can assign non-executing coordination
+ownership to an exact ready validation task using the v2 manifest/budget prerequisites
+and a trusted worker-registry identity. It does not dispatch the worker or permit the
+general `ready` to `running` transition.
