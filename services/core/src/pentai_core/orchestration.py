@@ -15,7 +15,7 @@ from pentai_core.database import transaction
 
 MAX_COMMAND_AGE = timedelta(minutes=5)
 _TRANSITIONS = {
-    "ready": {"running", "cancelled"},
+    "ready": {"cancelled"},
     "awaiting_human": {"cancelled"},
     "running": {"cancelling", "succeeded", "failed"},
     "cancelling": {"cancelled", "failed"},

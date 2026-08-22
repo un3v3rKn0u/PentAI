@@ -5,87 +5,31 @@ import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
 from pentai_core.agent_intent import AgentActionIntentService, AgentIntentError
-from pentai_core.migrate import migrate
 from pentai_core.orchestration import DurablePlanGraphService
 from pentai_policy import canonicalize_url, content_hash
 from pentai_policy.document import contract_issues, parse_time
+from test_orchestration_budget import NOW as BUDGET_NOW
+from test_orchestration_budget import PLAN_ID, TASK_ID
+from test_orchestration_budget import setup as budget_setup
 
-from scripts.owned_fixture_authority import prepare_owned_fixture_session
-
-NOW = datetime.now(UTC).replace(microsecond=0)
-PLAN_ID = "11111111-1111-4111-8111-111111111111"
-TASK_ID = "22222222-2222-4222-8222-222222222222"
+NOW = BUDGET_NOW
 
 
 def setup(
     tmp_path: Path, *, maximum_timeout_seconds: int = 30
 ) -> tuple[AgentActionIntentService, dict[str, Any]]:
-    database = tmp_path / "agent-intent.db"
-    migrate(database)
-    authorization, session = prepare_owned_fixture_session(
-        database_path=database, source_store_path=tmp_path / "sources"
-    )
-    with closing(sqlite3.connect(database)) as connection:
-        engagement_id, policy_id, policy_hash = connection.execute(
-            """SELECT e.id, e.active_policy_id, p.content_hash FROM engagements e
-            JOIN policy_bundles p ON p.id = e.active_policy_id
-            JOIN budget_reservations b ON b.engagement_id = e.id
-            WHERE b.reservation_id = ?""",
-            (session["reservation_id"],),
-        ).fetchone()
-    graph = {
-        "schema_version": "1.0.0",
-        "plan_id": PLAN_ID,
-        "assessment_id": engagement_id,
-        "idempotency_key": "synthetic-agent-plan-0001",
-        "revision": 1,
-        "state": "active",
-        "tasks": [
-            {
-                "task_id": TASK_ID,
-                "task_type": "validation",
-                "objective": "Propose one synthetic supervised validation request.",
-                "input_refs": [],
-                "requires_human_approval": False,
-                "state": "pending",
-                "revision": 1,
-                "created_at": NOW.isoformat(),
-                "updated_at": NOW.isoformat(),
-                "authority": "none",
-                "execution_enabled": False,
-            }
-        ],
-        "dependencies": [],
-        "created_at": NOW.isoformat(),
-        "updated_at": NOW.isoformat(),
-        "authority": "none",
-        "execution_enabled": False,
-    }
-    plans = DurablePlanGraphService(database)
-    plans.create(graph)
-    plans.transition(
-        {
-            "schema_version": "1.0.0",
-            "command_id": str(uuid4()),
-            "plan_id": PLAN_ID,
-            "assessment_id": engagement_id,
-            "task_id": TASK_ID,
-            "expected_plan_revision": 1,
-            "expected_task_revision": 1,
-            "target_state": "running",
-            "requested_at": NOW.isoformat(),
-            "authority": "none",
-            "execution_enabled": False,
-        },
-        now=NOW,
-    )
+    budget_service, budget_request = budget_setup(tmp_path)
+    authorization = budget_service.authorization
+    engagement_id = budget_request["assessment_id"]
+    policy_id = budget_request["policy_bundle_id"]
+    policy_hash = budget_request["policy_hash"]
     action = {
         "capability": "network.http.get",
         "target": canonicalize_url("http://192.0.2.10:8080/fixture"),
@@ -175,13 +119,18 @@ def test_trusted_core_issues_immutable_non_authoritative_manifest(tmp_path: Path
     service, request = setup(tmp_path)
     with closing(sqlite3.connect(service.database_path)) as connection:
         connection.row_factory = sqlite3.Row
-        row = connection.execute("SELECT * FROM task_capability_manifests").fetchone()
+        row = connection.execute(
+            "SELECT * FROM task_capability_manifests WHERE manifest_id = ?",
+            (request["capability_manifest_id"],),
+        ).fetchone()
         assert row is not None
         manifest = json.loads(row["manifest_json"])
         assert (
             connection.execute(
                 """SELECT COUNT(*) FROM audit_events
-                WHERE action = 'orchestration.task_capability_manifest_issued'"""
+                WHERE action = 'orchestration.task_capability_manifest_issued'
+                AND subject_id = ?""",
+                (request["capability_manifest_id"],),
             ).fetchone()[0]
             == 1
         )

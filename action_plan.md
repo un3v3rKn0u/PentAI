@@ -797,6 +797,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Leases grant no authority and do not dispatch or transition tasks to `running`.
     Checkpoints, retries, running-transition consumption, dispatch, and end-to-end
     Master Orchestrator enforcement remain required before this item is complete.
+  - Dedicated lease consumption now atomically binds one current holder proof and exact
+    lease/prerequisite/security revisions to the storage-enforced `ready` to `running`
+    coordination transition, releases the lease, and records immutable audit/outbox
+    linkage. The general transition service and direct storage update remain denied.
+    This changes orchestration state only: worker dispatch/contact, checkpoints,
+    retries, completion consumption, and runtime enforcement remain required.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.

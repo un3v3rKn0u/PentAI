@@ -23,7 +23,9 @@ state other than `pending` deny.
 Creation derives root tasks as `ready` or `awaiting_human` and dependent tasks as
 `blocked`. Only these coordination transitions are implemented:
 
-- `ready` to `running` or `cancelled`;
+- `ready` to `cancelled` through the general transition service;
+- `ready` to `running` only through an exact current lease-consumption receipt and
+  dedicated trusted-core operation;
 - `awaiting_human` or `blocked` to `cancelled`;
 - `awaiting_human` to `ready` only through an exact authenticated approval-consumption
   receipt and dedicated trusted-core operation;
@@ -69,5 +71,6 @@ v2 human decision through a storage-gated readiness transition. The receipt and 
 change grant no execution authority.
 An additive orchestration lease boundary can assign non-executing coordination
 ownership to an exact ready validation task using the v2 manifest/budget prerequisites
-and a trusted worker-registry identity. It does not dispatch the worker or permit the
-general `ready` to `running` transition.
+and a trusted worker-registry identity. Dedicated lease consumption can move that task
+to durable running coordination state while atomically releasing the lease. It does not
+dispatch or contact the worker, and the general transition service remains denied.

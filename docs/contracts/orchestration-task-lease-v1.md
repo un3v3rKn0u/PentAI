@@ -46,6 +46,20 @@ new lease operations while retaining immutable security history; reversing migra
 and timestamps. Raw tokens, credentials, secrets, evidence, prompts, provider payloads,
 and targets are not persisted or audited.
 
-Worker dispatch/contact, the `ready` to `running` transition, checkpoints, retries,
-completion consumption, Master Orchestrator runtime, provider/plugin execution, UI, and
-effect-specific authorization remain deferred.
+Worker dispatch/contact, checkpoints, retries, completion consumption, Master
+Orchestrator runtime, provider/plugin execution, UI, and effect-specific authorization
+remain deferred.
+
+## Dedicated consumption
+
+An additive consumption v1 command may atomically exchange one exact current lease for
+the task's durable `running` coordination state. It revalidates every acquisition
+binding, the one-time holder proof, lease-state digest, worker registry version, safety
+state, and recovery fence. The immutable receipt and lease release are committed in the
+same transaction as the plan/task revision change. The general transition service and
+direct storage updates cannot perform `ready` to `running`.
+
+Consumption is still non-executing: it does not contact or dispatch the registered
+worker, debit provider usage, invoke a model or plugin, evaluate an ActionIntent, mint a
+grant, create a gateway request, or contact a target. Checkpoints, retries, dispatch,
+completion consumption, and runtime enforcement remain deferred.

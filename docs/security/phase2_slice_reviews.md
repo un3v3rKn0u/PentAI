@@ -1,5 +1,46 @@
 # Phase 2 slice security reviews
 
+## 2026-08-22 — Dedicated orchestration lease consumption v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, AI/Agent Lead, Core Maintainer, Contract Maintainer, Execution
+Safety Lead, and Security Reviewer. The exception does not satisfy independent review
+or dual control.
+
+**Scope and evidence:** Closed command/receipt contracts, migration 0043, atomic
+lease-consumption service, storage-gated readiness transition, closure of the general
+transition edge, immutable receipt/audit/outbox linkage, and synthetic positive,
+malformed, token, digest, cross-binding, replay, concurrency, direct-storage,
+cancellation, safety, worker-fencing, expiry, recovery, and non-authority tests.
+
+**Invariants and trust boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-GRANT-003`, `INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`,
+`INV-DATA-003`, `INV-REL-001`, and `INV-REL-002`. Trusted core consumes an existing
+lease after revalidating its exact assessment, policy, plan/task, manifest, budget,
+approval, worker, token digest, lease state, and recovery bindings. No provider, model,
+plugin, worker, gateway, target, secret, or network boundary is crossed.
+
+**Threat/default-deny review:** General or direct-storage starts, malformed and unknown
+contracts, wrong token, tampered state digest, cross-scope substitution, stale plan,
+task, worker, lease, fence, or recovery versions, expired/released/recovered leases,
+safety pause, cancellation, conflicting replay, concurrent consumption, delegation,
+inheritance, wildcard, and authority-shaped input deny with stable codes. Exact replay
+returns only the immutable receipt and never repeats the transition or exposes a token.
+
+**Compatibility, privacy, migration, and rollback:** Migration 0043 additively stores
+immutable receipts and replaces the transition trigger with the previous rules plus one
+exact receipt-backed predicate. Existing running and terminal history remains readable;
+general new starts are intentionally closed. Application rollback cannot reopen the
+storage edge and retains security history; migration reversal is unsupported. Stored
+data is bounded metadata and hashes—never raw tokens, credentials, secrets, evidence,
+prompts, provider payloads, targets, or assessment content.
+
+**Limitations and residual risk:** `running` remains coordination state only. Worker
+dispatch/contact, checkpoints, retries, completion consumption, Master Orchestrator
+runtime, UI, provider/plugin execution, and effect-specific authorization remain
+deferred. Non-independent review reduces governance assurance and is accepted only for
+this non-executing slice.
+
 ## 2026-08-22 — Durable orchestration task leases and worker fencing v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
