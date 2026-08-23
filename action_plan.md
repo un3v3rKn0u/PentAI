@@ -819,6 +819,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     checkpoint, lease, worker, manifest, budget, approval, policy, and fencing lineage.
     Recovery markers, forks, skipped numbering, retry classification, budget
     consumption, state changes, scheduling, dispatch, and authority remain excluded.
+  - A versioned trusted-core retry policy now fixes closed eligible failure classes,
+    attempt ceilings, and integer backoff. Deterministic evaluation binds the exact
+    immutable failed attempt and current security lineage, persists an immutable
+    non-activating decision, and rejects caller retryability or backoff overrides.
+    Eligibility reads but does not consume reserved retry capacity. Retry-budget
+    consumption, attempt two, reopening, activation, dispatch, and authority remain
+    excluded and deferred.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.
