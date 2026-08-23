@@ -826,6 +826,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Eligibility reads but does not consume reserved retry capacity. Retry-budget
     consumption, attempt two, reopening, activation, dispatch, and authority remain
     excluded and deferred.
+  - Atomic retry-budget consumption now accepts only an exact current eligible decision,
+    appends one immutable non-refundable sub-ledger receipt, derives remaining integer
+    capacity, and version-fences the assessment budget account. Reservation amounts stay
+    immutable, and concurrency or replay cannot consume the same unit twice. Attempt two,
+    task reopening, scheduling/activation, later leases, dispatch, and authority remain
+    excluded and deferred.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.
