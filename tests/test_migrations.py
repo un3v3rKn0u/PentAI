@@ -62,6 +62,7 @@ class MigrationTests(unittest.TestCase):
                     "0043",
                     "0044",
                     "0045",
+                    "0046",
                 ],
             )
             self.assertEqual(migrate(database), [])

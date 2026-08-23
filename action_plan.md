@@ -814,6 +814,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Free-form diagnostics and caller-declared retryability are excluded. Attempt
     identity, deterministic retry eligibility, retry-budget consumption, retry
     scheduling/activation, completion, dispatch, and authority remain deferred.
+  - Immutable failed-attempt registration now assigns initial attempt number one only
+    to an exact current failed validation task and digest-verified typed failure,
+    checkpoint, lease, worker, manifest, budget, approval, policy, and fencing lineage.
+    Recovery markers, forks, skipped numbering, retry classification, budget
+    consumption, state changes, scheduling, dispatch, and authority remain excluded.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.
