@@ -236,16 +236,28 @@ class OrchestrationBudgetService:
             used = {field: 0 for field in _FIELDS}
             task_used = {field: 0 for field in _FIELDS}
             rows = connection.execute(
-                """SELECT task_id, amounts_json FROM orchestration_task_budget_reservations
-                WHERE account_id = ? AND state = 'reserved'""",
+                """SELECT r.task_id, r.amounts_json, r.state,
+                COALESCE(SUM(c.consumed_retry_units), 0) AS consumed_retries
+                FROM orchestration_task_budget_reservations r
+                LEFT JOIN orchestration_retry_budget_consumptions c
+                    ON c.budget_reservation_id = r.reservation_id
+                WHERE r.account_id = ?
+                GROUP BY r.reservation_id, r.task_id, r.amounts_json, r.state""",
                 (document["account_id"],),
             ).fetchall()
             for row in rows:
                 amounts = json.loads(row["amounts_json"])
                 for field in _FIELDS:
-                    used[field] += amounts[field]
+                    amount = (
+                        amounts[field]
+                        if row["state"] == "reserved"
+                        else row["consumed_retries"]
+                        if field == "retries"
+                        else 0
+                    )
+                    used[field] += amount
                     if row["task_id"] == document["task_id"]:
-                        task_used[field] += amounts[field]
+                        task_used[field] += amount
             ceilings = json.loads(account["ceilings_json"])
             for field in _FIELDS:
                 if (

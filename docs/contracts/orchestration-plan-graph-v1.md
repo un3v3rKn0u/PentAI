@@ -90,3 +90,7 @@ that failed attempt and a deterministic integer-second earliest retry time. The 
 only reads existing retry capacity: it does not consume capacity, create attempt two,
 reopen the task, schedule or dispatch work, or grant authority. Retry accounting,
 activation, and later-attempt lifecycle remain deferred.
+An exact eligible decision can now atomically consume one already-reserved retry unit in
+an immutable sub-ledger while advancing the assessment budget-account version. This does
+not create a later attempt or change orchestration state; activation and later-attempt
+lifecycle remain deferred.

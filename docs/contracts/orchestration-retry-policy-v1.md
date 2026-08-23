@@ -28,5 +28,8 @@ closed enums, integer counters/backoff, versions, and timestamps—never diagnos
 evidence, prompts, URLs, paths, credentials, secrets, raw lease tokens, provider/plugin
 payloads, or target content.
 
-Retry-budget consumption, later-attempt identity, scheduling/activation, task reopening,
-leases for a later attempt, dispatch, completion, and runtime execution remain deferred.
+An additive dedicated boundary can now consume exactly one reserved retry unit for an
+exact current eligible decision using an immutable sub-ledger and assessment-account
+version fence. Consumption remains non-activating and non-authoritative. Later-attempt
+identity, scheduling/activation, task reopening, leases for a later attempt, dispatch,
+completion, and runtime execution remain deferred.

@@ -53,3 +53,9 @@ Orchestrator transport authentication is deferred. Provider usage reconciliation
 committed usage/debit, per-action budget composition, human approval, leases,
 checkpoints, dispatch, and execution remain required before the broader budget and
 orchestration requirements can complete.
+
+An additive retry-consumption sub-ledger now atomically consumes one reserved retry unit
+for an exact current eligible failed attempt and advances the assessment account version.
+It does not mutate the immutable reservation amount, refund or transfer capacity, create
+another attempt, change task state, schedule work, or grant authority. Later-attempt and
+activation accounting remain deferred.

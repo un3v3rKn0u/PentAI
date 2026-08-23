@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-retry-budget-consumption-command-v1.schema.json",
+  "title": "PentAI OrchestrationRetryBudgetConsumptionCommand v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command_id", "assessment_id", "plan_id", "expected_plan_revision", "task_id", "expected_task_revision", "attempt_id", "attempt_digest", "eligibility_decision_id", "eligibility_decision_digest", "retry_policy_id", "retry_policy_revision", "retry_policy_digest", "budget_reservation_id", "expected_budget_account_version", "proposed_attempt_number", "purpose", "requested_at", "expires_at", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "expected_plan_revision": {"type": "integer", "minimum": 3},
+    "task_id": {"type": "string", "format": "uuid"},
+    "expected_task_revision": {"type": "integer", "minimum": 3},
+    "attempt_id": {"type": "string", "format": "uuid"},
+    "attempt_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "eligibility_decision_id": {"type": "string", "format": "uuid"},
+    "eligibility_decision_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "retry_policy_id": {"type": "string", "format": "uuid"},
+    "retry_policy_revision": {"const": 1},
+    "retry_policy_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "budget_reservation_id": {"type": "string", "format": "uuid"},
+    "expected_budget_account_version": {"type": "integer", "minimum": 2},
+    "proposed_attempt_number": {"const": 2},
+    "purpose": {"const": "consume_validation_retry_budget"},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

@@ -1,5 +1,47 @@
 # Phase 2 slice security reviews
 
+## 2026-08-23 — Atomic orchestration retry-budget consumption v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, AI/Agent Lead, Core Maintainer, Contract Maintainer, Execution
+Safety Lead, and Security Reviewer. This does not satisfy independent review or dual
+control.
+
+**Scope and evidence:** Closed command/receipt contracts, migration 0048, atomic
+trusted-core consumption service, immutable sub-ledger and audit/outbox linkage, and
+synthetic positive, malformed, denied-decision, caller-override, replay, concurrency,
+expiry, cross-scope, version, safety, worker, recovery, immutability, exhaustion, and
+non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-GRANT-003`, `INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`,
+`INV-DATA-003`, `INV-NET-005`, `INV-REL-001`, and `INV-REL-002`. Trusted core
+revalidates the exact eligibility decision and failed-attempt, failure, checkpoint,
+lease, worker, manifest, approval, policy, retry-policy, budget, safety, and recovery
+lineage. No provider, plugin, worker, gateway, target, secret, evidence, or network
+boundary is crossed.
+
+**Threat/default-deny review:** Caller-controlled retryability, units, remaining
+capacity, backoff, or authority; denied or tampered decisions; mixed versions;
+stale/cross-scope lineage; changed replay; competing consumption; account-version races;
+exhaustion; reservation release; cancellation/safety pause; policy/worker/recovery
+replacement; storage mutation; and authority-shaped input deny with stable codes. One
+decision cannot create parallel branches or consume twice.
+
+**Compatibility, privacy, migration, and rollback:** Additive schemas, service, and
+immutable table leave Phase 1, reservation amounts, and existing consumers unchanged.
+Rollback disables new consumption and retains the ledger; migration reversal and refunds
+are unsupported. Stored data is bounded identifiers, hashes, enums, integer counters and
+versions, and timestamps—never diagnostics, evidence, prompts, paths, URLs, commands,
+credentials, secrets, provider/plugin payloads, targets, or raw tokens.
+
+**Limitations and residual risk:** Consumption is non-refundable and non-activating. It
+does not create attempt two, reopen tasks, acquire leases, schedule/dispatch work, contact
+workers, or execute providers/plugins. Later-attempt identity, activation, completion,
+Master Orchestrator/UI integration, and effect-specific authorization remain deferred.
+Non-independent review reduces governance assurance and is accepted only for this
+non-executing slice.
+
 ## 2026-08-23 — Deterministic orchestration retry policy and eligibility v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
