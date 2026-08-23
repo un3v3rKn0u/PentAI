@@ -94,3 +94,7 @@ An exact eligible decision can now atomically consume one already-reserved retry
 an immutable sub-ledger while advancing the assessment budget-account version. This does
 not create a later attempt or change orchestration state; activation and later-attempt
 lifecycle remain deferred.
+Immutable retry-attempt registration can now derive attempt number two from the exact
+initial failed attempt and retry-budget consumption receipt. Its `registered` state is
+historical lineage only and does not reopen the failed task, schedule work, acquire a
+lease, or create authority.

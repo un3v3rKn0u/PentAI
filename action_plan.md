@@ -832,6 +832,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     immutable, and concurrency or replay cannot consume the same unit twice. Attempt two,
     task reopening, scheduling/activation, later leases, dispatch, and authority remain
     excluded and deferred.
+  - Immutable retry-attempt registration now derives attempt number two only from the
+    exact current initial failed attempt and one-unit retry-budget consumption receipt.
+    Unique lineage fences reject gaps, forks, competing registration, and stale replay.
+    The attempt remains `registered`, non-activating, and non-authoritative; scheduling,
+    task reopening, later leases, dispatch, and execution remain excluded and deferred.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.

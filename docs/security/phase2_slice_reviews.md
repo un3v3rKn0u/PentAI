@@ -1,5 +1,44 @@
 # Phase 2 slice security reviews
 
+## 2026-08-23 — Immutable orchestration retry-attempt identity v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, AI/Agent Lead, Core Maintainer, Contract Maintainer, Execution
+Safety Lead, and Security Reviewer. This does not satisfy independent review or dual
+control.
+
+**Scope and evidence:** Closed command/receipt contracts, migration 0049, deterministic
+trusted-core registration service, immutable audit/outbox linkage, and synthetic positive,
+malformed, caller-state/schedule/authority, ordering, replay, concurrency, cross-scope,
+safety, worker, budget, recovery, storage-immutability, and non-activation tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-GRANT-003`, `INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`,
+`INV-DATA-003`, `INV-REL-001`, and `INV-REL-002`. Trusted core revalidates the exact
+retry-budget consumption and prior-attempt, failure, checkpoint, lease, worker, manifest,
+approval, policy, retry-policy, eligibility, budget, safety, and recovery lineage. No
+provider, plugin, worker, gateway, target, secret, evidence, or network boundary is crossed.
+
+**Threat/default-deny review:** Caller-controlled numbering, state, retryability, backoff,
+schedule, worker, budget, or authority; missing/tampered consumption; premature ordering;
+stale/cross-scope lineage; gaps, forks, changed replay, competing registration;
+cancellation/safety pause; policy/worker/budget/recovery replacement; storage mutation;
+and privilege-shaped input deny with stable codes. Copied prior-worker identity cannot
+assign attempt two.
+
+**Compatibility, privacy, migration, and rollback:** Additive schemas, service, and
+immutable table leave the closed initial-attempt contract, Phase 1, and existing consumers
+unchanged. Rollback disables new registration and retains history; migration reversal is
+unsupported. Stored data is bounded identifiers, hashes, enums, integer revisions/numbers,
+and timestamps—never diagnostics, evidence, prompts, paths, URLs, commands, credentials,
+secrets, provider/plugin payloads, targets, or raw tokens.
+
+**Limitations and residual risk:** Attempt two remains historical `registered` identity.
+It cannot reopen tasks, schedule or activate work, acquire leases, dispatch/contact workers,
+or execute providers/plugins. Scheduling, activation, completion, Master Orchestrator/UI
+integration, and effect-specific authorization remain deferred. Non-independent review
+reduces governance assurance and is accepted only for this non-executing slice.
+
 ## 2026-08-23 — Atomic orchestration retry-budget consumption v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
