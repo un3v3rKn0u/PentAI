@@ -85,3 +85,8 @@ consume retry capacity, dispatch work, or create execution authority.
 Immutable failed-attempt registration can assign historical attempt number one to the
 exact typed failure lineage. It does not evaluate retryability, create another attempt,
 change task state, consume retry capacity, or schedule work.
+A closed trusted-core retry policy can now derive an immutable eligibility decision for
+that failed attempt and a deterministic integer-second earliest retry time. The decision
+only reads existing retry capacity: it does not consume capacity, create attempt two,
+reopen the task, schedule or dispatch work, or grant authority. Retry accounting,
+activation, and later-attempt lifecycle remain deferred.

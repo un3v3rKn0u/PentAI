@@ -1,5 +1,46 @@
 # Phase 2 slice security reviews
 
+## 2026-08-23 — Deterministic orchestration retry policy and eligibility v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, AI/Agent Lead, Core Maintainer, Contract Maintainer, Execution
+Safety Lead, and Security Reviewer. This does not satisfy independent review or dual
+control.
+
+**Scope and evidence:** Closed policy, evaluation-command, and decision contracts;
+migration 0047; deterministic trusted-core service; immutable audit/outbox linkage; and
+synthetic positive, malformed, closed-class, replay, concurrency, policy-expiry,
+cross-binding, safety, worker, budget, recovery, storage-tampering, integer-boundary,
+and non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-GRANT-003`, `INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`,
+`INV-DATA-003`, `INV-REL-001`, and `INV-REL-002`. Trusted core alone fixes retry
+semantics and revalidates the exact immutable attempt/failure/checkpoint/lease, policy,
+safety, manifest, budget, approval, worker, and recovery lineage. No provider, plugin,
+worker, gateway, target, secret, evidence, or network boundary is crossed.
+
+**Threat/default-deny review:** Caller-controlled retryability, backoff, or next-attempt
+fields; wildcard or altered policy; mixed versions; stale/cross-scope lineage; digest
+substitution; changed replay; concurrent decisions; cancellation/safety pause;
+policy/worker/budget/recovery replacement; authority-shaped input; and storage mutation
+deny with stable codes. Security and unlisted failure classes cannot be relabeled as
+transient.
+
+**Compatibility, privacy, migration, and rollback:** Additive schemas, service, and
+immutable tables leave Phase 1 and existing orchestration consumers unchanged. Rollback
+disables new issuance/evaluation and retains history; migration reversal is unsupported.
+Stored data is bounded identifiers, hashes, enums, integer counters/backoff, versions,
+and timestamps—never diagnostics, evidence, prompts, paths, URLs, commands, credentials,
+secrets, provider/plugin payloads, targets, or raw tokens.
+
+**Limitations and residual risk:** Eligibility checks existing retry capacity but does
+not consume it. It cannot create attempt two, reopen tasks, acquire leases, schedule or
+dispatch work, contact workers, or execute providers/plugins. Retry-budget consumption,
+activation, later-attempt lifecycle, completion, Master Orchestrator/UI integration, and
+effect-specific authorization remain deferred. Non-independent review reduces governance
+assurance and is accepted only for this non-executing slice.
+
 ## 2026-08-23 — Immutable orchestration failed-attempt identity v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
