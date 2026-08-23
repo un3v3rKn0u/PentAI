@@ -76,6 +76,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   one-unit accounting command bound to an exact eligible retry decision.
 - `orchestration-retry-budget-consumption-receipt-v1.schema.json` — immutable,
   non-refundable retry sub-ledger receipt that grants no authority.
+- `orchestration-retry-attempt-command-v1.schema.json` — exact consumption-bound
+  registration command for non-activating attempt-two identity.
+- `orchestration-retry-attempt-receipt-v1.schema.json` — immutable registered attempt
+  lineage with no scheduling, task-state, lease, dispatch, or execution authority.
 - `agent-action-intent-request-v1.schema.json` — non-authoritative Validation Agent
   proposal retained for compatibility and denied for new conversion without a manifest.
 - `agent-action-intent-request-v2.schema.json` — manifest-bound, non-authoritative
@@ -191,6 +195,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | OrchestrationRetryPolicy v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Execution Safety Lead, Security Reviewer |
 | OrchestrationRetryDecision v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Execution Safety Lead, Security Reviewer |
 | OrchestrationRetryBudgetConsumption v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Execution Safety Lead, Security Reviewer |
+| OrchestrationRetryAttempt v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Execution Safety Lead, Security Reviewer |
 | TaskCapabilityManifest v2 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |
 | AgentActionIntentRequest v1 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |
 | Engagement Manifest v2 | Product Safety Lead | Contract Maintainer | Product Owner, Policy Maintainer, Security Reviewer |

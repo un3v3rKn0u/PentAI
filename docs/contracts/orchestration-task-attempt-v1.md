@@ -21,6 +21,9 @@ invoke a provider/plugin, create an `ActionIntent`, approve policy, mint a grant
 perform an external effect.
 
 Migration 0046 is additive and immutable. Application rollback disables new attempt
-registration while retaining history; migration reversal is unsupported. Versioned
-retry policy, eligibility decisions, retry-budget consumption, backoff, scheduling,
+registration while retaining history; migration reversal is unsupported. Scheduling,
 activation, completion, dispatch, and runtime execution remain deferred.
+
+A separate additive retry-attempt contract can now register immutable attempt number two
+only after exact eligibility and retry-budget consumption. It does not change this initial
+failed-attempt contract or create scheduling, task state, leasing, dispatch, or authority.

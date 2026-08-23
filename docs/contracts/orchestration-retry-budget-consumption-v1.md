@@ -33,6 +33,10 @@ The contracts and migration are additive. Application rollback disables consumpt
 retaining immutable history; migration reversal and refunds are unsupported. Stored data
 is limited to bounded identifiers, hashes, closed values, integer counters/versions, and
 timestamps. Secrets, evidence, prompts, diagnostics, URLs, paths, commands, provider/plugin
-payloads, target content, and raw tokens are excluded. Attempt-two identity, scheduling,
-activation, task reopening, later leases, dispatch, completion, and runtime execution
-remain deferred.
+payloads, target content, and raw tokens are excluded. Scheduling, activation, task
+reopening, later leases, dispatch, completion, and runtime execution remain deferred.
+
+An additive dedicated contract can now register immutable, non-activating attempt-two
+identity from one exact current consumption receipt. Registration does not refund or
+consume another unit, schedule work, change task state, acquire a lease, or grant authority.
+Scheduling and activation remain deferred.
