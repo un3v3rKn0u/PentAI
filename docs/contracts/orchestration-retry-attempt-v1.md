@@ -32,3 +32,8 @@ data is bounded identifiers, hashes, closed enums, integer versions/numbers, and
 Secrets, evidence, prompts, diagnostics, URLs, paths, commands, provider/plugin payloads,
 target content, and raw tokens are excluded. Scheduling, activation, task reopening, later
 leases, dispatch, completion, and runtime execution remain deferred.
+
+An additive retry-schedule v1 boundary can now register immutable timing metadata for this
+exact attempt by deriving `scheduled_for` from its stored earliest-retry value. The schedule
+remains inert and cannot reopen the task, activate the attempt, issue prerequisites, acquire
+a lease, dispatch work, or create authority.
