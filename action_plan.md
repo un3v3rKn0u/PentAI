@@ -754,6 +754,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Agent runtime authentication, generalized capabilities and request types,
     approval/budget composition, and end-to-end evaluation remain required.
 - [ ] Add task dependency, lease, cancellation, budget, checkpoint, and human-approval handling.
+  - The durable non-executing retry chain now includes typed failure consumption,
+    immutable attempts, deterministic policy/eligibility, one-unit budget consumption,
+    inert scheduling, and a dedicated storage-fenced schedule-consumption edge that can
+    reopen only the exact failed validation task to readiness. Refreshed retry manifests
+    and reservations, later leases, dispatch, completion, and runtime execution remain
+    required before this item is complete.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

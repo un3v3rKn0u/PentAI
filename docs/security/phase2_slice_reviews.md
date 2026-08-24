@@ -1,5 +1,43 @@
 # Phase 2 slice security reviews
 
+## 2026-08-24 — Dedicated orchestration retry activation v1
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, AI/Agent Lead, Core Maintainer, Contract Maintainer, Execution
+Safety Lead, and Security Reviewer. This does not satisfy independent review or dual
+control.
+
+**Scope and evidence:** Closed command/receipt contracts, migration 0051, deterministic
+trusted-core consumption service, exact storage-fenced plan/task transitions, immutable
+audit/outbox linkage, and synthetic success, malformed, tampering, cross-scope, replay,
+concurrency, expiry, safety, policy, worker, budget, recovery, storage-immutability,
+general-transition denial, and non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-GRANT-003`, `INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`,
+`INV-DATA-003`, `INV-REL-001`, and `INV-REL-002`. Trusted core revalidates the exact
+schedule and its attempt, failure, checkpoint, lease, worker, manifest, approval, policy,
+retry-policy, retry-budget, safety, cancellation, and recovery lineage. No provider,
+plugin, worker, gateway, target, secret, evidence, or network boundary is crossed.
+
+**Threat/default-deny review:** Caller-controlled timing, state, worker, budget, privilege,
+or authority; missing/tampered schedules; stale or cross-scope lineage; early/expired use;
+forks, changed replay, and concurrent consumption; cancellation or safety pause; policy,
+worker, budget, approval, or recovery replacement; direct/general transition bypass; and
+storage mutation deny with stable codes.
+
+**Compatibility, privacy, migration, and rollback:** Additive schemas, service, and
+immutable table preserve Phase 1 and existing consumers. Rollback disables consumption
+while retaining history; migration reversal is unsupported. Stored data is bounded
+identifiers, hashes, enums, revisions, and timestamps, never secrets, evidence, prompts,
+diagnostics, commands, provider/plugin payloads, targets, or raw tokens.
+
+**Limitations and residual risk:** Activation changes coordination readiness only. It
+does not issue refreshed ready-state manifests or budgets, acquire a lease, assign/contact
+a worker, dispatch, complete, or execute providers/plugins. Master Orchestrator and UI
+integration and effect-specific authorization remain deferred. Non-independent review
+reduces governance assurance and is accepted only for this non-executing slice.
+
 ## 2026-08-23 — Immutable non-activating orchestration retry schedule v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
