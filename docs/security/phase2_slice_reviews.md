@@ -1,5 +1,43 @@
 # Phase 2 slice security reviews
 
+## 2026-08-24 — Retry-bound task capability manifest v3
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, Product Owner, Principal Architect, Security Lead, AI/Agent Lead,
+Core Maintainer, Contract Maintainer, Execution Safety Lead, and Security Reviewer. This
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed v3 manifest contract, migration 0052, deterministic
+trusted-core issuer, immutable audit/outbox linkage, compatibility documentation, and
+synthetic success, malformed, tampering, cross-activation, replay, concurrency, policy,
+safety, cancellation, recovery, storage-immutability, and non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`,
+`INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`, `INV-REL-001`, and
+`INV-REL-002`. Trusted core revalidates the exact activation and its attempt, schedule,
+failure, checkpoint, lease, worker, approval, policy, retry-policy, consumed budget,
+safety, cancellation, and recovery lineage. No provider, plugin, worker, gateway, target,
+secret, evidence, or network boundary is crossed.
+
+**Threat/default-deny review:** Caller-selected authority, delegation, capabilities,
+unsupported limits, missing/tampered activation, stale or cross-scope attempt lineage,
+policy replacement, cancellation, safety pause, recovery fencing, duplicate/forked
+issuance, changed replay, concurrency, expiry, and storage mutation deny with stable codes.
+The existing converter rejects this ready-state v3 manifest.
+
+**Compatibility, privacy, migration, and rollback:** V1/v2 manifests remain unchanged.
+Migration 0052 adds nullable immutable retry provenance; existing rows require no
+conversion. Rollback disables v3 issuance and retains history; migration reversal is
+unsupported. Stored data is bounded identifiers, hashes, limits, revisions, and
+timestamps, never secrets, evidence, prompts, diagnostics, provider/plugin payloads,
+targets, commands, paths, URLs, or raw tokens.
+
+**Limitations and residual risk:** This slice issues only the capability half of refreshed
+readiness prerequisites. Retry-bound budget reservation, later leases, dispatch,
+completion, Master Orchestrator/UI integration, agents, provider/plugin execution, and
+effect-specific authorization remain deferred. Non-independent review reduces governance
+assurance and is accepted only for this non-executing slice.
+
 ## 2026-08-24 — Dedicated orchestration retry activation v1
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
