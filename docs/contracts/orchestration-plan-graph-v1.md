@@ -98,3 +98,7 @@ Immutable retry-attempt registration can now derive attempt number two from the 
 initial failed attempt and retry-budget consumption receipt. Its `registered` state is
 historical lineage only and does not reopen the failed task, schedule work, acquire a
 lease, or create authority.
+Immutable retry-schedule registration can now bind that exact attempt-two record and copy
+its deterministic earliest-retry time into inert coordination metadata. The schedule does
+not reopen or transition the failed task, activate the attempt, issue prerequisites,
+acquire a lease, dispatch work, or create authority.
