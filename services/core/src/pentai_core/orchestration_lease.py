@@ -40,7 +40,7 @@ class OrchestrationLeaseService:
         self, request: dict[str, Any], *, now: datetime | None = None
     ) -> dict[str, Any]:
         document = copy.deepcopy(request)
-        if contract_issues(document, "orchestration-task-lease-acquire-v1.schema.json"):
+        if contract_issues(document, _acquire_schema(document)):
             raise OrchestrationLeaseError(
                 "ORCHESTRATION_LEASE_REQUEST_MALFORMED", "lease request is malformed"
             )
@@ -63,6 +63,14 @@ class OrchestrationLeaseService:
                 raise OrchestrationLeaseError(
                     "ORCHESTRATION_LEASE_ACQUIRE_REPLAY_DENIED",
                     "lease acquisition token cannot be replayed",
+                )
+            if connection.execute(
+                """SELECT 1 FROM orchestration_task_leases
+                WHERE task_id=? AND task_revision=? AND state='active'""",
+                (document["task_id"], document["expected_task_revision"]),
+            ).fetchone():
+                raise OrchestrationLeaseError(
+                    "ORCHESTRATION_LEASE_CONFLICT", "task already has an active lease"
                 )
             security = self._validate_current(connection, document, instant)
             fence = connection.execute(
@@ -122,7 +130,7 @@ class OrchestrationLeaseService:
             raw_token = secrets.token_urlsafe(32)
             token_hash = _token_hash(raw_token)
             state = {
-                "schema_version": "1.0.0",
+                "schema_version": document["schema_version"],
                 "lease_id": lease_id,
                 "request_id": document["request_id"],
                 "assessment_id": document["assessment_id"],
@@ -155,11 +163,33 @@ class OrchestrationLeaseService:
                 "authority": "none",
                 "execution_enabled": False,
             }
+            if document["schema_version"] == "2.0.0":
+                for field in (
+                    "capability_manifest_digest",
+                    "budget_request_digest",
+                    "retry_activation_id",
+                    "retry_activation_digest",
+                    "retry_attempt_id",
+                    "retry_attempt_digest",
+                    "retry_budget_consumption_id",
+                ):
+                    state[field] = document[field]
             _validate_state(state)
             connection.execute(
-                """INSERT INTO orchestration_task_leases VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, 'validation', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, 1, 'active', ?, ?, ?, NULL, 'none', ?, ?, 'none', 0)""",
+                """INSERT INTO orchestration_task_leases(
+                lease_id, request_id, request_digest, assessment_id, plan_id, plan_revision,
+                task_id, task_revision, task_type, agent_id, capability_manifest_id,
+                manifest_revision, budget_reservation_id, budget_account_version,
+                approval_consumption_id, policy_bundle_id, policy_hash, worker_id,
+                worker_version, token_hash, recovery_generation, lease_generation,
+                fencing_token, lease_version, state, acquired_at, expires_at,
+                maximum_expires_at, released_at, release_reason, purpose, state_json,
+                authority, execution_enabled, capability_manifest_digest,
+                budget_request_digest, retry_activation_id, retry_activation_digest,
+                retry_attempt_id, retry_attempt_digest, retry_budget_consumption_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'validation', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, 1, 'active', ?, ?, ?, NULL, 'none', ?, ?, 'none', 0,
+                ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     lease_id,
                     document["request_id"],
@@ -188,6 +218,13 @@ class OrchestrationLeaseService:
                     state["maximum_expires_at"],
                     document["purpose"],
                     canonical_json(state),
+                    document.get("capability_manifest_digest"),
+                    document.get("budget_request_digest"),
+                    document.get("retry_activation_id"),
+                    document.get("retry_activation_digest"),
+                    document.get("retry_attempt_id"),
+                    document.get("retry_attempt_digest"),
+                    document.get("retry_budget_consumption_id"),
                 ),
             )
             self._record_event(
@@ -341,6 +378,11 @@ class OrchestrationLeaseService:
             if row is None:
                 raise OrchestrationLeaseError(
                     "ORCHESTRATION_LEASE_MISSING", "lease is missing"
+                )
+            if json.loads(row["state_json"]).get("schema_version") != "1.0.0":
+                raise OrchestrationLeaseError(
+                    "ORCHESTRATION_LEASE_CONSUMPTION_UNSUPPORTED",
+                    "retry-bound lease consumption is not implemented",
                 )
             if not hmac.compare_digest(
                 row["token_hash"], _token_hash(document["lease_token"])
@@ -674,15 +716,26 @@ class OrchestrationLeaseService:
             )
         manifest = json.loads(manifest_row["manifest_json"])
         budget = json.loads(budget_row["receipt_json"])
+        account = connection.execute(
+            "SELECT version FROM orchestration_budget_accounts WHERE account_id=?",
+            (budget_row["account_id"],),
+        ).fetchone()
+        retry_bound = document.get("schema_version") == "2.0.0"
+        expected_manifest_version = "3.0.0" if retry_bound else "2.0.0"
+        expected_budget_version = "3.0.0" if retry_bound else "2.0.0"
         if (
-            manifest.get("schema_version") != "2.0.0"
+            manifest.get("schema_version") != expected_manifest_version
             or manifest.get("task_state") != "ready"
-            or contract_issues(manifest, "task-capability-manifest-v2.schema.json")
+            or contract_issues(
+                manifest,
+                f"task-capability-manifest-v{3 if retry_bound else 2}.schema.json",
+            )
             or content_hash(manifest) != manifest_row["manifest_hash"]
-            or budget.get("schema_version") != "2.0.0"
+            or budget.get("schema_version") != expected_budget_version
             or budget.get("task_state") != "ready"
             or contract_issues(
-                budget, "orchestration-task-budget-reservation-v2.schema.json"
+                budget,
+                f"orchestration-task-budget-reservation-v{3 if retry_bound else 2}.schema.json",
             )
         ):
             raise OrchestrationLeaseError(
@@ -728,7 +781,37 @@ class OrchestrationLeaseService:
             and budget_row["created_at"] == budget["created_at"]
             and budget_row["expires_at"] == budget["expires_at"]
             and budget_row["task_state"] == budget["task_state"]
+            and account is not None
+            and account["version"] == budget["account_version"]
         )
+        if retry_bound:
+            exact = exact and (
+                manifest_row["manifest_hash"]
+                == document["capability_manifest_digest"][7:]
+                and budget["capability_manifest_digest"]
+                == document["capability_manifest_digest"]
+                and budget["request_digest"] == document["budget_request_digest"]
+                and manifest["retry_activation_id"] == document["retry_activation_id"]
+                and manifest["retry_activation_digest"]
+                == document["retry_activation_digest"]
+                and manifest["retry_attempt_id"] == document["retry_attempt_id"]
+                and manifest["retry_attempt_digest"] == document["retry_attempt_digest"]
+                and manifest["retry_budget_consumption_id"]
+                == document["retry_budget_consumption_id"]
+                and budget["retry_activation_id"] == document["retry_activation_id"]
+                and budget["retry_activation_digest"]
+                == document["retry_activation_digest"]
+                and budget["retry_attempt_id"] == document["retry_attempt_id"]
+                and budget["retry_attempt_digest"] == document["retry_attempt_digest"]
+                and budget["retry_budget_consumption_id"]
+                == document["retry_budget_consumption_id"]
+                and budget_row["capability_manifest_digest"]
+                == document["capability_manifest_digest"]
+                and budget_row["retry_activation_id"] == document["retry_activation_id"]
+                and budget_row["retry_attempt_id"] == document["retry_attempt_id"]
+                and budget_row["retry_budget_consumption_id"]
+                == document["retry_budget_consumption_id"]
+            )
         if not exact or budget["state"] != "reserved":
             raise OrchestrationLeaseError(
                 "ORCHESTRATION_LEASE_PREREQUISITE_MISMATCH",
@@ -810,6 +893,7 @@ class OrchestrationLeaseService:
                 "ORCHESTRATION_LEASE_FENCED", "lease holder is stale"
             )
         acquire_binding = {
+            "schema_version": json.loads(row["state_json"])["schema_version"],
             "assessment_id": row["assessment_id"],
             "plan_id": row["plan_id"],
             "expected_plan_revision": row["plan_revision"],
@@ -826,6 +910,17 @@ class OrchestrationLeaseService:
             "worker_id": row["worker_id"],
             "expected_worker_version": row["worker_version"],
         }
+        for field in (
+            "capability_manifest_digest",
+            "budget_request_digest",
+            "retry_activation_id",
+            "retry_activation_digest",
+            "retry_attempt_id",
+            "retry_attempt_digest",
+            "retry_budget_consumption_id",
+        ):
+            if row[field] is not None:
+                acquire_binding[field] = row[field]
         self._verified_policy(acquire_binding, instant)
         self._validate_current(connection, acquire_binding, instant)
         fence = connection.execute(
@@ -921,10 +1016,29 @@ class OrchestrationLeaseService:
 
 
 def _validate_state(state: dict[str, Any]) -> None:
-    if contract_issues(state, "orchestration-task-lease-state-v1.schema.json"):
+    version = state.get("schema_version")
+    schema = (
+        "orchestration-task-lease-state-v1.schema.json"
+        if version == "1.0.0"
+        else "orchestration-task-lease-state-v2.schema.json"
+        if version == "2.0.0"
+        else None
+    )
+    if schema is None or contract_issues(state, schema):
         raise OrchestrationLeaseError(
             "ORCHESTRATION_LEASE_STATE_INVALID", "lease state is invalid"
         )
+
+
+def _acquire_schema(document: dict[str, Any]) -> str:
+    version = document.get("schema_version")
+    if version == "1.0.0":
+        return "orchestration-task-lease-acquire-v1.schema.json"
+    if version == "2.0.0":
+        return "orchestration-task-lease-acquire-v2.schema.json"
+    raise OrchestrationLeaseError(
+        "ORCHESTRATION_LEASE_REQUEST_MALFORMED", "lease request version is unsupported"
+    )
 
 
 def _token_hash(token: str) -> str:

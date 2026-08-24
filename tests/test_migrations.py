@@ -70,6 +70,7 @@ class MigrationTests(unittest.TestCase):
                     "0051",
                     "0052",
                     "0053",
+                    "0054",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -159,6 +160,12 @@ class MigrationTests(unittest.TestCase):
                         "PRAGMA table_info(orchestration_task_budget_reservations)"
                     )
                 }
+                lease_columns = {
+                    row[1]: row[4]
+                    for row in connection.execute(
+                        "PRAGMA table_info(orchestration_task_leases)"
+                    )
+                }
                 triggers = {
                     row[0]
                     for row in connection.execute(
@@ -178,6 +185,13 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("orchestration_task_budget_state_immutable", triggers)
             self.assertIn("orchestration_retry_budget_reservation_binding_valid", triggers)
             self.assertIn("orchestration_retry_budget_reservation_fields_immutable", triggers)
+            self.assertIn("capability_manifest_digest", lease_columns)
+            self.assertIn("budget_request_digest", lease_columns)
+            self.assertIn("retry_activation_id", lease_columns)
+            self.assertIn("retry_attempt_id", lease_columns)
+            self.assertIn("retry_budget_consumption_id", lease_columns)
+            self.assertIn("orchestration_retry_task_lease_binding_valid", triggers)
+            self.assertIn("orchestration_retry_task_lease_fields_immutable", triggers)
 
     def test_failed_migration_rolls_back_its_schema_and_version(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -768,8 +768,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     retry unit, policy, plan, and ready-task lineage. Immutable storage guards, account
     version fencing, exact replay, cancellation/safety/recovery checks, and audit linkage
     deny stale or cross-scope reuse. The reservation grants no authority and cannot
-    transition, lease, dispatch, contact a worker, or execute. Later lease acquisition,
-    dispatch, completion, and runtime enforcement remain required.
+    transition, dispatch, contact a worker, or execute. A retry-bound lease v2 can now
+    atomically acquire short-lived coordination ownership only for the exact current
+    activation, attempt-two, TaskCapabilityManifest v3, reservation v3, policy, worker,
+    and recovery lineage. Monotonic generations, fencing tokens, one-time bearer-token
+    handling, cancellation/safety/worker/recovery checks, and immutable audit linkage
+    deny stale or parallel ownership. It grants no authority and cannot transition,
+    contact, or dispatch. Retry-bound lease consumption, dispatch, completion, and
+    runtime enforcement remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
