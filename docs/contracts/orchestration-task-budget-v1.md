@@ -21,6 +21,15 @@ remains running-only. A ready reservation does not change task state, dispatch w
 authorize execution; any state/revision change fences replay and recovery releases stale
 capacity.
 
+Request and receipt v3 are additive and ready-only. They require the exact digest of a
+TaskCapabilityManifest v3 plus its retry activation, attempt-two, and consumed retry-unit
+identities and digests. Trusted core revalidates that complete immutable lineage in the
+same immediate transaction before reserving existing assessment capacity. The original
+attempt's v1/v2 reservation cannot satisfy this contract, and one retry activation can
+produce at most one v3 reservation. V3 replay is byte-exact and remains valid only while
+the stored reservation, task, plan, assessment, policy, manifest, and expiry bindings are
+current.
+
 ## Accounting, cancellation, and recovery
 
 Migration 0038 stores immutable account identity/ceilings and reservation identity,
@@ -45,6 +54,9 @@ while retaining immutable history; migration 0038 is not reversed.
 Migration 0041 additively and immutably records task state, backfilling historical rows
 as `running`. Rollback disables v2 production while retaining the binding; migration
 reversal is unsupported.
+Migration 0053 adds nullable immutable retry-lineage columns and an exact insert guard;
+existing v1/v2 rows require no conversion. Rollback disables v3 production while
+retaining history, and migration reversal is unsupported.
 
 Only identifiers, hashes, integer ceilings/amounts, timestamps, and states are stored.
 Prompts, model content, evidence, target data, credentials, secret references, and
@@ -59,3 +71,7 @@ for an exact current eligible failed attempt and advances the assessment account
 It does not mutate the immutable reservation amount, refund or transfer capacity, create
 another attempt, change task state, schedule work, or grant authority. Later-attempt and
 activation accounting remain deferred.
+
+The retry-bound reservation stores only identifiers, hashes, integer amounts, revisions,
+states, and timestamps. It does not refund or reinterpret the consumed retry unit, issue
+a lease, transition the ready task, contact a worker, or grant execution authority.

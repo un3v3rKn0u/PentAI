@@ -763,7 +763,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
   - A trusted-core TaskCapabilityManifest v3 can now bind the exact retry activation,
     attempt two, consumed retry unit, and resulting ready plan/task revisions. It cannot
     produce an ActionIntent or issue budget, lease, dispatch, worker contact, or authority.
-    Retry-bound budget reservation and the later lifecycle remain required.
+    A retry-bound task-budget v3 request can now atomically reserve existing integer
+    assessment capacity only for that exact manifest, activation, attempt-two, consumed
+    retry unit, policy, plan, and ready-task lineage. Immutable storage guards, account
+    version fencing, exact replay, cancellation/safety/recovery checks, and audit linkage
+    deny stale or cross-scope reuse. The reservation grants no authority and cannot
+    transition, lease, dispatch, contact a worker, or execute. Later lease acquisition,
+    dispatch, completion, and runtime enforcement remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

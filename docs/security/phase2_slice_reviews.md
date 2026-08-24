@@ -1,5 +1,46 @@
 # Phase 2 slice security reviews
 
+## 2026-08-24 — Retry-bound ready-state budget reservation v3
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, Product Owner, Principal Architect, Security Lead, AI/Agent Lead,
+Core Maintainer, Contract Maintainer, Execution Safety Lead, and Security Reviewer. This
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed request/receipt v3 contracts, migration 0053, atomic
+trusted-core reservation composition, immutable audit/outbox linkage, compatibility
+documentation, and synthetic success, malformed, unsupported-version, tampering,
+cross-lineage, replay, concurrency, expiry, policy, safety, cancellation, recovery,
+storage-immutability, and non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`, `INV-NET-005`,
+`INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`, `INV-REL-001`, and
+`INV-REL-002`. Trusted core binds existing assessment capacity to the exact current
+retry activation, attempt two, consumed retry unit, TaskCapabilityManifest v3, policy,
+plan, and ready task. No provider, plugin, worker, gateway, target, secret, evidence, or
+network boundary is crossed.
+
+**Threat/default-deny review:** Caller-selected authority, non-integer or unsupported
+amounts, missing/tampered lineage, original-attempt reservation reuse, stale revisions,
+cross-scope substitution, policy replacement, cancellation, safety pause, recovery
+fencing, expiry, changed replay, competing reservations, account-version races, ceiling
+exhaustion, and storage mutation deny with stable codes. The consumed retry unit is
+neither refunded nor counted as new capacity.
+
+**Compatibility, privacy, migration, and rollback:** V1/v2 contracts and rows remain
+unchanged. Migration 0053 adds nullable immutable provenance fields; existing rows need
+no conversion. Rollback disables v3 issuance and retains history; migration reversal is
+unsupported. Stored data is bounded identifiers, hashes, integer amounts, revisions,
+states, and timestamps—never secrets, evidence, prompts, diagnostics, provider/plugin
+payloads, targets, commands, paths, URLs, or raw tokens.
+
+**Limitations and residual risk:** This slice issues only the refreshed retry budget
+prerequisite. It does not acquire or consume a later lease, transition the task, assign
+or contact a worker, dispatch, complete, invoke providers/plugins, or grant authority.
+Master Orchestrator/UI integration and effect-specific authorization remain deferred.
+Non-independent review reduces governance assurance and is accepted only for this
+non-executing slice.
+
 ## 2026-08-24 — Retry-bound task capability manifest v3
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
