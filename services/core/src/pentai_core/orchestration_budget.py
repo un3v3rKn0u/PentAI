@@ -17,6 +17,10 @@ from pentai_core.ai_provider_config import (
 )
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.database import transaction
+from pentai_core.orchestration_retry_manifest import (
+    OrchestrationRetryManifestError,
+    OrchestrationRetryManifestService,
+)
 
 _FIELDS = (
     "input_tokens",
@@ -213,7 +217,6 @@ class OrchestrationBudgetService:
         self.authorization._require_storage_safe()
         with transaction(self.database_path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account, manifest = self._validate_current(connection, document, instant)
             replay = connection.execute(
                 """SELECT receipt_json, request_digest
                 FROM orchestration_task_budget_reservations WHERE request_id = ?""",
@@ -224,7 +227,25 @@ class OrchestrationBudgetService:
                     raise OrchestrationBudgetError(
                         "ORCHESTRATION_BUDGET_IDENTITY_CONFLICT", "request identity conflicts"
                     )
-                return cast(dict[str, Any], json.loads(replay["receipt_json"]))
+                receipt = cast(dict[str, Any], json.loads(replay["receipt_json"]))
+                if receipt.get("schema_version") == "3.0.0":
+                    self._validate_reservation_replay(connection, receipt, instant)
+                else:
+                    self._validate_current(connection, document, instant)
+                return receipt
+            if document["schema_version"] == "3.0.0":
+                current = connection.execute(
+                    "SELECT version FROM orchestration_budget_accounts WHERE account_id=?",
+                    (document["account_id"],),
+                ).fetchone()
+                if (
+                    current is not None
+                    and current["version"] != document["expected_account_version"]
+                ):
+                    raise OrchestrationBudgetError(
+                        "ORCHESTRATION_BUDGET_VERSION_STALE", "account version is stale"
+                    )
+            account, manifest = self._validate_current(connection, document, instant)
             if account["version"] != document["expected_account_version"]:
                 raise OrchestrationBudgetError(
                     "ORCHESTRATION_BUDGET_VERSION_STALE", "account version is stale"
@@ -303,8 +324,18 @@ class OrchestrationBudgetService:
                 "authority": "none",
                 "execution_enabled": False,
             }
-            if document["schema_version"] == "2.0.0":
+            if document["schema_version"] in {"2.0.0", "3.0.0"}:
                 receipt["task_state"] = document["task_state"]
+            if document["schema_version"] == "3.0.0":
+                for field in (
+                    "capability_manifest_digest",
+                    "retry_activation_id",
+                    "retry_activation_digest",
+                    "retry_attempt_id",
+                    "retry_attempt_digest",
+                    "retry_budget_consumption_id",
+                ):
+                    receipt[field] = document[field]
             if contract_issues(receipt, _reservation_schema(receipt)):
                 raise OrchestrationBudgetError(
                     "ORCHESTRATION_BUDGET_RESULT_INVALID", "budget receipt is invalid"
@@ -319,9 +350,11 @@ class OrchestrationBudgetService:
                 assessment_id, plan_id, plan_revision, task_id, task_revision, agent_id,
                 capability_manifest_id, manifest_revision, policy_bundle_id, policy_hash,
                 purpose, amounts_json, state, created_at, expires_at, released_at,
-                release_reason, receipt_json, authority, execution_enabled, task_state
+                release_reason, receipt_json, authority, execution_enabled, task_state,
+                capability_manifest_digest, retry_activation_id, retry_activation_digest,
+                retry_attempt_id, retry_attempt_digest, retry_budget_consumption_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reserved',
-                ?, ?, NULL, 'none', ?, 'none', 0, ?)""",
+                ?, ?, NULL, 'none', ?, 'none', 0, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     reservation_id,
                     document["request_id"],
@@ -344,6 +377,12 @@ class OrchestrationBudgetService:
                     document["expires_at"],
                     canonical_json(receipt),
                     document.get("task_state", "running"),
+                    document.get("capability_manifest_digest"),
+                    document.get("retry_activation_id"),
+                    document.get("retry_activation_digest"),
+                    document.get("retry_attempt_id"),
+                    document.get("retry_attempt_digest"),
+                    document.get("retry_budget_consumption_id"),
                 ),
             )
             _audit(
@@ -579,6 +618,40 @@ class OrchestrationBudgetService:
             raise OrchestrationBudgetError(
                 "ORCHESTRATION_BUDGET_MANIFEST_INVALID", "manifest is invalid"
             )
+        if document["schema_version"] == "3.0.0":
+            if (
+                manifest_row["manifest_hash"] != document["capability_manifest_digest"][7:]
+                or manifest["schema_version"] != "3.0.0"
+                or manifest["retry_activation_id"] != document["retry_activation_id"]
+                or manifest["retry_activation_digest"] != document["retry_activation_digest"]
+                or manifest["retry_attempt_id"] != document["retry_attempt_id"]
+                or manifest["retry_attempt_digest"] != document["retry_attempt_digest"]
+                or manifest["retry_budget_consumption_id"]
+                != document["retry_budget_consumption_id"]
+            ):
+                raise OrchestrationBudgetError(
+                    "ORCHESTRATION_BUDGET_RETRY_MISMATCH", "retry binding mismatches"
+                )
+            retry_manifests = OrchestrationRetryManifestService(self.authorization)
+            try:
+                activation = retry_manifests._load_activation(
+                    connection,
+                    activation_id=document["retry_activation_id"],
+                    activation_digest=document["retry_activation_digest"],
+                    assessment_id=document["assessment_id"],
+                    plan_id=document["plan_id"],
+                    plan_revision=document["expected_plan_revision"],
+                    task_id=document["task_id"],
+                    task_revision=document["expected_task_revision"],
+                    policy_bundle_id=document["policy_bundle_id"],
+                    policy_hash=document["policy_hash"],
+                    instant=instant,
+                )
+                retry_manifests._validate_replay(connection, manifest, activation, instant)
+            except OrchestrationRetryManifestError as error:
+                raise OrchestrationBudgetError(
+                    "ORCHESTRATION_BUDGET_RETRY_INVALID", "retry lineage is invalid"
+                ) from error
         if (
             manifest["assessment_id"] != document["assessment_id"]
             or manifest["plan_id"] != document["plan_id"]
@@ -595,6 +668,70 @@ class OrchestrationBudgetService:
                 "ORCHESTRATION_BUDGET_MANIFEST_MISMATCH", "manifest binding mismatches"
             )
         return account, manifest
+
+    def _validate_reservation_replay(
+        self, connection: sqlite3.Connection, receipt: dict[str, Any], instant: datetime
+    ) -> None:
+        try:
+            schema = _reservation_schema(receipt)
+        except OrchestrationBudgetError as error:
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_REPLAY_FENCED", "reservation replay is invalid"
+            ) from error
+        row = connection.execute(
+            "SELECT * FROM orchestration_task_budget_reservations WHERE reservation_id=?",
+            (receipt.get("reservation_id"),),
+        ).fetchone()
+        account = connection.execute(
+            "SELECT * FROM orchestration_budget_accounts WHERE account_id=?",
+            (receipt.get("account_id"),),
+        ).fetchone()
+        plan = connection.execute(
+            "SELECT state, revision FROM orchestration_plans WHERE plan_id=?",
+            (receipt.get("plan_id"),),
+        ).fetchone()
+        task = connection.execute(
+            "SELECT state, revision FROM orchestration_tasks WHERE plan_id=? AND task_id=?",
+            (receipt.get("plan_id"), receipt.get("task_id")),
+        ).fetchone()
+        manifest = connection.execute(
+            "SELECT manifest_hash, expires_at FROM task_capability_manifests WHERE manifest_id=?",
+            (receipt.get("capability_manifest_id"),),
+        ).fetchone()
+        try:
+            self._validate_assessment_policy(
+                connection,
+                receipt["assessment_id"],
+                receipt["policy_bundle_id"],
+                receipt["policy_hash"],
+                instant,
+            )
+        except (KeyError, OrchestrationBudgetError) as error:
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_REPLAY_FENCED", "reservation replay is fenced"
+            ) from error
+        if (
+            contract_issues(receipt, schema)
+            or row is None
+            or row["receipt_json"] != canonical_json(receipt)
+            or row["state"] != "reserved"
+            or parse_time(row["expires_at"]) <= instant
+            or account is None
+            or parse_time(account["expires_at"]) <= instant
+            or plan is None
+            or tuple(plan) != ("active", receipt["plan_revision"])
+            or task is None
+            or tuple(task) != (receipt.get("task_state", "running"), receipt["task_revision"])
+            or manifest is None
+            or parse_time(manifest["expires_at"]) <= instant
+            or (
+                "capability_manifest_digest" in receipt
+                and manifest["manifest_hash"] != receipt["capability_manifest_digest"][7:]
+            )
+        ):
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_REPLAY_FENCED", "reservation replay is fenced"
+            )
 
     @staticmethod
     def _account_document(row: sqlite3.Row) -> dict[str, Any]:
@@ -617,7 +754,7 @@ class OrchestrationBudgetService:
 
 
 def _request_from_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
-    return {
+    request = {
         "account_id": receipt["account_id"],
         "assessment_id": receipt["assessment_id"],
         "plan_id": receipt["plan_id"],
@@ -631,6 +768,17 @@ def _request_from_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
         "policy_bundle_id": receipt["policy_bundle_id"],
         "policy_hash": receipt["policy_hash"],
     }
+    for field in (
+        "capability_manifest_digest",
+        "retry_activation_id",
+        "retry_activation_digest",
+        "retry_attempt_id",
+        "retry_attempt_digest",
+        "retry_budget_consumption_id",
+    ):
+        if field in receipt:
+            request[field] = receipt[field]
+    return request
 
 
 def _audit_data(receipt: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any]:
@@ -715,6 +863,8 @@ def _request_schema(document: dict[str, Any]) -> str:
         return "orchestration-task-budget-request-v1.schema.json"
     if version == "2.0.0":
         return "orchestration-task-budget-request-v2.schema.json"
+    if version == "3.0.0":
+        return "orchestration-task-budget-request-v3.schema.json"
     raise OrchestrationBudgetError(
         "ORCHESTRATION_BUDGET_REQUEST_MALFORMED", "budget request version is unsupported"
     )
@@ -726,6 +876,8 @@ def _reservation_schema(document: dict[str, Any]) -> str:
         return "orchestration-task-budget-reservation-v1.schema.json"
     if version == "2.0.0":
         return "orchestration-task-budget-reservation-v2.schema.json"
+    if version == "3.0.0":
+        return "orchestration-task-budget-reservation-v3.schema.json"
     raise OrchestrationBudgetError(
         "ORCHESTRATION_BUDGET_RESULT_INVALID", "budget receipt version is unsupported"
     )
@@ -737,6 +889,8 @@ def _manifest_schema(document: dict[str, Any]) -> str:
         return "task-capability-manifest-v1.schema.json"
     if version == "2.0.0":
         return "task-capability-manifest-v2.schema.json"
+    if version == "3.0.0":
+        return "task-capability-manifest-v3.schema.json"
     raise OrchestrationBudgetError(
         "ORCHESTRATION_BUDGET_MANIFEST_INVALID", "manifest version is unsupported"
     )

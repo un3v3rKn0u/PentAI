@@ -52,6 +52,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   exact ready/running task-state binding for pre-lease reservation ordering.
 - `orchestration-task-budget-reservation-v2.schema.json` — immutable task-state-bound
   reservation/release receipt that grants no execution authority.
+- `orchestration-task-budget-request-v3.schema.json` — retry-activation and v3-manifest
+  bound request for one exact ready attempt-two lineage.
+- `orchestration-task-budget-reservation-v3.schema.json` — immutable retry-bound
+  reservation/release receipt with no task-transition or execution authority.
 - `orchestration-task-lease-acquire-v1.schema.json` — exact ready-task lease acquisition
   request bound to trusted worker identity and current orchestration prerequisites.
 - `orchestration-task-lease-mutation-v1.schema.json` — token- and revision-fenced lease

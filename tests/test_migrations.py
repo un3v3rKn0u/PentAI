@@ -69,6 +69,7 @@ class MigrationTests(unittest.TestCase):
                     "0050",
                     "0051",
                     "0052",
+                    "0053",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -169,8 +170,14 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("retry_activation_id", manifest_columns)
             self.assertIn("retry_attempt_id", manifest_columns)
             self.assertIn("retry_budget_consumption_id", manifest_columns)
+            self.assertIn("capability_manifest_digest", reservation_columns)
+            self.assertIn("retry_activation_id", reservation_columns)
+            self.assertIn("retry_attempt_id", reservation_columns)
+            self.assertIn("retry_budget_consumption_id", reservation_columns)
             self.assertIn("task_capability_manifest_state_immutable", triggers)
             self.assertIn("orchestration_task_budget_state_immutable", triggers)
+            self.assertIn("orchestration_retry_budget_reservation_binding_valid", triggers)
+            self.assertIn("orchestration_retry_budget_reservation_fields_immutable", triggers)
 
     def test_failed_migration_rolls_back_its_schema_and_version(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
