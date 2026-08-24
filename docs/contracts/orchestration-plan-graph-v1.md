@@ -102,3 +102,8 @@ Immutable retry-schedule registration can now bind that exact attempt-two record
 its deterministic earliest-retry time into inert coordination metadata. The schedule does
 not reopen or transition the failed task, activate the attempt, issue prerequisites,
 acquire a lease, dispatch work, or create authority.
+An exact due and unexpired retry schedule can now be consumed through one dedicated
+storage-gated transition that reopens only the failed validation task to `ready` and its
+failed plan to `active`. The general transition service remains closed to this edge. The
+receipt grants no authority and does not issue refreshed manifests/budgets, acquire a
+lease, dispatch work, or perform an effect.
