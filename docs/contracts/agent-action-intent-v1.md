@@ -34,6 +34,8 @@ audit event and outbox record containing metadata only. `authority` is `none` an
 
 Request v1 is retained as a historical contract but new conversion fails closed with
 `AGENT_INTENT_CAPABILITY_MANIFEST_REQUIRED`; v2 is the supported conversion contract.
+Ready-state task capability manifests v2 and retry-bound v3 remain ineligible for
+conversion because only an exact current running-state manifest can propose an action.
 `ActionIntent v1` and existing human/service producers remain compatible. Application
 rollback disables conversion while retaining immutable intent, provenance, and audit
 history; migrations 0036 and 0037 are not reversed.

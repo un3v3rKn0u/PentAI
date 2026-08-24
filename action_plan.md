@@ -760,6 +760,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     reopen only the exact failed validation task to readiness. Refreshed retry manifests
     and reservations, later leases, dispatch, completion, and runtime execution remain
     required before this item is complete.
+  - A trusted-core TaskCapabilityManifest v3 can now bind the exact retry activation,
+    attempt two, consumed retry unit, and resulting ready plan/task revisions. It cannot
+    produce an ActionIntent or issue budget, lease, dispatch, worker contact, or authority.
+    Retry-bound budget reservation and the later lifecycle remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

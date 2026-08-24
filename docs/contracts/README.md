@@ -96,6 +96,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   one exact assessment, plan, task, agent, policy, purpose, capability, and limit set.
 - `task-capability-manifest-v2.schema.json` — v1-compatible manifest with an exact
   ready/running task-state binding; ready manifests cannot produce ActionIntents.
+- `task-capability-manifest-v3.schema.json` — retry-activation- and attempt-bound ready
+  manifest that remains non-authoritative and cannot produce an ActionIntent.
 - `engagement-manifest-v2.schema.json` — normalized human-reviewed engagement data.
 - `policy-ir-v1.schema.json` — deterministic compiled authorization policy.
 - `action-intent-v1.schema.json` — immutable request for an external effect.

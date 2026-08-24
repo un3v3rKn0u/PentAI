@@ -68,6 +68,7 @@ class MigrationTests(unittest.TestCase):
                     "0049",
                     "0050",
                     "0051",
+                    "0052",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -165,6 +166,9 @@ class MigrationTests(unittest.TestCase):
                 }
             self.assertEqual(manifest_columns["task_state"], "'running'")
             self.assertEqual(reservation_columns["task_state"], "'running'")
+            self.assertIn("retry_activation_id", manifest_columns)
+            self.assertIn("retry_attempt_id", manifest_columns)
+            self.assertIn("retry_budget_consumption_id", manifest_columns)
             self.assertIn("task_capability_manifest_state_immutable", triggers)
             self.assertIn("orchestration_task_budget_state_immutable", triggers)
 

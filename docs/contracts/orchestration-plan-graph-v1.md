@@ -107,3 +107,6 @@ storage-gated transition that reopens only the failed validation task to `ready`
 failed plan to `active`. The general transition service remains closed to this edge. The
 receipt grants no authority and does not issue refreshed manifests/budgets, acquire a
 lease, dispatch work, or perform an effect.
+A trusted-core v3 capability manifest may now bind that exact activation, attempt two,
+consumed retry unit, and current ready plan/task revisions. It remains readiness metadata,
+cannot produce an ActionIntent, and does not reserve budget, lease, dispatch, or execute.
