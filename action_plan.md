@@ -837,6 +837,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Unique lineage fences reject gaps, forks, competing registration, and stale replay.
     The attempt remains `registered`, non-activating, and non-authoritative; scheduling,
     task reopening, later leases, dispatch, and execution remain excluded and deferred.
+  - Immutable retry-schedule registration now binds the exact current attempt-two receipt
+    and derives its timing solely from the trusted eligibility lineage. Unique and current-
+    state fences reject caller timing, forks, competing schedules, and stale replay. The
+    schedule remains inert and non-authoritative; task reopening, activation, later
+    manifests/reservations/leases, dispatch, completion, and execution remain deferred.
 - [ ] Implement Scope, RoE, Evidence, Validation, and Reporting agents first.
 - [ ] Add Web Agent only after supervised HTTP/browser controls are stable.
 - [ ] Expose structured agent state, tasks, budgets, and approval requests in the UI.
