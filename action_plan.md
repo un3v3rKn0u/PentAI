@@ -774,8 +774,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     and recovery lineage. Monotonic generations, fencing tokens, one-time bearer-token
     handling, cancellation/safety/worker/recovery checks, and immutable audit linkage
     deny stale or parallel ownership. It grants no authority and cannot transition,
-    contact, or dispatch. Retry-bound lease consumption, dispatch, completion, and
-    runtime enforcement remain required.
+    contact, or dispatch. Dedicated retry-bound consumption v2 now atomically releases
+    one exact current attempt-two lease, stores immutable audit/outbox evidence, and
+    storage-gates only its `ready` to `running` coordination transition. The general
+    transition path remains denied. Later retry checkpoints, failure/completion,
+    dispatch, worker contact, and runtime enforcement remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

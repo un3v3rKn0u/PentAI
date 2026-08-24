@@ -1,5 +1,48 @@
 # Phase 2 slice security reviews
 
+## 2026-08-24 — Dedicated retry-bound lease consumption v2
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, Product Owner, Principal Architect, Security Lead, AI/Agent Lead,
+Core Maintainer, Contract Maintainer, Execution Safety Lead, and Security Reviewer. This
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed command/receipt v2 contracts, migration 0055, atomic
+trusted-core consumption, exact attempt-aware storage guard, immutable audit/outbox
+linkage, compatibility documentation, and synthetic success, malformed, mixed-version,
+token/digest tampering, cross-lineage, replay, concurrency, cancellation, safety,
+worker/recovery fencing, direct-transition, storage-immutability, and non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`, `INV-NET-005`,
+`INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`, `INV-REL-001`, and
+`INV-REL-002`. Trusted core revalidates and consumes one exact v2 holder proof bound to
+the current retry activation, attempt two, consumed retry unit, v3 manifest/reservation,
+policy, worker, fence, and recovery generation. The transaction changes only durable
+coordination state. No provider, plugin, worker-contact, gateway, target, secret,
+evidence, network, policy-decision, or grant boundary is crossed.
+
+**Threat/default-deny review:** Unknown or mixed versions; wrong token; state, lineage,
+or digest substitution; original-attempt reuse; stale plan/task/policy/manifest/budget/
+worker/lease/recovery state; cancellation; safety pause; expiry; conflicting replay;
+concurrent consumption; direct transition; and authority-shaped input deny with stable
+codes. The database predicate requires version-exact immutable provenance and cannot be
+used as a general `ready` to `running` allowance. Raw token material is never persisted
+or audited.
+
+**Compatibility, privacy, migration, and rollback:** V1 contracts, rows, and behavior
+remain supported. Migration 0055 adds nullable immutable consumption lineage and a
+version-aware transition predicate; existing rows need no conversion. Rollback disables
+v2 consumption while retaining history; migration reversal is unsupported. Stored data
+is bounded identifiers, hashes, revisions, states, and timestamps—never raw tokens,
+credentials, secrets, evidence, prompts, provider/plugin payloads, targets, paths, or
+URLs.
+
+**Limitations and residual risk:** `running` is non-authoritative coordination state.
+Retry-attempt checkpoints, failure/completion consumption, worker dispatch/contact,
+Master Orchestrator runtime, UI, provider/plugin execution, and effect-specific
+authorization remain deferred. Non-independent review reduces governance assurance and
+is accepted only for this non-executing slice.
+
 ## 2026-08-24 — Retry-bound durable task lease v2
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
