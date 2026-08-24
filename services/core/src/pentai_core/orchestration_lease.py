@@ -340,9 +340,14 @@ class OrchestrationLeaseService:
     ) -> dict[str, Any]:
         """Consume one current lease into running coordination state without dispatch."""
         document = copy.deepcopy(command)
-        if contract_issues(
-            document, "orchestration-task-lease-consumption-v1.schema.json"
-        ):
+        consumption_version = document.get("schema_version")
+        if not isinstance(consumption_version, str):
+            consumption_version = ""
+        schema = {
+            "1.0.0": "orchestration-task-lease-consumption-v1.schema.json",
+            "2.0.0": "orchestration-task-lease-consumption-v2.schema.json",
+        }.get(consumption_version, "orchestration-task-lease-consumption-v1.schema.json")
+        if contract_issues(document, schema):
             raise OrchestrationLeaseError(
                 "ORCHESTRATION_LEASE_CONSUMPTION_MALFORMED",
                 "lease consumption is malformed",
@@ -370,7 +375,10 @@ class OrchestrationLeaseService:
                         "ORCHESTRATION_LEASE_CONSUMPTION_IDENTITY_CONFLICT",
                         "consumption identity conflicts",
                     )
-                return cast(dict[str, Any], json.loads(replay["receipt_json"]))
+                receipt = cast(dict[str, Any], json.loads(replay["receipt_json"]))
+                if consumption_version == "2.0.0":
+                    self._validate_consumption_replay(connection, document, receipt, instant)
+                return receipt
             row = connection.execute(
                 "SELECT * FROM orchestration_task_leases WHERE lease_id = ?",
                 (document["lease_id"],),
@@ -379,10 +387,11 @@ class OrchestrationLeaseService:
                 raise OrchestrationLeaseError(
                     "ORCHESTRATION_LEASE_MISSING", "lease is missing"
                 )
-            if json.loads(row["state_json"]).get("schema_version") != "1.0.0":
+            lease_schema_version = json.loads(row["state_json"]).get("schema_version")
+            if lease_schema_version != consumption_version:
                 raise OrchestrationLeaseError(
                     "ORCHESTRATION_LEASE_CONSUMPTION_UNSUPPORTED",
-                    "retry-bound lease consumption is not implemented",
+                    "lease and consumption versions are incompatible",
                 )
             if not hmac.compare_digest(
                 row["token_hash"], _token_hash(document["lease_token"])
@@ -411,6 +420,21 @@ class OrchestrationLeaseService:
                 "fencing_token": row["fencing_token"],
                 "expected_recovery_generation": row["recovery_generation"],
             }
+            if consumption_version == "2.0.0":
+                expected.update(
+                    {
+                        field: row[field]
+                        for field in (
+                            "capability_manifest_digest",
+                            "budget_request_digest",
+                            "retry_activation_id",
+                            "retry_activation_digest",
+                            "retry_attempt_id",
+                            "retry_attempt_digest",
+                            "retry_budget_consumption_id",
+                        )
+                    }
+                )
             if any(document[key] != value for key, value in expected.items()):
                 raise OrchestrationLeaseError(
                     "ORCHESTRATION_LEASE_CONSUMPTION_BINDING_MISMATCH",
@@ -424,7 +448,7 @@ class OrchestrationLeaseService:
                 )
             self._validate_mutation_binding(connection, row, document, instant)
             receipt = {
-                "schema_version": "1.0.0",
+                "schema_version": consumption_version,
                 "consumption_id": consumption_id,
                 "command_id": document["command_id"],
                 "command_digest": command_digest,
@@ -458,17 +482,38 @@ class OrchestrationLeaseService:
                 "authority": "none",
                 "execution_enabled": False,
             }
+            if consumption_version == "2.0.0":
+                for field in (
+                    "capability_manifest_digest",
+                    "budget_request_digest",
+                    "retry_activation_id",
+                    "retry_activation_digest",
+                    "retry_attempt_id",
+                    "retry_attempt_digest",
+                    "retry_budget_consumption_id",
+                ):
+                    receipt[field] = row[field]
             if contract_issues(
                 receipt,
-                "orchestration-task-lease-consumption-receipt-v1.schema.json",
+                "orchestration-task-lease-consumption-receipt-"
+                f"v{2 if consumption_version == '2.0.0' else 1}.schema.json",
             ):
                 raise OrchestrationLeaseError(
                     "ORCHESTRATION_LEASE_CONSUMPTION_RESULT_INVALID",
                     "lease consumption result is invalid",
                 )
             connection.execute(
-                """INSERT INTO orchestration_task_lease_consumptions VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', 0)""",
+                """INSERT INTO orchestration_task_lease_consumptions(
+                consumption_id, command_id, command_digest, assessment_id, plan_id,
+                expected_plan_revision, resulting_plan_revision, task_id,
+                expected_task_revision, resulting_task_revision, lease_id,
+                lease_generation, fencing_token, recovery_generation, receipt_json,
+                receipt_hash, consumed_at, authority, execution_enabled,
+                capability_manifest_digest, budget_request_digest, retry_activation_id,
+                retry_activation_digest, retry_attempt_id, retry_attempt_digest,
+                retry_budget_consumption_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', 0,
+                ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     consumption_id,
                     document["command_id"],
@@ -487,6 +532,13 @@ class OrchestrationLeaseService:
                     canonical_json(receipt),
                     content_hash(receipt),
                     receipt["consumed_at"],
+                    row["capability_manifest_digest"],
+                    row["budget_request_digest"],
+                    row["retry_activation_id"],
+                    row["retry_activation_digest"],
+                    row["retry_attempt_id"],
+                    row["retry_attempt_digest"],
+                    row["retry_budget_consumption_id"],
                 ),
             )
             connection.execute(
@@ -560,6 +612,83 @@ class OrchestrationLeaseService:
                 ),
             )
         return copy.deepcopy(receipt)
+
+    def _validate_consumption_replay(
+        self,
+        connection: sqlite3.Connection,
+        document: dict[str, Any],
+        receipt: dict[str, Any],
+        instant: datetime,
+    ) -> None:
+        """Revalidate a v2 result without recreating the consumed holder authority."""
+        lease = connection.execute(
+            "SELECT * FROM orchestration_task_leases WHERE lease_id = ?",
+            (receipt["lease_id"],),
+        ).fetchone()
+        plan = connection.execute(
+            "SELECT * FROM orchestration_plans WHERE plan_id = ?", (receipt["plan_id"],)
+        ).fetchone()
+        task = connection.execute(
+            "SELECT * FROM orchestration_tasks WHERE plan_id = ? AND task_id = ?",
+            (receipt["plan_id"], receipt["task_id"]),
+        ).fetchone()
+        safety = connection.execute(
+            "SELECT global_status FROM safety_state WHERE singleton_id = 1"
+        ).fetchone()
+        worker = connection.execute(
+            "SELECT * FROM worker_runtime_instances WHERE worker_id = ?",
+            (receipt["worker_id"],),
+        ).fetchone()
+        fence = connection.execute(
+            "SELECT * FROM orchestration_task_lease_fences WHERE task_id = ?",
+            (receipt["task_id"],),
+        ).fetchone()
+        manifest = connection.execute(
+            "SELECT * FROM task_capability_manifests WHERE manifest_id = ?",
+            (receipt["capability_manifest_id"],),
+        ).fetchone()
+        budget = connection.execute(
+            "SELECT * FROM orchestration_task_budget_reservations WHERE reservation_id = ?",
+            (receipt["budget_reservation_id"],),
+        ).fetchone()
+        if (
+            lease is None
+            or lease["state"] != "released"
+            or lease["lease_version"] != receipt["resulting_lease_version"]
+            or not hmac.compare_digest(
+                lease["token_hash"], _token_hash(document["lease_token"])
+            )
+            or plan is None
+            or plan["assessment_id"] != receipt["assessment_id"]
+            or plan["state"] != "active"
+            or plan["revision"] != receipt["resulting_plan_revision"]
+            or task is None
+            or task["assessment_id"] != receipt["assessment_id"]
+            or task["state"] != "running"
+            or task["revision"] != receipt["resulting_task_revision"]
+            or safety is None
+            or safety["global_status"] != "active"
+            or worker is None
+            or worker["status"] != "running"
+            or worker["version"] != receipt["worker_version"]
+            or worker["execution_enabled"] != 0
+            or fence is None
+            or fence["current_lease_generation"] != receipt["lease_generation"]
+            or fence["recovery_generation"] != receipt["recovery_generation"]
+            or manifest is None
+            or manifest["manifest_hash"] != receipt["capability_manifest_digest"][7:]
+            or parse_time(json.loads(manifest["manifest_json"])["expires_at"]) <= instant
+            or budget is None
+            or budget["request_digest"] != receipt["budget_request_digest"]
+            or budget["account_version"] != receipt["budget_account_version"]
+            or budget["state"] != "reserved"
+            or parse_time(budget["expires_at"]) <= instant
+        ):
+            raise OrchestrationLeaseError(
+                "ORCHESTRATION_LEASE_CONSUMPTION_REPLAY_STALE",
+                "consumption replay security binding is stale",
+            )
+        self._verified_policy(document, instant)
 
     def recover(self, *, now: datetime | None = None) -> tuple[dict[str, Any], ...]:
         instant = _instant(now)

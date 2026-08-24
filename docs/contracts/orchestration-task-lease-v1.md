@@ -61,10 +61,11 @@ Worker dispatch/contact, checkpoints, retries, completion consumption, Master
 Orchestrator runtime, provider/plugin execution, UI, and effect-specific authorization
 remain deferred.
 
-For v2, lease consumption and the `ready` to `running` transition remain separately
-deferred. The existing v1 consumption contract cannot consume a v2 retry lease. The v2
-lease grants only coordination ownership and does not contact or assign its registered
-worker.
+Consumption v2 additively accepts only a current retry-bound v2 lease and exact v3
+manifest/budget, activation, attempt-two, consumed-retry-unit, policy, worker, fencing,
+and recovery lineage. V1 and mixed-version records remain incompatible. Migration 0055
+adds nullable immutable consumption provenance and replaces the storage transition guard
+with version-exact v1/v2 predicates; existing v1 rows require no conversion.
 
 ## Dedicated consumption
 
@@ -79,3 +80,10 @@ Consumption is still non-executing: it does not contact or dispatch the register
 worker, debit provider usage, invoke a model or plugin, evaluate an ActionIntent, mint a
 grant, create a gateway request, or contact a target. Checkpoints, retries, dispatch,
 completion consumption, and runtime enforcement remain deferred.
+
+The v2 path provides the same atomic receipt, lease release, plan/task revision update,
+and metadata-only audit/outbox guarantees for attempt two. The raw holder token is
+verified transiently and is absent from receipts, storage, audit, and outbox payloads.
+Rollback disables v2 consumption while retaining immutable history; migration reversal
+is unsupported. Later retry checkpoints, failure/completion consumption, worker
+dispatch/contact, and runtime execution remain deferred.
