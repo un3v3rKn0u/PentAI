@@ -1,5 +1,47 @@
 # Phase 2 slice security reviews
 
+## 2026-08-24 — Retry-bound durable task lease v2
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, Product Owner, Principal Architect, Security Lead, AI/Agent Lead,
+Core Maintainer, Contract Maintainer, Execution Safety Lead, and Security Reviewer. This
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed acquisition/state v2 contracts, migration 0054, atomic
+trusted-core acquisition and fencing composition, one-time raw-token handling, immutable
+audit/outbox linkage, compatibility documentation, and synthetic success, malformed,
+unsupported/mixed-version, tampering, cross-lineage, replay, concurrency, renewal,
+release, expiry, worker, cancellation, safety, budget-account, recovery,
+storage-immutability, and non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`, `INV-NET-005`,
+`INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`, `INV-REL-001`, and
+`INV-REL-002`. Trusted core binds coordination ownership to the exact current retry
+activation, attempt two, consumed retry unit, TaskCapabilityManifest v3, budget
+reservation v3, policy, ready task, registered worker runtime, and recovery generation.
+No provider, plugin, worker-contact, gateway, target, secret, evidence, or network
+boundary is crossed.
+
+**Threat/default-deny review:** Caller-selected authority or worker properties;
+missing/tampered/mixed prerequisites; original-attempt reuse; stale revisions, worker,
+policy, safety, cancellation, budget, expiry, or recovery state; cross-scope substitution;
+acquisition replay; parallel holders; token mismatch; stale generation/fencing tokens;
+and storage mutation deny with stable codes. Only the token digest is persisted; the raw
+token is returned once and cannot be replayed from storage or audit.
+
+**Compatibility, privacy, migration, and rollback:** V1 contracts, rows, and consumers
+remain unchanged. Migration 0054 adds nullable immutable provenance fields; existing rows
+need no conversion. Rollback disables v2 operations and retains history; migration
+reversal is unsupported. Stored data is bounded identifiers, hashes, revisions, states,
+and timestamps—never raw tokens, secrets, evidence, prompts, diagnostics, provider/plugin
+payloads, targets, commands, paths, or URLs.
+
+**Limitations and residual risk:** This slice acquires coordination ownership only. It
+does not consume the v2 lease, transition the task to running, contact/dispatch a worker,
+checkpoint, complete, invoke providers/plugins, or grant authority. Master Orchestrator
+and UI integration and effect-specific authorization remain deferred. Non-independent
+review reduces governance assurance and is accepted only for this non-executing slice.
+
 ## 2026-08-24 — Retry-bound ready-state budget reservation v3
 
 **Review record:** Sole-maintainer security review — non-independent. The repository

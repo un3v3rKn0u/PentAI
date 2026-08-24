@@ -14,6 +14,13 @@ purpose, and bounded lifetime. Worker identity and eligibility come only from th
 durable trusted runtime registry; command bodies cannot assert runtime or containment
 properties.
 
+Acquisition and state v2 are additive and bind one exact retry-ready attempt-two task to
+its TaskCapabilityManifest v3, task-budget reservation v3, retry activation, immutable
+attempt, and consumed retry-unit provenance. V1 remains closed to v2 manifest and budget
+records. Original-attempt manifests, reservations, leases, worker ownership, and fencing
+state cannot satisfy v2. The same durable worker registry remains the sole source of
+worker identity and eligibility.
+
 ## Lifecycle and fencing
 
 Migration 0042 stores one active lease per task revision, immutable lease identities,
@@ -32,6 +39,10 @@ It never renews, reconstructs, reassigns, resumes, dispatches, or creates author
 Each lifecycle change produces bounded metadata-only hash-chained audit and outbox
 linkage.
 
+Migration 0054 adds nullable immutable retry-lineage fields and exact storage guards.
+Existing v1 rows require no conversion. Application rollback disables v2 acquisition,
+renewal, and release while retaining immutable history; migration reversal is unsupported.
+
 ## Default deny, compatibility, privacy, and rollback
 
 Malformed or unsupported contracts; v1 or mixed readiness prerequisites; stale policy,
@@ -49,6 +60,11 @@ and targets are not persisted or audited.
 Worker dispatch/contact, checkpoints, retries, completion consumption, Master
 Orchestrator runtime, provider/plugin execution, UI, and effect-specific authorization
 remain deferred.
+
+For v2, lease consumption and the `ready` to `running` transition remain separately
+deferred. The existing v1 consumption contract cannot consume a v2 retry lease. The v2
+lease grants only coordination ownership and does not contact or assign its registered
+worker.
 
 ## Dedicated consumption
 
