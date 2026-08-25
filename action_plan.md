@@ -786,6 +786,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     It declares no retryability and creates no later attempt or authority. Later retry
     evaluation, completion, dispatch, worker contact, and runtime enforcement remain
     required.
+  - Immutable failed-attempt registration v2 now links the existing attempt-two identity
+    to its exact digest-verified failure-v2 receipt and complete retry/checkpoint/lease
+    lineage in a separate append-only record. It cannot mutate attempt-two creation,
+    create attempt three, evaluate retryability, consume capacity, transition work, or
+    create authority. Further retry evaluation, completion, dispatch, and runtime
+    enforcement remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

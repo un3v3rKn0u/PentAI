@@ -1,5 +1,49 @@
 # Phase 2 slice security reviews
 
+## 2026-08-25 — Retry-bound failed-attempt registration v2
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, Product Owner, Principal Architect, Security Lead, AI/Agent Lead,
+Core Maintainer, Contract Maintainer, Execution Safety Lead, and Security Reviewer. This
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed attempt command/receipt v2 contracts, migration 0058,
+version-exact trusted-core validation, a separate immutable one-to-one failure-linkage
+table, metadata-only audit/outbox linkage, compatibility and plan documentation, and
+synthetic success, malformed, mixed-version, numbering, digest tampering, cross-scope,
+replay, concurrency, safety, cancellation, worker, recovery, storage-immutability, and
+non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`, `INV-GRANT-003`,
+`INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`, `INV-DATA-003`,
+`INV-REL-001`, and `INV-REL-002`. Trusted core links the existing attempt-two identity
+to one exact failure-v2 receipt only after revalidating retry activation, consumed retry
+unit, v3 manifest/reservation, v2 lease/checkpoint lineage, active policy, worker, fence,
+and recovery state. No provider, plugin, worker-contact, gateway, target, secret,
+evidence, network, policy-decision, or grant boundary is crossed.
+
+**Threat/default-deny review:** Unknown or mixed versions; caller-created identity or
+numbering; attempt three; missing, stale, forked, cross-scope, or digest-substituted
+lineage; changed replay; concurrent registration; cancellation; safety pause; policy,
+worker, budget, or recovery replacement; authority-shaped fields; and direct storage
+mutation deny with stable codes. Failure class comes only from the verified receipt and
+cannot be relabeled as retryable.
+
+**Compatibility, privacy, migration, and rollback:** V1 contracts, rows, and behavior
+remain supported. Migration 0058 adds a separate immutable linkage table, leaving the
+attempt-two creation ledger unchanged. Existing rows need no conversion. Rollback
+disables v2 production while retaining history; migration reversal is unsupported.
+Stored data is bounded IDs, hashes, revisions, closed classes, and timestamps—never raw
+tokens, credentials, secrets, evidence, prompts, diagnostics, provider/plugin payloads,
+targets, paths, URLs, commands, or flags.
+
+**Limitations and residual risk:** Registration evaluates no further retry, consumes no
+capacity, creates no attempt three, changes no task state, leases or dispatches no work,
+contacts no worker, and authorizes no effect. Completion, further retry lineage,
+dispatch, Master Orchestrator runtime, UI, and provider/plugin execution remain deferred.
+Non-independent review reduces governance assurance and is accepted only for this
+non-executing slice.
+
 ## 2026-08-25 — Retry-bound typed failure consumption v2
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
