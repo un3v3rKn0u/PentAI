@@ -82,6 +82,14 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   bound to retry activation, v3 readiness records, and lease-consumption v2.
 - `orchestration-task-checkpoint-receipt-v2.schema.json` — immutable retry-lineage
   checkpoint receipt with metadata-only coordination semantics.
+- `orchestration-task-failure-command-v1.schema.json` — closed original-attempt failure
+  command bound to the current lease/checkpoint lineage.
+- `orchestration-task-failure-receipt-v1.schema.json` — immutable original-attempt
+  failure receipt with no retry or execution authority.
+- `orchestration-task-failure-command-v2.schema.json` — closed attempt-two failure
+  command bound to retry activation, v3 readiness records, and checkpoint v2.
+- `orchestration-task-failure-receipt-v2.schema.json` — immutable retry-lineage failure
+  receipt for the storage-enforced coordination-only failed transition.
 - `orchestration-retry-policy-v1.schema.json` — trusted-core closed retry semantics,
   integer attempt/backoff ceilings, exact policy binding, and no authority.
 - `orchestration-retry-evaluation-command-v1.schema.json` — short-lived evaluation

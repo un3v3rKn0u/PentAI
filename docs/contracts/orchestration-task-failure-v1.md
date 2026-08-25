@@ -1,4 +1,4 @@
-# Orchestration task failure v1
+# Orchestration task failure v1 and v2
 
 This additive boundary consumes one closed failure classification for an exact current
 `running` validation task. The command binds the active policy, plan/task revisions,
@@ -28,3 +28,19 @@ new failure consumption; it must not restore the former general `running` to `fa
 edge. Migration reversal is unsupported. Typed attempt identity, deterministic retry
 eligibility, retry-budget consumption, retry scheduling/activation, completion
 consumption, dispatch, and runtime execution remain deferred.
+
+## Retry-bound v2 compatibility
+
+Failure command and receipt v2 extend the same closed semantics to the exact running
+attempt-two lineage. The trusted core additionally binds retry activation and attempt
+digests, the consumed retry unit, TaskCapabilityManifest v3 and its digest, task-budget
+reservation v3 and its request digest, lease-consumption v2, and either the exact
+checkpoint-v2 head or the explicit all-null absence tuple. V1 records remain valid for
+original-attempt tasks but cannot satisfy v2; mixed versions deny.
+
+Migration 0057 adds nullable retry-lineage columns and exact v2 insertion predicates to
+the existing immutable ledger. Existing rows require no conversion. Rollback disables
+v2 production while retaining its historical rows; reversing the migration is
+unsupported. Attempt-two failure remains non-authoritative and does not evaluate a
+further retry, consume retry capacity, create attempt three, reopen work, dispatch, or
+perform an external effect.
