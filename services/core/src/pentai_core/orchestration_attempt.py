@@ -14,6 +14,10 @@ from pentai_policy.document import contract_issues, parse_time
 from pentai_core.audit import append_audit_event
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.database import transaction
+from pentai_core.orchestration_failure import (
+    OrchestrationFailureError,
+    OrchestrationFailureService,
+)
 
 _MAX_AGE = timedelta(minutes=1)
 _MAX_VALIDITY = timedelta(minutes=5)
@@ -32,11 +36,14 @@ class OrchestrationAttemptService:
     def __init__(self, authorization: AuthorizationService) -> None:
         self.authorization = authorization
         self.database_path: Path = authorization.database_path
+        self._failures = OrchestrationFailureService(authorization)
 
     def register(
         self, command: dict[str, Any], *, now: datetime | None = None
     ) -> dict[str, Any]:
         document = copy.deepcopy(command)
+        if document.get("schema_version") == "2.0.0":
+            return self._register_retry(document, now=now)
         if contract_issues(document, "orchestration-task-attempt-command-v1.schema.json"):
             raise OrchestrationAttemptError(
                 "ORCHESTRATION_ATTEMPT_MALFORMED", "attempt command is malformed"
@@ -137,10 +144,248 @@ class OrchestrationAttemptService:
             )
         return copy.deepcopy(receipt)
 
+    def _register_retry(self, document: dict[str, Any], *, now: datetime | None) -> dict[str, Any]:
+        if contract_issues(document, "orchestration-task-attempt-command-v2.schema.json"):
+            raise OrchestrationAttemptError(
+                "ORCHESTRATION_ATTEMPT_MALFORMED", "retry failed-attempt command is malformed"
+            )
+        instant = _instant(now)
+        requested_at = parse_time(document["requested_at"])
+        expires_at = parse_time(document["expires_at"])
+        if (
+            requested_at > instant
+            or instant - requested_at > _MAX_AGE
+            or expires_at <= instant
+            or expires_at <= requested_at
+            or expires_at - requested_at > _MAX_VALIDITY
+        ):
+            raise OrchestrationAttemptError(
+                "ORCHESTRATION_ATTEMPT_STALE", "retry failed-attempt command is stale"
+            )
+        command_digest = "sha256:" + content_hash(document)
+        self.authorization._require_storage_safe()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            replay = connection.execute(
+                """SELECT * FROM orchestration_retry_failed_attempts
+                WHERE command_id = ?""",
+                (document["command_id"],),
+            ).fetchone()
+            if replay is not None:
+                if replay["command_digest"] != command_digest:
+                    raise OrchestrationAttemptError(
+                        "ORCHESTRATION_ATTEMPT_IDENTITY_CONFLICT",
+                        "retry failed-attempt command identity conflicts",
+                    )
+                receipt = cast(dict[str, Any], json.loads(replay["receipt_json"]))
+                self._validate_retry_receipt(replay, receipt)
+                self._validate_retry_current(connection, document, instant)
+                return copy.deepcopy(receipt)
+            failure, retry_attempt = self._validate_retry_current(connection, document, instant)
+            receipt = _retry_receipt(
+                document, failure, retry_attempt, command_digest, _timestamp(instant)
+            )
+            if contract_issues(receipt, "orchestration-task-attempt-receipt-v2.schema.json"):
+                raise OrchestrationAttemptError(
+                    "ORCHESTRATION_ATTEMPT_RESULT_INVALID",
+                    "retry failed-attempt receipt is invalid",
+                )
+            try:
+                connection.execute(
+                    """INSERT INTO orchestration_retry_failed_attempts(
+                    attempt_id, command_id, command_digest, assessment_id, plan_id,
+                    plan_revision, task_id, task_revision, failure_id,
+                    failure_receipt_digest, receipt_json, receipt_hash, registered_at,
+                    authority, execution_enabled)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', 0)""",
+                    (
+                        document["retry_attempt_id"],
+                        document["command_id"],
+                        command_digest,
+                        document["assessment_id"],
+                        document["plan_id"],
+                        document["expected_plan_revision"],
+                        document["task_id"],
+                        document["expected_task_revision"],
+                        document["failure_id"],
+                        document["failure_receipt_digest"],
+                        canonical_json(receipt),
+                        content_hash(receipt),
+                        receipt["registered_at"],
+                    ),
+                )
+            except sqlite3.IntegrityError as error:
+                raise OrchestrationAttemptError(
+                    "ORCHESTRATION_ATTEMPT_CONFLICT",
+                    "retry failed-attempt identity conflicts",
+                ) from error
+            audit = append_audit_event(
+                connection,
+                action="orchestration.retry_failed_attempt_registered",
+                subject_type="orchestration_retry_failed_attempt",
+                subject_id=document["retry_attempt_id"],
+                actor_type="service",
+                actor_id="pentai-core",
+                data=receipt,
+                occurred_at=receipt["registered_at"],
+            )
+            connection.execute(
+                """INSERT INTO outbox(id, aggregate_type, aggregate_id, event_type,
+                payload_json) VALUES (?, 'orchestration_retry_failed_attempt', ?,
+                'orchestration.retry_failed_attempt_registered', ?)""",
+                (
+                    str(uuid4()),
+                    document["retry_attempt_id"],
+                    canonical_json(
+                        {
+                            "event_hash": audit["event_hash"],
+                            "occurred_at": receipt["registered_at"],
+                            "subject_id": document["retry_attempt_id"],
+                        }
+                    ),
+                ),
+            )
+        return copy.deepcopy(receipt)
+
+    def _validate_retry_current(
+        self, connection: sqlite3.Connection, document: dict[str, Any], instant: datetime
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        failure_row = connection.execute(
+            "SELECT * FROM orchestration_task_failures WHERE failure_id=?",
+            (document["failure_id"],),
+        ).fetchone()
+        attempt_row = connection.execute(
+            "SELECT * FROM orchestration_retry_attempts WHERE attempt_id=?",
+            (document["retry_attempt_id"],),
+        ).fetchone()
+        if failure_row is None or attempt_row is None:
+            raise OrchestrationAttemptError(
+                "ORCHESTRATION_ATTEMPT_LINEAGE_MISSING",
+                "retry failed-attempt lineage is missing",
+            )
+        failure = cast(dict[str, Any], json.loads(failure_row["receipt_json"]))
+        retry_attempt = _load_retry_attempt(attempt_row)
+        failure_digest = "sha256:" + content_hash(failure)
+        if (
+            contract_issues(failure, "orchestration-task-failure-receipt-v2.schema.json")
+            or failure_row["receipt_hash"] != content_hash(failure)
+            or failure_digest != document["failure_receipt_digest"]
+            or retry_attempt["attempt_digest"] != document["retry_attempt_digest"]
+        ):
+            raise OrchestrationAttemptError(
+                "ORCHESTRATION_ATTEMPT_LINEAGE_INVALID",
+                "retry failed-attempt lineage is invalid",
+            )
+        exact_fields = (
+            ("assessment_id", "assessment_id"),
+            ("plan_id", "plan_id"),
+            ("task_id", "task_id"),
+            ("agent_id", "agent_id"),
+            ("capability_manifest_id", "capability_manifest_id"),
+            ("capability_manifest_digest", "capability_manifest_digest"),
+            ("manifest_revision", "manifest_revision"),
+            ("budget_reservation_id", "budget_reservation_id"),
+            ("budget_request_digest", "budget_request_digest"),
+            ("budget_account_version", "budget_account_version"),
+            ("retry_activation_id", "retry_activation_id"),
+            ("retry_activation_digest", "retry_activation_digest"),
+            ("retry_attempt_id", "retry_attempt_id"),
+            ("retry_attempt_digest", "retry_attempt_digest"),
+            ("retry_budget_consumption_id", "retry_budget_consumption_id"),
+            ("approval_consumption_id", "approval_consumption_id"),
+            ("lease_consumption_id", "lease_consumption_id"),
+            ("policy_bundle_id", "policy_bundle_id"),
+            ("policy_hash", "policy_hash"),
+            ("worker_id", "worker_id"),
+            ("lease_generation", "lease_generation"),
+            ("fencing_token", "fencing_token"),
+            ("checkpoint_id", "checkpoint_id"),
+            ("checkpoint_sequence", "checkpoint_sequence"),
+            ("checkpoint_digest", "checkpoint_digest"),
+        )
+        if (
+            failure["resulting_plan_revision"] != document["expected_plan_revision"]
+            or failure["resulting_task_revision"] != document["expected_task_revision"]
+            or failure["worker_version"] != document["expected_worker_version"]
+            or failure["recovery_generation"] != document["expected_recovery_generation"]
+            or failure["failure_class"] != document["failure_class"]
+            or any(failure[left] != document[right] for left, right in exact_fields)
+            or retry_attempt["attempt_id"] != document["retry_attempt_id"]
+            or retry_attempt["attempt_number"] != 2
+            or retry_attempt["attempt_state"] != "registered"
+            or retry_attempt["assessment_id"] != document["assessment_id"]
+            or retry_attempt["plan_id"] != document["plan_id"]
+            or retry_attempt["task_id"] != document["task_id"]
+        ):
+            raise OrchestrationAttemptError(
+                "ORCHESTRATION_ATTEMPT_BINDING_MISMATCH",
+                "retry failed-attempt binding mismatches",
+            )
+        current = connection.execute(
+            """SELECT p.revision AS plan_revision, p.state AS plan_state,
+            t.revision AS task_revision, t.state AS task_state
+            FROM orchestration_plans p JOIN orchestration_tasks t ON t.plan_id=p.plan_id
+            WHERE p.plan_id=? AND t.task_id=?""",
+            (document["plan_id"], document["task_id"]),
+        ).fetchone()
+        approval_valid = True
+        if document["approval_consumption_id"] is not None:
+            approval = connection.execute(
+                """SELECT * FROM orchestration_task_approval_consumptions
+                WHERE consumption_id=?""",
+                (document["approval_consumption_id"],),
+            ).fetchone()
+            approval_valid = (
+                approval is not None
+                and approval["assessment_id"] == document["assessment_id"]
+                and approval["plan_id"] == document["plan_id"]
+                and approval["task_id"] == document["task_id"]
+                and approval["policy_hash"] == document["policy_hash"]
+                and parse_time(approval["approval_expires_at"]) > instant
+            )
+        if (
+            current is None
+            or current["plan_revision"] != document["expected_plan_revision"]
+            or current["task_revision"] != document["expected_task_revision"]
+            or current["task_state"] != "failed"
+            or current["plan_state"] not in {"active", "failed"}
+            or not approval_valid
+        ):
+            raise OrchestrationAttemptError(
+                "ORCHESTRATION_ATTEMPT_SECURITY_DENIED",
+                "current failed task security state denies registration",
+            )
+        try:
+            self._failures._validate_retry_replay(connection, failure, instant)
+        except OrchestrationFailureError as error:
+            raise OrchestrationAttemptError(
+                "ORCHESTRATION_ATTEMPT_SECURITY_DENIED",
+                "current security state denies retry failed-attempt registration",
+            ) from error
+        return failure, retry_attempt
+
     @staticmethod
-    def _validate_replay(
-        connection: sqlite3.Connection, receipt: dict[str, Any]
-    ) -> None:
+    def _validate_retry_receipt(row: sqlite3.Row, receipt: dict[str, Any]) -> None:
+        expected_digest = "sha256:" + content_hash(
+            {key: value for key, value in receipt.items() if key != "attempt_digest"}
+        )
+        if (
+            contract_issues(receipt, "orchestration-task-attempt-receipt-v2.schema.json")
+            or row["receipt_hash"] != content_hash(receipt)
+            or receipt["attempt_digest"] != expected_digest
+            or receipt["attempt_id"] != row["attempt_id"]
+            or receipt["command_id"] != row["command_id"]
+            or receipt["command_digest"] != row["command_digest"]
+            or receipt["failure_id"] != row["failure_id"]
+            or receipt["failure_receipt_digest"] != row["failure_receipt_digest"]
+        ):
+            raise OrchestrationAttemptError(
+                "ORCHESTRATION_ATTEMPT_RESULT_INVALID",
+                "retry failed-attempt receipt is invalid",
+            )
+
+    @staticmethod
+    def _validate_replay(connection: sqlite3.Connection, receipt: dict[str, Any]) -> None:
         current = connection.execute(
             """SELECT p.revision AS plan_revision, t.revision AS task_revision,
             t.state AS task_state FROM orchestration_plans p JOIN orchestration_tasks t
@@ -412,6 +657,84 @@ def _receipt(
     receipt["attempt_digest"] = "sha256:" + content_hash(
         {key: value for key, value in receipt.items() if key != "attempt_digest"}
     )
+    return receipt
+
+
+def _retry_receipt(
+    document: dict[str, Any],
+    failure: dict[str, Any],
+    retry_attempt: dict[str, Any],
+    command_digest: str,
+    timestamp: str,
+) -> dict[str, Any]:
+    receipt = {
+        "schema_version": "2.0.0",
+        "attempt_id": document["retry_attempt_id"],
+        "command_id": document["command_id"],
+        "command_digest": command_digest,
+        "assessment_id": document["assessment_id"],
+        "plan_id": document["plan_id"],
+        "plan_revision": document["expected_plan_revision"],
+        "task_id": document["task_id"],
+        "task_revision": document["expected_task_revision"],
+        "agent_id": document["agent_id"],
+        "capability_manifest_id": document["capability_manifest_id"],
+        "capability_manifest_digest": document["capability_manifest_digest"],
+        "manifest_revision": document["manifest_revision"],
+        "budget_reservation_id": document["budget_reservation_id"],
+        "budget_request_digest": document["budget_request_digest"],
+        "budget_account_version": document["budget_account_version"],
+        "retry_activation_id": document["retry_activation_id"],
+        "retry_activation_digest": document["retry_activation_digest"],
+        "retry_attempt_digest": document["retry_attempt_digest"],
+        "retry_budget_consumption_id": document["retry_budget_consumption_id"],
+        "approval_consumption_id": document["approval_consumption_id"],
+        "lease_consumption_id": document["lease_consumption_id"],
+        "lease_consumption_digest": failure["lease_consumption_digest"],
+        "policy_bundle_id": document["policy_bundle_id"],
+        "policy_hash": document["policy_hash"],
+        "worker_id": document["worker_id"],
+        "worker_version": document["expected_worker_version"],
+        "lease_generation": document["lease_generation"],
+        "fencing_token": document["fencing_token"],
+        "recovery_generation": document["expected_recovery_generation"],
+        "checkpoint_id": document["checkpoint_id"],
+        "checkpoint_sequence": document["checkpoint_sequence"],
+        "checkpoint_digest": document["checkpoint_digest"],
+        "failure_id": document["failure_id"],
+        "failure_receipt_digest": document["failure_receipt_digest"],
+        "failure_class": failure["failure_class"],
+        "attempt_number": retry_attempt["attempt_number"],
+        "attempt_state": "failed",
+        "purpose": document["purpose"],
+        "registered_at": timestamp,
+        "attempt_digest": "",
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    receipt["attempt_digest"] = "sha256:" + content_hash(
+        {key: value for key, value in receipt.items() if key != "attempt_digest"}
+    )
+    return receipt
+
+
+def _load_retry_attempt(row: sqlite3.Row) -> dict[str, Any]:
+    receipt = cast(dict[str, Any], json.loads(row["receipt_json"]))
+    expected_digest = "sha256:" + content_hash(
+        {key: value for key, value in receipt.items() if key != "attempt_digest"}
+    )
+    if (
+        contract_issues(receipt, "orchestration-retry-attempt-receipt-v1.schema.json")
+        or row["receipt_hash"] != content_hash(receipt)
+        or receipt["attempt_digest"] != expected_digest
+        or receipt["attempt_id"] != row["attempt_id"]
+        or receipt["attempt_number"] != 2
+        or receipt["attempt_state"] != "registered"
+    ):
+        raise OrchestrationAttemptError(
+            "ORCHESTRATION_ATTEMPT_LINEAGE_INVALID",
+            "retry attempt identity is invalid",
+        )
     return receipt
 
 

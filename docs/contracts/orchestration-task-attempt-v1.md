@@ -1,4 +1,4 @@
-# Orchestration task attempt v1
+# Orchestration task attempt v1 and v2
 
 This additive boundary registers immutable identity for the initial failed execution
 attempt of one exact validation task. Registration accepts only a current, digest-
@@ -27,3 +27,18 @@ activation, completion, dispatch, and runtime execution remain deferred.
 A separate additive retry-attempt contract can now register immutable attempt number two
 only after exact eligibility and retry-budget consumption. It does not change this initial
 failed-attempt contract or create scheduling, task state, leasing, dispatch, or authority.
+
+## Retry-bound failed-attempt v2
+
+The additive v2 command registers the already-existing immutable attempt-two identity
+as failed after exact typed failure consumption v2. It binds the retry activation,
+attempt digest, consumed retry unit, v3 manifest and reservation, v2 lease consumption,
+optional checkpoint-v2 head, closed failure class, worker, policy, fencing, and recovery
+lineage. It cannot mutate the original retry-attempt receipt or allocate attempt three.
+
+Migration 0058 introduces a separate immutable one-to-one failure-linkage table because
+the attempt-two creation record is intentionally immutable in `registered` state. V1
+original-attempt registration remains unchanged; mixed versions cannot satisfy v2.
+Application rollback disables v2 production while retaining immutable history, and
+migration reversal is unsupported. Further retry evaluation, scheduling, activation,
+task reopening, completion, dispatch, and runtime execution remain deferred.
