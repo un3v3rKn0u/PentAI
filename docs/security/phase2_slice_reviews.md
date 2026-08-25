@@ -1,5 +1,46 @@
 # Phase 2 slice security reviews
 
+## 2026-08-25 — Retry-bound eligibility evaluation v2
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, Product Owner, Principal Architect, Security Lead, AI/Agent Lead,
+Core Maintainer, Contract Maintainer, Execution Safety Lead, and Security Reviewer. This
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed evaluation command/decision v2 contracts, migration
+0060, version-exact trusted-core evaluation, immutable decision storage, metadata-only
+audit/outbox linkage, compatibility documentation, and synthetic outcome, malformed,
+mixed-version, digest tampering, replay, concurrency, safety, cancellation, worker,
+recovery, direct-storage, migration upgrade, and idempotency tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`, `INV-GRANT-003`,
+`INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`, `INV-DATA-003`, `INV-REL-001`,
+and `INV-REL-002`. Trusted core binds one failed-attempt v2 receipt, its complete retry,
+failure, checkpoint, lease, worker, manifest, budget, approval, policy, fencing, and
+recovery lineage to one exact retry policy v2. Current attempt two, proposed attempt
+three, and `[5, 30]` policy timing are derived, not caller supplied.
+
+**Threat/default-deny review:** Missing or mixed versions; stale or excessive validity;
+attempt, failure, checkpoint, policy, digest, assessment, plan, task, worker, manifest,
+budget, approval, lease, fence, or recovery substitution; changed replay; concurrent
+forks; cancellation; safety pause; worker revocation; authority-shaped fields; and
+direct storage mutation deny. Security failures cannot be caller-relabeled as transient.
+
+**Compatibility, privacy, migration, and rollback:** V1 evaluation and immutable rows
+remain unchanged. Migration 0060 adds a separate v2 decision table; existing rows need
+no conversion. Rollback disables v2 evaluation while retaining history, and migration
+reversal is unsupported. Stored data is bounded identifiers, hashes, closed enums,
+integers, and timestamps—never credentials, secrets, raw tokens, evidence, prompts,
+targets, diagnostics, provider/plugin data, paths, URLs, commands, flags, or blobs.
+
+**Limitations and residual risk:** Evaluation only reads remaining capacity from the
+prior immutable consumption receipt. It consumes or refunds no capacity, creates no
+attempt three, schedules or transitions no task, leases or dispatches no work, contacts
+no worker, and authorizes no effect. Attempt-three consumption/lifecycle, terminal
+dead-letter changes, completion, Master Orchestrator runtime, UI, providers/plugins,
+and exit demonstrations remain deferred. Non-independent review reduces governance
+assurance and is accepted only for this non-executing slice.
+
 ## 2026-08-25 — Retry-bound retry policy v2 prerequisite
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
