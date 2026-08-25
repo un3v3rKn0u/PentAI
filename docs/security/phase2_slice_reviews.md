@@ -1,5 +1,43 @@
 # Phase 2 slice security reviews
 
+## 2026-08-25 — Retry-bound retry policy v2 prerequisite
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, Product Owner, Principal Architect, Security Lead, AI/Agent Lead,
+Core Maintainer, Contract Maintainer, Execution Safety Lead, and Security Reviewer. This
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed retry-policy v2 contract, trusted-core issuance,
+migration 0059, immutable version-exact storage, compatibility documentation, and
+synthetic issuance, replay, stale validity, identity conflict, safety pause, direct
+storage mutation, migration upgrade, and idempotency tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`, `INV-AGENT-001`
+through `INV-AGENT-003`, `INV-DATA-001`, `INV-DATA-003`, `INV-REL-001`, and
+`INV-REL-002`. Trusted core alone issues a policy bound to one active assessment and
+signed policy. The record fixes failure/attempt contract v2, maximum attempts three,
+closed transient classes, `[5, 30]` integer-second backoff, `authority: none`, and
+`execution_enabled: false`.
+
+**Threat/default-deny review:** Stale or excessive validity, inactive assessment or
+policy, policy-hash substitution, safety pause, identity conflict, authority-shaped
+state, schema-version substitution, mutation, and deletion deny. AI, agents, workers,
+plugins, UI, and request bodies cannot select or broaden policy semantics.
+
+**Compatibility, privacy, migration, and rollback:** V1 contract, service behavior,
+and immutable rows remain supported. Migration 0059 adds a separate v2 table; existing
+rows need no conversion. Rollback disables v2 issuance while retaining history, and
+migration reversal is unsupported. Stored data is bounded identifiers, hashes, closed
+enums, integers, and timestamps—never secrets, credentials, evidence, prompts, target
+content, diagnostics, paths, URLs, commands, flags, provider/plugin data, or raw tokens.
+
+**Limitations and residual risk:** Policy issuance evaluates no retry, reads or consumes
+no retry capacity, creates no attempt three, schedules or transitions no task, contacts
+or dispatches no worker, and authorizes no effect. Version-exact attempt-two evaluation,
+later retry accounting/activation, completion, Master Orchestrator runtime, UI, and
+provider/plugin execution remain deferred. Non-independent review reduces governance
+assurance and is accepted only for this non-executing prerequisite.
+
 ## 2026-08-25 — Retry-bound failed-attempt registration v2
 
 **Review record:** Sole-maintainer security review — non-independent. The repository

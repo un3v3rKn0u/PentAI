@@ -792,6 +792,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     create attempt three, evaluate retryability, consume capacity, transition work, or
     create authority. Further retry evaluation, completion, dispatch, and runtime
     enforcement remain required.
+  - A separate trusted-core retry policy v2 now binds the closed three-attempt ceiling,
+    transient failure classes, and `[5, 30]` integer-second backoff to failure and
+    attempt contract v2. V1 policies and rows remain unchanged. Policy v2 issuance is
+    non-authoritative and performs no eligibility evaluation, budget mutation, attempt
+    creation, scheduling, transition, lease, dispatch, or external effect. Version-exact
+    attempt-two evaluation remains required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
