@@ -805,6 +805,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     capacity, creates no attempt, changes no task state, and grants no authority. Retry
     consumption for attempt three, terminal dead-letter handling, completion, dispatch,
     and runtime enforcement remain required.
+  - Atomic retry-budget consumption v2 now accepts only one exact current eligible
+    attempt-two decision, derives capacity from the original immutable reservation and
+    prior v1 consumption receipt, consumes one remaining integer unit, advances the
+    existing account version, and records immutable audit/outbox evidence. Refreshed v3
+    reservations cannot replenish retry capacity. The receipt is non-authoritative and
+    creates no attempt three, schedule, transition, lease, dispatch, or external effect.
+    Attempt-three identity and all later lifecycle composition remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

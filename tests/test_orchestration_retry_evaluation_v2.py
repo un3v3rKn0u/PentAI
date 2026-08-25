@@ -58,11 +58,13 @@ def test_evaluates_attempt_two_without_consumption_or_activation(tmp_path: Path)
         ).fetchone()[0]
     decision = service.evaluate(command, now=NOW + timedelta(seconds=10))
     assert contract_issues(decision, "orchestration-retry-decision-v2.schema.json") == ()
-    assert decision["outcome"] == "denied"
-    assert decision["reason_code"] == "RETRY_DENIED_CAPACITY_UNAVAILABLE"
+    assert decision["outcome"] == "eligible"
+    assert decision["reason_code"] == "RETRY_ELIGIBLE_TRANSIENT_FAILURE"
     assert decision["current_attempt_number"] == 2
     assert decision["proposed_attempt_number"] == 3
-    assert decision["earliest_retry_at"] is None
+    assert decision["earliest_retry_at"] == (NOW + timedelta(seconds=40)).isoformat().replace(
+        "+00:00", "Z"
+    )
     assert decision["retry_units_consumed"] == 0
     assert decision["authority"] == "none" and decision["execution_enabled"] is False
     assert service.evaluate(command, now=NOW + timedelta(seconds=10)) == decision

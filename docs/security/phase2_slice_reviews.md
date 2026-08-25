@@ -1327,6 +1327,48 @@ provider routing, and agent integration are deferred. Provider execution remains
 disabled. Non-independent review reduces governance assurance; the sole maintainer
 accepts that risk only for this local-development non-executing slice.
 
+## 2026-08-26 — Retry-budget consumption v2
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, author, Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer,
+Execution Safety Lead, and Security Reviewer. The `GIT_WORKFLOW.md` exception is used.
+This review is not independent and cannot satisfy an external independence requirement.
+
+**Scope and evidence:** Retry-budget consumption command/receipt v2, additive migration
+0061, trusted-core accounting composition, immutable lineage and storage guards,
+synthetic positive/default-deny/replay/concurrency/recovery tests, migration tests,
+contract and compatibility documentation, action-plan update, complete diff, and local
+validation recorded in the pull request.
+
+**Security boundaries:** Only an exact current eligible decision v2 may consume one
+remaining integer retry unit. Capacity is derived from the original immutable
+reservation and prior v1 receipt; the refreshed v3 reservation cannot replenish it.
+Account-version fencing and unique lineage prevent oversubscription and forks. Records
+remain `authority: none` and `execution_enabled: false`. No attempt, schedule,
+transition, lease, worker contact, provider/plugin call, network authority, or external
+effect is created; the Phase 1 authorization chain is unchanged.
+
+**Threats and default deny:** Denied, malformed, mixed-version, expired, tampered,
+exhausted, overflow-prone, cross-scope, stale-policy, cancelled, safety-paused,
+worker-revoked, recovery-stale, competing, changed-replay, and direct-storage inputs
+deny. One-unit reservations terminate before v2 consumption rather than being refunded,
+borrowed, or reinterpreted.
+
+**Compatibility, privacy, migration, and rollback:** V1 behavior and immutable rows are
+unchanged. Migration 0061 is additive and retains metadata-only accounting history.
+Application rollback disables v2 issuance; consumed capacity remains non-refundable and
+migration reversal is unsupported. Contracts exclude secrets, evidence, assessment
+content, raw tokens, diagnostics, URLs, paths, commands, provider/plugin output, and
+arbitrary blobs.
+
+**Limitations and residual risk:** Attempt-three identity, scheduling, activation,
+readiness prerequisites, leasing, checkpoints, failure/completion, dispatch, runtime
+composition, provider/plugin execution, UI, Phase 2 demonstrations, and independent
+review remain deferred. Non-independent review reduces governance assurance; the sole
+maintainer accepts that risk only for this local-development non-executing slice.
+
 ## 2026-08-21 — Strict AI structured output v1
 
 **Review record:** Sole-maintainer security review — non-independent.

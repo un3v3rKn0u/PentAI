@@ -239,6 +239,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | OrchestrationRetryPolicy v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Execution Safety Lead, Security Reviewer |
 | OrchestrationRetryDecision v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Execution Safety Lead, Security Reviewer |
 | OrchestrationRetryBudgetConsumption v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Execution Safety Lead, Security Reviewer |
+| OrchestrationRetryBudgetConsumption v2 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Execution Safety Lead, Security Reviewer |
 | OrchestrationRetryAttempt v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Execution Safety Lead, Security Reviewer |
 | TaskCapabilityManifest v2 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |
 | AgentActionIntentRequest v1 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |
