@@ -780,8 +780,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     transition path remains denied. Retry-bound checkpoint v2 now records bounded,
     immutable, monotonic progress only for that exact current attempt-two lineage;
     sequence, predecessor, replay, safety, worker, and recovery fences reject stale or
-    forked history. Later retry failure/completion, dispatch, worker contact, and runtime
-    enforcement remain required.
+    forked history. Dedicated typed failure consumption v2 now binds that exact running
+    attempt-two lineage and its optional checkpoint-v2 head to one closed failure class,
+    atomically stores immutable evidence, and storage-gates only `running` to `failed`.
+    It declares no retryability and creates no later attempt or authority. Later retry
+    evaluation, completion, dispatch, worker contact, and runtime enforcement remain
+    required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
