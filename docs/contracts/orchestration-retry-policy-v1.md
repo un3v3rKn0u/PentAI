@@ -33,3 +33,18 @@ exact current eligible decision using an immutable sub-ledger and assessment-acc
 version fence. Consumption remains non-activating and non-authoritative. Later-attempt
 identity, scheduling/activation, task reopening, leases for a later attempt, dispatch,
 completion, and runtime execution remain deferred.
+
+## Retry-bound policy v2 prerequisite
+
+Retry policy v1 is intentionally closed to failure and attempt contract v1 and cannot
+govern the failed attempt-two receipt. An additive policy v2 contract therefore binds
+the same trusted-core three-attempt ceiling, closed transient failure classes, and
+integer backoff schedule to failure and attempt contract v2. V1 issuance and stored
+rows remain unchanged.
+
+Policy v2 issuance performs no eligibility evaluation, capacity read or mutation,
+attempt creation, scheduling, task transition, lease operation, worker contact,
+provider/plugin invocation, or external effect. Migration 0059 stores v2 policies in
+a separate immutable table. Application rollback disables v2 issuance while retaining
+history; migration reversal is unsupported. Attempt-two eligibility remains deferred
+to a separately reviewed version-exact evaluation boundary.

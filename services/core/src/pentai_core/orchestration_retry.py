@@ -148,6 +148,113 @@ class OrchestrationRetryService:
             _audit(connection, "orchestration.retry_policy_issued", retry_policy_id, policy)
         return copy.deepcopy(policy)
 
+    def issue_policy_v2(
+        self,
+        *,
+        assessment_id: str,
+        policy_bundle_id: str,
+        policy_hash: str,
+        expires_at: datetime,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Issue the closed policy prerequisite for retry-bound failed attempts."""
+        instant = _instant(now)
+        expiry = _instant(expires_at)
+        if expiry <= instant or expiry - instant > _MAX_POLICY_VALIDITY:
+            raise OrchestrationRetryError(
+                "ORCHESTRATION_RETRY_POLICY_STALE", "retry policy validity is stale"
+            )
+        try:
+            active = self.authorization.get_policy(assessment_id, policy_bundle_id)
+        except DomainError as error:
+            raise OrchestrationRetryError(
+                "ORCHESTRATION_RETRY_POLICY_SECURITY_DENIED", "active policy is invalid"
+            ) from error
+        self.authorization._require_storage_safe()
+        retry_policy_id = str(
+            uuid5(_NAMESPACE, f"retry-policy-v2:{assessment_id}:{policy_bundle_id}:{policy_hash}")
+        )
+        policy = {
+            "schema_version": "2.0.0",
+            "retry_policy_id": retry_policy_id,
+            "revision": 1,
+            "assessment_id": assessment_id,
+            "policy_bundle_id": policy_bundle_id,
+            "policy_hash": policy_hash,
+            "task_type": "validation",
+            "failure_contract_version": "2.0.0",
+            "attempt_contract_version": "2.0.0",
+            "maximum_attempts": 3,
+            "eligible_failure_classes": _ELIGIBLE,
+            "backoff_seconds": _BACKOFF_SECONDS,
+            "issued_at": _timestamp(instant),
+            "expires_at": _timestamp(expiry),
+            "issued_by": "pentai-core",
+            "policy_digest": "",
+            "authority": "none",
+            "execution_enabled": False,
+        }
+        policy["policy_digest"] = "sha256:" + content_hash(
+            {key: value for key, value in policy.items() if key != "policy_digest"}
+        )
+        if contract_issues(policy, "orchestration-retry-policy-v2.schema.json"):
+            raise OrchestrationRetryError(
+                "ORCHESTRATION_RETRY_POLICY_INVALID", "retry policy is invalid"
+            )
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            engagement = connection.execute(
+                "SELECT * FROM engagements WHERE id = ?", (assessment_id,)
+            ).fetchone()
+            safety = connection.execute(
+                "SELECT global_status FROM safety_state WHERE singleton_id = 1"
+            ).fetchone()
+            if (
+                active["status"] != "active"
+                or active["content_hash"] != policy_hash
+                or engagement is None
+                or engagement["status"] != "active"
+                or engagement["active_policy_id"] != policy_bundle_id
+                or parse_time(engagement["expires_at"]) <= instant
+                or expiry > parse_time(engagement["expires_at"])
+                or expiry > parse_time(active["policy"]["validity"]["not_after"])
+                or safety is None
+                or safety["global_status"] != "active"
+            ):
+                raise OrchestrationRetryError(
+                    "ORCHESTRATION_RETRY_POLICY_SECURITY_DENIED",
+                    "current security state denies retry policy",
+                )
+            existing = connection.execute(
+                """SELECT policy_json FROM orchestration_retry_policies_v2
+                WHERE retry_policy_id = ?""",
+                (retry_policy_id,),
+            ).fetchone()
+            if existing is not None:
+                stored = json.loads(existing["policy_json"])
+                if stored != policy:
+                    raise OrchestrationRetryError(
+                        "ORCHESTRATION_RETRY_POLICY_IDENTITY_CONFLICT",
+                        "retry policy identity conflicts",
+                    )
+                return cast(dict[str, Any], stored)
+            connection.execute(
+                """INSERT INTO orchestration_retry_policies_v2 VALUES
+                (?, ?, ?, ?, 1, ?, ?, ?, ?, 'none', 0)""",
+                (
+                    retry_policy_id,
+                    assessment_id,
+                    policy_bundle_id,
+                    policy_hash,
+                    canonical_json(policy),
+                    policy["policy_digest"],
+                    policy["issued_at"],
+                    policy["expires_at"],
+                ),
+            )
+            _audit(connection, "orchestration.retry_policy_v2_issued", retry_policy_id, policy)
+        return copy.deepcopy(policy)
+
     def evaluate(self, command: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
         document = copy.deepcopy(command)
         if contract_issues(document, "orchestration-retry-evaluation-command-v1.schema.json"):

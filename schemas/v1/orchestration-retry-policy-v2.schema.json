@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-retry-policy-v2.schema.json",
+  "title": "PentAI OrchestrationRetryPolicy v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "retry_policy_id", "revision", "assessment_id", "policy_bundle_id", "policy_hash", "task_type", "failure_contract_version", "attempt_contract_version", "maximum_attempts", "eligible_failure_classes", "backoff_seconds", "issued_at", "expires_at", "issued_by", "policy_digest", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "retry_policy_id": {"type": "string", "format": "uuid"},
+    "revision": {"const": 1},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "task_type": {"const": "validation"},
+    "failure_contract_version": {"const": "2.0.0"},
+    "attempt_contract_version": {"const": "2.0.0"},
+    "maximum_attempts": {"const": 3},
+    "eligible_failure_classes": {"const": ["coordination_timeout", "runtime_unavailable", "worker_process_failed"]},
+    "backoff_seconds": {"const": [5, 30]},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "issued_by": {"const": "pentai-core"},
+    "policy_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

@@ -75,6 +75,7 @@ class MigrationTests(unittest.TestCase):
                     "0056",
                     "0057",
                     "0058",
+                    "0059",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -931,6 +932,48 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("worker_fixture_execution_identity_immutable", triggers)
             self.assertIn("worker_fixture_execution_status_transition", triggers)
             self.assertIn("worker_fixture_execution_no_delete", triggers)
+
+    def test_retry_policy_v2_upgrade_is_additive_and_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("*.sql")):
+                if path.name >= "0059_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+
+            migration = repository_migrations / "0059_retry_policy_v2.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0059"])
+                self.assertEqual(migrate(database), [])
+
+            with closing(sqlite3.connect(database)) as connection:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+            self.assertIn("orchestration_retry_policies_v2", tables)
+            self.assertIn("orchestration_retry_policies_v2_binding_valid", triggers)
+            self.assertIn("orchestration_retry_policies_v2_immutable", triggers)
+            self.assertIn("orchestration_retry_policies_v2_no_delete", triggers)
 
 
 if __name__ == "__main__":

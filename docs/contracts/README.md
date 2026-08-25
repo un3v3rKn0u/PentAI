@@ -96,6 +96,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   receipt that preserves the existing attempt identity without activation or authority.
 - `orchestration-retry-policy-v1.schema.json` — trusted-core closed retry semantics,
   integer attempt/backoff ceilings, exact policy binding, and no authority.
+- `orchestration-retry-policy-v2.schema.json` — additive trusted-core policy for
+  retry-bound failure/attempt v2 lineage with the same closed three-attempt ceiling.
 - `orchestration-retry-evaluation-command-v1.schema.json` — short-lived evaluation
   request bound to one immutable failed attempt and active retry policy.
 - `orchestration-retry-decision-v1.schema.json` — immutable non-activating eligibility
