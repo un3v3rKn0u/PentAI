@@ -35,7 +35,9 @@ def test_issues_closed_v2_policy_without_evaluation_or_authority(tmp_path: Path)
         now=NOW,
     ) == policy
     with closing(sqlite3.connect(service.database_path)) as connection:
-        assert not _table_exists(connection, "orchestration_retry_decisions_v2")
+        assert connection.execute(
+            "SELECT COUNT(*) FROM orchestration_retry_decisions_v2"
+        ).fetchone()[0] == 0
         task = connection.execute(
             """SELECT state FROM orchestration_tasks
             WHERE task_id=(SELECT task_id FROM orchestration_task_attempts LIMIT 1)"""
@@ -112,9 +114,3 @@ def test_v2_policy_storage_is_version_exact_and_immutable(tmp_path: Path) -> Non
                 WHERE retry_policy_id=?""",
                 (v1["retry_policy_id"], "sha256:" + "0" * 64, policy["retry_policy_id"]),
             )
-
-
-def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
-    return connection.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
-    ).fetchone() is not None

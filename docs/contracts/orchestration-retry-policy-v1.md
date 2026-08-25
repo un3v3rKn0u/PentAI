@@ -48,3 +48,16 @@ provider/plugin invocation, or external effect. Migration 0059 stores v2 policie
 a separate immutable table. Application rollback disables v2 issuance while retaining
 history; migration reversal is unsupported. Attempt-two eligibility remains deferred
 to a separately reviewed version-exact evaluation boundary.
+
+That version-exact evaluation boundary now accepts only the immutable failed-attempt
+v2 receipt and retry policy v2. It derives attempt two to proposed attempt three,
+applies the second deterministic backoff, and checks remaining capacity only through
+the immutable prior consumption receipt. The decision is metadata-only, immutable,
+and non-authoritative. It consumes no capacity and creates, schedules, activates, or
+transitions no work.
+
+Migration 0060 adds a separate immutable v2 decision table because v1 decisions remain
+closed to attempt one to two. Existing policy and decision rows require no conversion.
+Application rollback disables v2 evaluation while retaining history; migration reversal
+is unsupported. Retry-budget consumption for attempt three and terminal dead-letter
+state changes remain separately reviewed deferred boundaries.

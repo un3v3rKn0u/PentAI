@@ -798,6 +798,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     non-authoritative and performs no eligibility evaluation, budget mutation, attempt
     creation, scheduling, transition, lease, dispatch, or external effect. Version-exact
     attempt-two evaluation remains required.
+  - Version-exact retry evaluation v2 now accepts only the immutable failed attempt-two
+    receipt and retry policy v2, derives proposed attempt three and the second policy
+    backoff, and records an immutable eligible or denied result. Remaining capacity is
+    read only from the prior immutable consumption lineage. Evaluation consumes no
+    capacity, creates no attempt, changes no task state, and grants no authority. Retry
+    consumption for attempt three, terminal dead-letter handling, completion, dispatch,
+    and runtime enforcement remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
