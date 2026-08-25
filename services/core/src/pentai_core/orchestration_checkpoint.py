@@ -37,9 +37,14 @@ class OrchestrationCheckpointService:
         self, command: dict[str, Any], *, now: datetime | None = None
     ) -> dict[str, Any]:
         document = copy.deepcopy(command)
-        if contract_issues(
-            document, "orchestration-task-checkpoint-command-v1.schema.json"
-        ):
+        checkpoint_version = document.get("schema_version")
+        if not isinstance(checkpoint_version, str):
+            checkpoint_version = ""
+        schema = {
+            "1.0.0": "orchestration-task-checkpoint-command-v1.schema.json",
+            "2.0.0": "orchestration-task-checkpoint-command-v2.schema.json",
+        }.get(checkpoint_version, "orchestration-task-checkpoint-command-v1.schema.json")
+        if contract_issues(document, schema):
             raise OrchestrationCheckpointError(
                 "ORCHESTRATION_CHECKPOINT_MALFORMED", "checkpoint command is malformed"
             )
@@ -72,7 +77,10 @@ class OrchestrationCheckpointService:
                         "ORCHESTRATION_CHECKPOINT_IDENTITY_CONFLICT",
                         "checkpoint command identity conflicts",
                     )
-                return cast(dict[str, Any], json.loads(replay["receipt_json"]))
+                receipt = cast(dict[str, Any], json.loads(replay["receipt_json"]))
+                if checkpoint_version == "2.0.0":
+                    self._validate_current(connection, document, instant)
+                return receipt
             self._validate_current(connection, document, instant)
             head = connection.execute(
                 """SELECT sequence, checkpoint_digest, receipt_json
@@ -98,7 +106,7 @@ class OrchestrationCheckpointService:
                         "checkpoint progress cannot decrease",
                     )
             receipt = {
-                "schema_version": "1.0.0",
+                "schema_version": checkpoint_version,
                 "checkpoint_id": checkpoint_id,
                 "command_id": document["command_id"],
                 "command_digest": command_digest,
@@ -132,18 +140,38 @@ class OrchestrationCheckpointService:
                 "authority": "none",
                 "execution_enabled": False,
             }
+            if checkpoint_version == "2.0.0":
+                for field in (
+                    "capability_manifest_digest",
+                    "budget_request_digest",
+                    "retry_activation_id",
+                    "retry_activation_digest",
+                    "retry_attempt_id",
+                    "retry_attempt_digest",
+                    "retry_budget_consumption_id",
+                ):
+                    receipt[field] = document[field]
             receipt["checkpoint_digest"] = "sha256:" + content_hash(
                 {key: value for key, value in receipt.items() if key != "checkpoint_digest"}
             )
             if contract_issues(
-                receipt, "orchestration-task-checkpoint-receipt-v1.schema.json"
+                receipt,
+                "orchestration-task-checkpoint-receipt-"
+                f"v{2 if checkpoint_version == '2.0.0' else 1}.schema.json",
             ):
                 raise OrchestrationCheckpointError(
                     "ORCHESTRATION_CHECKPOINT_RESULT_INVALID", "checkpoint result is invalid"
                 )
             connection.execute(
-                """INSERT INTO orchestration_task_checkpoints VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', 0)""",
+                """INSERT INTO orchestration_task_checkpoints(
+                checkpoint_id, command_id, command_digest, assessment_id, plan_id,
+                plan_revision, task_id, task_revision, lease_consumption_id, sequence,
+                previous_checkpoint_digest, checkpoint_digest, receipt_json, created_at,
+                authority, execution_enabled, capability_manifest_digest,
+                budget_request_digest, retry_activation_id, retry_activation_digest,
+                retry_attempt_id, retry_attempt_digest, retry_budget_consumption_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', 0,
+                ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     checkpoint_id,
                     document["command_id"],
@@ -159,6 +187,13 @@ class OrchestrationCheckpointService:
                     receipt["checkpoint_digest"],
                     canonical_json(receipt),
                     receipt["created_at"],
+                    document.get("capability_manifest_digest"),
+                    document.get("budget_request_digest"),
+                    document.get("retry_activation_id"),
+                    document.get("retry_activation_digest"),
+                    document.get("retry_attempt_id"),
+                    document.get("retry_attempt_digest"),
+                    document.get("retry_budget_consumption_id"),
                 ),
             )
             audit = append_audit_event(
@@ -252,9 +287,17 @@ class OrchestrationCheckpointService:
                 "lease consumption is missing",
             )
         consumption_receipt = json.loads(consumption["receipt_json"])
+        retry_bound = document.get("schema_version") == "2.0.0"
+        expected_version = "2.0.0" if retry_bound else "1.0.0"
         consumption_digest = "sha256:" + content_hash(consumption_receipt)
         exact = (
-            consumption_digest == document["lease_consumption_digest"]
+            consumption_receipt.get("schema_version") == expected_version
+            and not contract_issues(
+                consumption_receipt,
+                "orchestration-task-lease-consumption-receipt-"
+                f"v{2 if retry_bound else 1}.schema.json",
+            )
+            and consumption_digest == document["lease_consumption_digest"]
             and consumption["receipt_hash"] == content_hash(consumption_receipt)
             and consumption["assessment_id"] == document["assessment_id"]
             and consumption["plan_id"] == document["plan_id"]
@@ -283,6 +326,19 @@ class OrchestrationCheckpointService:
             and consumption_receipt["recovery_generation"]
             == document["expected_recovery_generation"]
         )
+        if retry_bound:
+            exact = exact and all(
+                consumption_receipt[field] == document[field]
+                for field in (
+                    "capability_manifest_digest",
+                    "budget_request_digest",
+                    "retry_activation_id",
+                    "retry_activation_digest",
+                    "retry_attempt_id",
+                    "retry_attempt_digest",
+                    "retry_budget_consumption_id",
+                )
+            )
         worker = connection.execute(
             "SELECT * FROM worker_runtime_instances WHERE worker_id = ?",
             (document["worker_id"],),
@@ -315,7 +371,10 @@ class OrchestrationCheckpointService:
             or manifest_document is None
             or manifest["manifest_revision"] != document["manifest_revision"]
             or content_hash(manifest_document) != manifest["manifest_hash"]
-            or contract_issues(manifest_document, "task-capability-manifest-v2.schema.json")
+            or contract_issues(
+                manifest_document,
+                f"task-capability-manifest-v{3 if retry_bound else 2}.schema.json",
+            )
             or manifest_document["task_state"] != "ready"
             or manifest_document["assessment_id"] != document["assessment_id"]
             or manifest_document["plan_id"] != document["plan_id"]
@@ -326,7 +385,8 @@ class OrchestrationCheckpointService:
             or budget["account_version"] != document["budget_account_version"]
             or contract_issues(
                 budget_document,
-                "orchestration-task-budget-reservation-v2.schema.json",
+                "orchestration-task-budget-reservation-"
+                f"v{3 if retry_bound else 2}.schema.json",
             )
             or budget_document["task_state"] != "ready"
             or budget_document["reservation_id"] != budget["reservation_id"]
@@ -339,6 +399,30 @@ class OrchestrationCheckpointService:
             raise OrchestrationCheckpointError(
                 "ORCHESTRATION_CHECKPOINT_BINDING_MISMATCH",
                 "checkpoint security binding mismatches",
+            )
+        if retry_bound and not (
+            manifest["manifest_hash"] == document["capability_manifest_digest"][7:]
+            and manifest_document["retry_activation_id"] == document["retry_activation_id"]
+            and manifest_document["retry_activation_digest"]
+            == document["retry_activation_digest"]
+            and manifest_document["retry_attempt_id"] == document["retry_attempt_id"]
+            and manifest_document["retry_attempt_digest"] == document["retry_attempt_digest"]
+            and manifest_document["retry_budget_consumption_id"]
+            == document["retry_budget_consumption_id"]
+            and budget["request_digest"] == document["budget_request_digest"]
+            and budget_document["capability_manifest_digest"]
+            == document["capability_manifest_digest"]
+            and budget_document["retry_activation_id"] == document["retry_activation_id"]
+            and budget_document["retry_activation_digest"]
+            == document["retry_activation_digest"]
+            and budget_document["retry_attempt_id"] == document["retry_attempt_id"]
+            and budget_document["retry_attempt_digest"] == document["retry_attempt_digest"]
+            and budget_document["retry_budget_consumption_id"]
+            == document["retry_budget_consumption_id"]
+        ):
+            raise OrchestrationCheckpointError(
+                "ORCHESTRATION_CHECKPOINT_BINDING_MISMATCH",
+                "retry checkpoint lineage mismatches",
             )
         return {"consumption": consumption_receipt}
 

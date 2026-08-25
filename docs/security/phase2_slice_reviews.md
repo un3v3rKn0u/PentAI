@@ -1,5 +1,47 @@
 # Phase 2 slice security reviews
 
+## 2026-08-25 — Retry-bound metadata-only checkpoints v2
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, Product Owner, Principal Architect, Security Lead, AI/Agent Lead,
+Core Maintainer, Contract Maintainer, Execution Safety Lead, and Security Reviewer. This
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed checkpoint command/receipt v2 contracts, migration 0056,
+version-exact service validation, immutable audit/outbox linkage, compatibility and plan
+documentation, and synthetic success, malformed, mixed-version, tampering, ordering,
+rollback, fork, replay, concurrency, safety, worker, recovery, storage-immutability, and
+non-authority tests.
+
+**Invariants and boundaries:** `INV-AUTH-001` through `INV-AUTH-003`, `INV-NET-005`,
+`INV-AGENT-001` through `INV-AGENT-003`, `INV-DATA-001`, `INV-REL-001`, and
+`INV-REL-002`. Trusted core records bounded progress only after binding the exact current
+running task to its retry activation, attempt two, consumed retry unit, v3 manifest and
+reservation, v2 lease consumption, active policy, registered worker, fencing token, and
+recovery generation. No provider, plugin, worker-contact, gateway, target, secret,
+evidence, network, policy-decision, or grant boundary is crossed.
+
+**Threat/default-deny review:** Unknown or mixed versions; missing or tampered lineage;
+cross-scope substitution; sequence gaps, rollback, forks, ambiguous heads, conflicting
+replay, concurrent writes, stale plan/task/policy/manifest/budget/worker/fence/recovery
+state, cancellation, safety pause, expiry, and authority-shaped input deny with stable
+codes. Only closed progress metadata is accepted; artifact and free-form content remain
+unrepresentable.
+
+**Compatibility, privacy, migration, and rollback:** V1 contracts, rows, and behavior
+remain supported. Migration 0056 adds nullable immutable lineage and an exact v2 insert
+guard; existing rows need no conversion. Rollback disables v2 production while retaining
+history; migration reversal is unsupported. Stored data is bounded identifiers, hashes,
+revisions, closed status, integer progress, and timestamps—never tokens, credentials,
+secrets, evidence, prompts, diagnostics, provider/plugin payloads, targets, paths, URLs,
+commands, or flags.
+
+**Limitations and residual risk:** Checkpoints do not change task state or create resume,
+failure, completion, retry, leasing, dispatch, worker contact, provider/plugin execution,
+or effect-specific authorization. Those boundaries, Master Orchestrator runtime, and UI
+remain deferred. Non-independent review reduces governance assurance and is accepted
+only for this non-executing slice.
+
 ## 2026-08-24 — Dedicated retry-bound lease consumption v2
 
 **Review record:** Sole-maintainer security review — non-independent. The repository
