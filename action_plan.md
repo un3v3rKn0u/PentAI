@@ -777,8 +777,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     contact, or dispatch. Dedicated retry-bound consumption v2 now atomically releases
     one exact current attempt-two lease, stores immutable audit/outbox evidence, and
     storage-gates only its `ready` to `running` coordination transition. The general
-    transition path remains denied. Later retry checkpoints, failure/completion,
-    dispatch, worker contact, and runtime enforcement remain required.
+    transition path remains denied. Retry-bound checkpoint v2 now records bounded,
+    immutable, monotonic progress only for that exact current attempt-two lineage;
+    sequence, predecessor, replay, safety, worker, and recovery fences reject stale or
+    forked history. Later retry failure/completion, dispatch, worker contact, and runtime
+    enforcement remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

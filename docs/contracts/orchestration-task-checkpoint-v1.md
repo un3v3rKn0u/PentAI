@@ -21,3 +21,17 @@ Migration 0044 is additive and immutable. Application rollback disables new chec
 production while retaining history; reversal is unsupported. Existing Phase 1 workflow
 checkpoints remain separate and unchanged. Artifact references, retries, completion,
 dispatch, and runtime resume semantics remain deferred.
+
+## Retry-bound checkpoint v2
+
+Command and receipt v2 add the exact retry activation, immutable attempt two, consumed
+retry unit, TaskCapabilityManifest v3 digest, task-budget reservation v3 request digest,
+and lease-consumption v2 lineage. V1 and mixed-version records cannot satisfy this
+boundary. The service revalidates the complete current lineage before initial production
+and exact replay; safety, worker, policy, budget, or recovery changes fence stale replay.
+
+Migration 0056 adds nullable immutable retry-lineage columns and an exact insert guard to
+the existing checkpoint table. V1 rows require no conversion. Application rollback
+disables v2 production while retaining immutable history; migration reversal is
+unsupported. V2 remains metadata-only and cannot fail, complete, retry, resume, lease,
+dispatch, contact a worker, invoke providers/plugins, or create execution authority.

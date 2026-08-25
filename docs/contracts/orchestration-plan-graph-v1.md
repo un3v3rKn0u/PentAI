@@ -79,6 +79,8 @@ dispatch or contact the worker, and the general transition service remains denie
 Metadata-only orchestration checkpoints may record monotonic progress for the exact
 running task and lease-consumption receipt. They do not alter plan/task state or provide
 resume, retry, completion, dispatch, or execution authority.
+Retry-bound checkpoint v2 extends the same immutable monotonic semantics to one exact
+running attempt-two lineage without making its metadata authoritative or executable.
 Typed orchestration failure consumption can atomically record one closed failure class
 and fail the exact running task. It cannot declare retry eligibility, reopen the task,
 consume retry capacity, dispatch work, or create execution authority.
