@@ -37,3 +37,28 @@ An additive retry-schedule v1 boundary can now register immutable timing metadat
 exact attempt by deriving `scheduled_for` from its stored earliest-retry value. The schedule
 remains inert and cannot reopen the task, activate the attempt, issue prerequisites, acquire
 a lease, dispatch work, or create authority.
+
+## Version 2 attempt-three identity
+
+The additive v2 command accepts only the exact current retry-budget-consumption v2
+receipt for failed attempt two. Trusted core revalidates the complete assessment,
+policy, retry-policy, plan/task, failure, checkpoint, lease, worker, approval, manifest,
+budget, safety, cancellation, fencing, and recovery lineage before deriving attempt
+number three. The command cannot select identity, numbering, state, capacity, timing,
+worker ownership, privilege, or authority.
+
+Migration 0062 uses a separate immutable table so v1 remains closed to attempt two.
+Unique predecessor, consumption, and task/attempt constraints plus an exact storage
+predicate prevent gaps, rollback, duplicate numbering, forks, cross-scope reuse, and
+direct insertion. Exact replay returns the existing receipt only while all current
+security bindings remain valid.
+
+Attempt three is `registered`, `authority: none`, and `execution_enabled: false`. It is
+the identity at the retry-policy v2 ceiling of three total attempts; this contract cannot
+create attempt four. Registration changes no task or budget state and creates no
+schedule, activation, manifest, reservation, lease, checkpoint, worker assignment,
+dispatch, provider/plugin call, network authority, or external effect. Application
+rollback disables v2 registration while retaining immutable history; migration reversal
+is unsupported. Scheduling, activation, refreshed readiness prerequisites, later
+leasing, terminal/dead-letter behavior, completion, dispatch, and runtime composition
+remain deferred.

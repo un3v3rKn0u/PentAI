@@ -526,6 +526,10 @@ Emergency stop revokes grants, closes gateway sessions, stops workers, checkpoin
 
 - Persist the plan before dispatch and checkpoint after meaningful steps.
 - Lease tasks; reclaim only after lease expiry and worker fencing.
+- Retry identities are immutable, predecessor-chained coordination records. Under retry
+  policy v2, attempt three is derived only from the exact second retry-consumption
+  receipt and is the closed ceiling; registration alone cannot schedule, activate,
+  transition, lease, dispatch, or authorize an effect.
 - Heartbeats indicate liveness, while idempotency keys prevent duplicate effects.
 - Use exponential backoff with jitter only for classified transient failures.
 - Circuit-break failing AI providers, tools, source sites, and network routes.
