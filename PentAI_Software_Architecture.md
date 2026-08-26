@@ -530,6 +530,8 @@ Emergency stop revokes grants, closes gateway sessions, stops workers, checkpoin
   policy v2, attempt three is derived only from the exact second retry-consumption
   receipt and is the closed ceiling; registration alone cannot schedule, activate,
   transition, lease, dispatch, or authorize an effect.
+- Attempt-three scheduling derives timing only from the immutable retry decision and
+  remains inert; a separate reviewed consumer is required before any readiness change.
 - Heartbeats indicate liveness, while idempotency keys prevent duplicate effects.
 - Use exponential backoff with jitter only for classified transient failures.
 - Circuit-break failing AI providers, tools, source sites, and network routes.

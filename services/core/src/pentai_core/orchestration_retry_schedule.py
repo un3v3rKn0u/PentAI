@@ -40,6 +40,8 @@ class OrchestrationRetryScheduleService:
 
     def register(self, command: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
         document = copy.deepcopy(command)
+        if document.get("schema_version") == "2.0.0":
+            return self._register_v2(document, now=now)
         if contract_issues(document, "orchestration-retry-schedule-command-v1.schema.json"):
             raise OrchestrationRetryScheduleError(
                 "ORCHESTRATION_RETRY_SCHEDULE_COMMAND_MALFORMED",
@@ -150,6 +152,246 @@ class OrchestrationRetryScheduleService:
                 ) from error
             _audit(connection, schedule_id, receipt)
         return copy.deepcopy(receipt)
+
+    def _register_v2(
+        self, document: dict[str, Any], *, now: datetime | None
+    ) -> dict[str, Any]:
+        if contract_issues(document, "orchestration-retry-schedule-command-v2.schema.json"):
+            raise OrchestrationRetryScheduleError(
+                "ORCHESTRATION_RETRY_SCHEDULE_COMMAND_MALFORMED",
+                "retry schedule command is malformed",
+            )
+        instant = _instant(now)
+        requested_at = parse_time(document["requested_at"])
+        expires_at = parse_time(document["expires_at"])
+        if (
+            requested_at > instant
+            or instant - requested_at > _MAX_COMMAND_AGE
+            or expires_at <= instant
+            or expires_at <= requested_at
+            or expires_at - requested_at > _MAX_COMMAND_VALIDITY
+        ):
+            raise OrchestrationRetryScheduleError(
+                "ORCHESTRATION_RETRY_SCHEDULE_COMMAND_STALE",
+                "retry schedule command is stale",
+            )
+        command_digest = "sha256:" + content_hash(document)
+        schedule_id = str(uuid5(_NAMESPACE, "retry-schedule-v2:" + document["attempt_id"]))
+        self.authorization._require_storage_safe()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            replay = connection.execute(
+                "SELECT * FROM orchestration_retry_schedules_v2 WHERE command_id=?",
+                (document["command_id"],),
+            ).fetchone()
+            if replay is not None:
+                if replay["command_digest"] != command_digest:
+                    raise OrchestrationRetryScheduleError(
+                        "ORCHESTRATION_RETRY_SCHEDULE_IDENTITY_CONFLICT",
+                        "retry schedule identity conflicts",
+                    )
+                receipt = self._load_receipt_v2(replay)
+                attempt, decision = self._validate_attempt_v2(connection, document, instant)
+                if (
+                    receipt["attempt_id"] != attempt["attempt_id"]
+                    or receipt["attempt_digest"] != attempt["attempt_digest"]
+                    or receipt["scheduled_for"] != decision["earliest_retry_at"]
+                ):
+                    raise OrchestrationRetryScheduleError(
+                        "ORCHESTRATION_RETRY_SCHEDULE_REPLAY_FENCED",
+                        "retry schedule replay is no longer current",
+                    )
+                return copy.deepcopy(receipt)
+
+            attempt, decision = self._validate_attempt_v2(connection, document, instant)
+            existing = connection.execute(
+                """SELECT command_id FROM orchestration_retry_schedules_v2
+                WHERE attempt_id=? OR retry_budget_consumption_id=?
+                OR (task_id=? AND schedule_revision=1)""",
+                (
+                    attempt["attempt_id"],
+                    attempt["retry_budget_consumption_id"],
+                    attempt["task_id"],
+                ),
+            ).fetchone()
+            if existing is not None:
+                raise OrchestrationRetryScheduleError(
+                    "ORCHESTRATION_RETRY_SCHEDULE_ALREADY_REGISTERED",
+                    "retry schedule was already registered",
+                )
+            receipt = _receipt_v2(
+                document, attempt, decision, schedule_id, command_digest, _timestamp(instant)
+            )
+            if contract_issues(receipt, "orchestration-retry-schedule-receipt-v2.schema.json"):
+                raise OrchestrationRetryScheduleError(
+                    "ORCHESTRATION_RETRY_SCHEDULE_RECEIPT_INVALID",
+                    "retry schedule receipt is invalid",
+                )
+            try:
+                connection.execute(
+                    """INSERT INTO orchestration_retry_schedules_v2 (
+                    schedule_id, command_id, command_digest, assessment_id, plan_id,
+                    plan_revision, task_id, task_revision, attempt_id,
+                    retry_budget_consumption_id, eligibility_decision_id,
+                    schedule_revision, schedule_state, scheduled_for, expires_at,
+                    receipt_json, receipt_hash, registered_at, authority, execution_enabled
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'registered', ?, ?, ?,
+                    ?, ?, 'none', 0)""",
+                    (
+                        schedule_id,
+                        document["command_id"],
+                        command_digest,
+                        attempt["assessment_id"],
+                        attempt["plan_id"],
+                        attempt["plan_revision"],
+                        attempt["task_id"],
+                        attempt["task_revision"],
+                        attempt["attempt_id"],
+                        attempt["retry_budget_consumption_id"],
+                        attempt["eligibility_decision_id"],
+                        receipt["scheduled_for"],
+                        receipt["expires_at"],
+                        canonical_json(receipt),
+                        content_hash(receipt),
+                        receipt["registered_at"],
+                    ),
+                )
+            except sqlite3.IntegrityError as error:
+                raise OrchestrationRetryScheduleError(
+                    "ORCHESTRATION_RETRY_SCHEDULE_CONFLICT",
+                    "retry schedule registration conflicts",
+                ) from error
+            _audit(connection, schedule_id, receipt)
+        return copy.deepcopy(receipt)
+
+    def _validate_attempt_v2(
+        self,
+        connection: sqlite3.Connection,
+        document: dict[str, Any],
+        instant: datetime,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        row = connection.execute(
+            "SELECT * FROM orchestration_retry_attempts_v2 WHERE attempt_id=?",
+            (document["attempt_id"],),
+        ).fetchone()
+        if row is None:
+            raise OrchestrationRetryScheduleError(
+                "ORCHESTRATION_RETRY_SCHEDULE_ATTEMPT_MISSING",
+                "retry attempt is missing",
+            )
+        try:
+            attempt = self._attempts._load_receipt_v2(row)
+        except OrchestrationRetryAttemptError as error:
+            raise OrchestrationRetryScheduleError(
+                "ORCHESTRATION_RETRY_SCHEDULE_ATTEMPT_INVALID",
+                "retry attempt is invalid",
+            ) from error
+        if (
+            attempt["attempt_digest"] != document["attempt_digest"]
+            or attempt["assessment_id"] != document["assessment_id"]
+            or attempt["plan_id"] != document["plan_id"]
+            or attempt["plan_revision"] != document["expected_plan_revision"]
+            or attempt["task_id"] != document["task_id"]
+            or attempt["task_revision"] != document["expected_task_revision"]
+            or attempt["attempt_number"] != 3
+            or attempt["attempt_state"] != "registered"
+            or parse_time(attempt["registered_at"]) > parse_time(document["requested_at"])
+        ):
+            raise OrchestrationRetryScheduleError(
+                "ORCHESTRATION_RETRY_SCHEDULE_ATTEMPT_MISMATCH",
+                "retry attempt binding mismatches",
+            )
+        validation = {
+            "assessment_id": attempt["assessment_id"],
+            "plan_id": attempt["plan_id"],
+            "expected_plan_revision": attempt["plan_revision"],
+            "task_id": attempt["task_id"],
+            "expected_task_revision": attempt["task_revision"],
+            "prior_attempt_id": attempt["prior_attempt_id"],
+            "prior_attempt_digest": attempt["prior_attempt_digest"],
+            "retry_budget_consumption_id": attempt["retry_budget_consumption_id"],
+            "retry_budget_consumption_digest": attempt[
+                "retry_budget_consumption_digest"
+            ],
+            "requested_at": document["requested_at"],
+        }
+        try:
+            self._attempts._validate_consumption_v2(connection, validation, instant)
+        except OrchestrationRetryAttemptError as error:
+            raise OrchestrationRetryScheduleError(
+                "ORCHESTRATION_RETRY_SCHEDULE_SECURITY_DENIED",
+                "current security state denies retry scheduling",
+            ) from error
+        decision_row = connection.execute(
+            "SELECT * FROM orchestration_retry_decisions_v2 WHERE decision_id=?",
+            (attempt["eligibility_decision_id"],),
+        ).fetchone()
+        if decision_row is None:
+            raise OrchestrationRetryScheduleError(
+                "ORCHESTRATION_RETRY_SCHEDULE_DECISION_MISSING",
+                "retry decision is missing",
+            )
+        decision = cast(dict[str, Any], json.loads(decision_row["decision_json"]))
+        expected_digest = "sha256:" + content_hash(
+            {key: value for key, value in decision.items() if key != "decision_digest"}
+        )
+        if (
+            contract_issues(decision, "orchestration-retry-decision-v2.schema.json")
+            or decision_row["decision_hash"] != content_hash(decision)
+            or decision["decision_digest"] != expected_digest
+            or decision["decision_digest"] != attempt["eligibility_decision_digest"]
+            or decision["outcome"] != "eligible"
+            or decision["attempt_id"] != attempt["prior_attempt_id"]
+            or decision["attempt_digest"] != attempt["prior_attempt_digest"]
+            or decision["proposed_attempt_number"] != attempt["attempt_number"]
+            or decision["retry_policy_id"] != attempt["retry_policy_id"]
+            or decision["retry_policy_digest"] != attempt["retry_policy_digest"]
+            or decision["earliest_retry_at"] is None
+            or parse_time(decision["earliest_retry_at"]) > instant
+            or parse_time(decision["earliest_retry_at"])
+            > parse_time(document["requested_at"])
+            or parse_time(decision["expires_at"]) <= instant
+            or parse_time(document["expires_at"]) > parse_time(decision["expires_at"])
+        ):
+            raise OrchestrationRetryScheduleError(
+                "ORCHESTRATION_RETRY_SCHEDULE_DECISION_INVALID",
+                "retry decision timing or lineage is invalid",
+            )
+        return attempt, decision
+
+    @staticmethod
+    def _load_receipt_v2(row: sqlite3.Row) -> dict[str, Any]:
+        receipt = cast(dict[str, Any], json.loads(row["receipt_json"]))
+        expected_digest = "sha256:" + content_hash(
+            {key: value for key, value in receipt.items() if key != "schedule_digest"}
+        )
+        if (
+            contract_issues(receipt, "orchestration-retry-schedule-receipt-v2.schema.json")
+            or row["receipt_hash"] != content_hash(receipt)
+            or receipt["schedule_digest"] != expected_digest
+            or receipt["schedule_id"] != row["schedule_id"]
+            or receipt["command_id"] != row["command_id"]
+            or receipt["command_digest"] != row["command_digest"]
+            or receipt["assessment_id"] != row["assessment_id"]
+            or receipt["plan_id"] != row["plan_id"]
+            or receipt["plan_revision"] != row["plan_revision"]
+            or receipt["task_id"] != row["task_id"]
+            or receipt["task_revision"] != row["task_revision"]
+            or receipt["attempt_id"] != row["attempt_id"]
+            or receipt["retry_budget_consumption_id"]
+            != row["retry_budget_consumption_id"]
+            or receipt["eligibility_decision_id"] != row["eligibility_decision_id"]
+            or receipt["schedule_revision"] != row["schedule_revision"]
+            or receipt["schedule_state"] != row["schedule_state"]
+            or receipt["scheduled_for"] != row["scheduled_for"]
+            or receipt["expires_at"] != row["expires_at"]
+            or receipt["registered_at"] != row["registered_at"]
+        ):
+            raise OrchestrationRetryScheduleError(
+                "ORCHESTRATION_RETRY_SCHEDULE_RECEIPT_INVALID",
+                "retry schedule receipt is invalid",
+            )
+        return receipt
 
     def _validate_attempt(
         self,
@@ -275,6 +517,54 @@ def _receipt(
             "schedule_revision": 1,
             "schedule_state": "registered",
             "scheduled_for": attempt["earliest_retry_at"],
+            "expires_at": command["expires_at"],
+            "purpose": command["purpose"],
+            "registered_at": registered_at,
+            "schedule_digest": "",
+            "authority": "none",
+            "execution_enabled": False,
+        }
+    )
+    receipt["schedule_digest"] = "sha256:" + content_hash(
+        {key: value for key, value in receipt.items() if key != "schedule_digest"}
+    )
+    return receipt
+
+
+def _receipt_v2(
+    command: dict[str, Any],
+    attempt: dict[str, Any],
+    decision: dict[str, Any],
+    schedule_id: str,
+    command_digest: str,
+    registered_at: str,
+) -> dict[str, Any]:
+    copied = (
+        "assessment_id", "plan_id", "plan_revision", "task_id", "task_revision",
+        "attempt_id", "attempt_digest", "attempt_number", "prior_attempt_id",
+        "prior_attempt_digest", "failure_id", "failure_receipt_digest", "checkpoint_id",
+        "checkpoint_digest", "lease_consumption_id", "worker_id", "worker_version",
+        "lease_generation", "fencing_token", "recovery_generation",
+        "capability_manifest_id", "capability_manifest_digest", "manifest_revision",
+        "lineage_budget_reservation_id", "budget_request_digest", "budget_account_id",
+        "capacity_budget_reservation_id", "budget_account_version",
+        "approval_consumption_id", "policy_bundle_id", "policy_hash",
+        "retry_activation_id", "retry_activation_digest",
+        "prior_retry_budget_consumption_id", "retry_policy_id",
+        "retry_policy_revision", "retry_policy_digest", "eligibility_decision_id",
+        "eligibility_decision_digest", "retry_budget_consumption_id",
+        "retry_budget_consumption_digest",
+    )
+    receipt = {key: attempt[key] for key in copied}
+    receipt.update(
+        {
+            "schema_version": "2.0.0",
+            "schedule_id": schedule_id,
+            "command_id": command["command_id"],
+            "command_digest": command_digest,
+            "schedule_revision": 1,
+            "schedule_state": "registered",
+            "scheduled_for": decision["earliest_retry_at"],
             "expires_at": command["expires_at"],
             "purpose": command["purpose"],
             "registered_at": registered_at,

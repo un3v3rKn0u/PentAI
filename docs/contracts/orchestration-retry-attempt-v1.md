@@ -62,3 +62,11 @@ rollback disables v2 registration while retaining immutable history; migration r
 is unsupported. Scheduling, activation, refreshed readiness prerequisites, later
 leasing, terminal/dead-letter behavior, completion, dispatch, and runtime composition
 remain deferred.
+
+An additive retry-schedule v2 boundary can now register one immutable schedule for the
+exact attempt-three receipt. Because attempt-three identity intentionally carries no
+caller-usable timing, trusted core derives `scheduled_for` from the verified eligible
+retry-decision v2 and permits registration only after that time. Migration 0063 uses a
+separate immutable table, preserving the v1 attempt-two boundary. The schedule remains
+inert: it cannot activate or reopen the failed task, mutate retry capacity, issue
+readiness prerequisites, lease, dispatch, contact a worker, or authorize an effect.

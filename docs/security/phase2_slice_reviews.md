@@ -1,5 +1,49 @@
 # Phase 2 slice security reviews
 
+## 2026-08-26 — Immutable retry-schedule registration v2
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author, Product Owner, Principal Architect, Security Lead, AI/Agent Lead,
+Core Maintainer, Contract Maintainer, Execution Safety Lead, and Security Reviewer. The
+`GIT_WORKFLOW.md` exception is used. This does not satisfy independent review or dual
+control.
+
+**Scope and evidence:** Closed attempt-three schedule command/receipt v2 contracts,
+additive migration 0063, trusted-core version-exact timing derivation, immutable storage
+guards, metadata-only audit/outbox linkage, compatibility documentation, and synthetic
+positive, malformed, mixed-version, caller-timing, premature, expiry, digest-tampering,
+replay, concurrency, safety, cancellation, worker, recovery, direct-storage, upgrade,
+and idempotency tests.
+
+**Security boundaries:** Only the exact current attempt-three receipt may be scheduled.
+Trusted core revalidates its complete retry-decision, consumption, failed-attempt,
+policy, checkpoint, lease, worker, manifest, budget, approval, cancellation, safety,
+fencing, and recovery lineage. Timing is derived from retry-decision v2 and registration
+is rejected before that time. The schedule remains `authority: none` and
+`execution_enabled: false`; task, attempt, and budget state are unchanged. No attempt
+four, activation, readiness record, lease, worker contact, dispatch, provider/plugin
+call, network authority, or external effect is created. The Phase 1 authorization chain
+is unchanged.
+
+**Threats and default deny:** Missing, malformed, mixed-version, premature, stale,
+expired, caller-timed, tampered, cross-scope, predecessor/decision/consumption
+mismatched, duplicated, forked, competing, changed-replay, cancelled, safety-paused,
+worker-revoked, recovery-stale, privilege-shaped, and direct-storage inputs deny with
+stable codes or storage constraints.
+
+**Compatibility, privacy, migration, and rollback:** V1 attempt-two schedule behavior
+and rows remain unchanged. Migration 0063 is additive and preserves bounded
+metadata-only history. Application rollback disables v2 scheduling while retaining the
+row; migration reversal is unsupported. Contracts exclude secrets, credentials, raw
+tokens, evidence, assessment content, prompts, diagnostics, paths, URLs, commands,
+provider/plugin output, target content, and arbitrary blobs.
+
+**Limitations and residual risk:** Schedule consumption, attempt-three activation,
+refreshed manifest/budget prerequisites, later leasing, checkpoint/failure/completion,
+terminal/dead-letter handling, dispatch, runtime composition, provider/plugin execution,
+UI, Phase 2 demonstrations, and independent review remain deferred. Non-independent
+review reduces governance assurance and is accepted only for this non-executing slice.
+
 ## 2026-08-26 — Immutable retry-attempt registration v2
 
 **Review record:** Sole-maintainer security review — non-independent. The repository

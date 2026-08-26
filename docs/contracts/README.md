@@ -123,6 +123,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   registration command with no caller-controlled timing or activation fields.
 - `orchestration-retry-schedule-receipt-v1.schema.json` — immutable inert scheduling
   metadata derived from trusted retry lineage with no runnable or execution authority.
+- `orchestration-retry-schedule-command-v2.schema.json` — version-exact inert schedule
+  registration for attempt three after its deterministic policy backoff.
+- `orchestration-retry-schedule-receipt-v2.schema.json` — immutable attempt-three
+  timing metadata with no activation, task-state, lease, dispatch, or effect authority.
 - `orchestration-retry-activation-command-v1.schema.json` — exact schedule-consumption
   command for the dedicated failed-task readiness transition.
 - `orchestration-retry-activation-receipt-v1.schema.json` — immutable non-authoritative
