@@ -79,6 +79,7 @@ class MigrationTests(unittest.TestCase):
                     "0060",
                     "0061",
                     "0062",
+                    "0063",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -237,6 +238,39 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("orchestration_retry_attempts_v2_binding_valid", triggers)
             self.assertIn("orchestration_retry_attempts_v2_immutable", triggers)
             self.assertIn("orchestration_retry_attempts_v2_no_delete", triggers)
+
+    def test_retry_schedule_v2_upgrade_is_additive_and_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("*.sql")):
+                if path.name >= "0063_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = repository_migrations / "0063_retry_schedules_v2.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0063"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+            self.assertIn("orchestration_retry_schedules_v2_binding_valid", triggers)
+            self.assertIn("orchestration_retry_schedules_v2_immutable", triggers)
+            self.assertIn("orchestration_retry_schedules_v2_no_delete", triggers)
 
     def test_failed_migration_rolls_back_its_schema_and_version(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

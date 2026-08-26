@@ -816,9 +816,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     identity in additive immutable storage. The three-attempt policy ceiling is closed:
     registration cannot create attempt four, evaluate retryability, mutate capacity,
     schedule or activate work, transition the failed task, lease, dispatch, or create
-    authority. Attempt-three scheduling, activation, readiness prerequisites, later
-    leasing, terminal/dead-letter handling, completion, dispatch, and runtime composition
-    remain required.
+    authority. Immutable attempt-three scheduling v2 now accepts only that exact
+    registered identity, derives its time from the eligible retry-decision v2, and
+    records one metadata-only schedule after the deterministic backoff has elapsed.
+    It cannot activate or reopen work, mutate budget, create attempt four, lease,
+    dispatch, or create authority. Schedule consumption, activation, readiness
+    prerequisites, later leasing, terminal/dead-letter handling, completion, dispatch,
+    and runtime composition remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

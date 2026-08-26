@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-retry-schedule-command-v2.schema.json",
+  "title": "PentAI OrchestrationRetryScheduleCommand v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command_id", "assessment_id", "plan_id", "expected_plan_revision", "task_id", "expected_task_revision", "attempt_id", "attempt_digest", "purpose", "requested_at", "expires_at", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "expected_plan_revision": {"type": "integer", "minimum": 5},
+    "task_id": {"type": "string", "format": "uuid"},
+    "expected_task_revision": {"type": "integer", "minimum": 5},
+    "attempt_id": {"type": "string", "format": "uuid"},
+    "attempt_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "purpose": {"const": "register_validation_retry_schedule_three"},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}
