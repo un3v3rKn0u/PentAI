@@ -31,7 +31,7 @@ class OrchestrationRetryAttemptError(ValueError):
 
 
 class OrchestrationRetryAttemptService:
-    """Register immutable, non-activating identity for retry attempt two."""
+    """Register immutable, non-activating retry-attempt identities."""
 
     def __init__(self, authorization: AuthorizationService) -> None:
         self.authorization = authorization
@@ -40,6 +40,8 @@ class OrchestrationRetryAttemptService:
 
     def register(self, command: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
         document = copy.deepcopy(command)
+        if document.get("schema_version") == "2.0.0":
+            return self._register_v2(document, now=now)
         if contract_issues(document, "orchestration-retry-attempt-command-v1.schema.json"):
             raise OrchestrationRetryAttemptError(
                 "ORCHESTRATION_RETRY_ATTEMPT_COMMAND_MALFORMED",
@@ -144,6 +146,206 @@ class OrchestrationRetryAttemptService:
                 ) from error
             _audit(connection, attempt_id, receipt)
         return copy.deepcopy(receipt)
+
+    def _register_v2(
+        self, document: dict[str, Any], *, now: datetime | None
+    ) -> dict[str, Any]:
+        if contract_issues(document, "orchestration-retry-attempt-command-v2.schema.json"):
+            raise OrchestrationRetryAttemptError(
+                "ORCHESTRATION_RETRY_ATTEMPT_COMMAND_MALFORMED",
+                "retry attempt command is malformed",
+            )
+        instant = _instant(now)
+        requested_at = parse_time(document["requested_at"])
+        expires_at = parse_time(document["expires_at"])
+        if (
+            requested_at > instant
+            or instant - requested_at > _MAX_COMMAND_AGE
+            or expires_at <= instant
+            or expires_at <= requested_at
+            or expires_at - requested_at > _MAX_COMMAND_VALIDITY
+        ):
+            raise OrchestrationRetryAttemptError(
+                "ORCHESTRATION_RETRY_ATTEMPT_COMMAND_STALE",
+                "retry attempt command is stale",
+            )
+        command_digest = "sha256:" + content_hash(document)
+        attempt_id = str(
+            uuid5(_NAMESPACE, "retry-attempt-v2:" + document["retry_budget_consumption_id"])
+        )
+        self.authorization._require_storage_safe()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            replay = connection.execute(
+                "SELECT * FROM orchestration_retry_attempts_v2 WHERE command_id=?",
+                (document["command_id"],),
+            ).fetchone()
+            if replay is not None:
+                if replay["command_digest"] != command_digest:
+                    raise OrchestrationRetryAttemptError(
+                        "ORCHESTRATION_RETRY_ATTEMPT_IDENTITY_CONFLICT",
+                        "retry attempt identity conflicts",
+                    )
+                receipt = self._load_receipt_v2(replay)
+                self._validate_consumption_v2(connection, document, instant)
+                return copy.deepcopy(receipt)
+
+            consumption = self._validate_consumption_v2(connection, document, instant)
+            existing = connection.execute(
+                """SELECT command_id FROM orchestration_retry_attempts_v2
+                WHERE prior_attempt_id=? OR retry_budget_consumption_id=?
+                OR (task_id=? AND attempt_number=3)""",
+                (
+                    consumption["attempt_id"],
+                    consumption["consumption_id"],
+                    consumption["task_id"],
+                ),
+            ).fetchone()
+            if existing is not None:
+                raise OrchestrationRetryAttemptError(
+                    "ORCHESTRATION_RETRY_ATTEMPT_ALREADY_REGISTERED",
+                    "retry attempt was already registered",
+                )
+            receipt = _receipt_v2(
+                document, consumption, attempt_id, command_digest, _timestamp(instant)
+            )
+            if contract_issues(receipt, "orchestration-retry-attempt-receipt-v2.schema.json"):
+                raise OrchestrationRetryAttemptError(
+                    "ORCHESTRATION_RETRY_ATTEMPT_RECEIPT_INVALID",
+                    "retry attempt receipt is invalid",
+                )
+            try:
+                connection.execute(
+                    """INSERT INTO orchestration_retry_attempts_v2 (
+                    attempt_id, command_id, command_digest, assessment_id, plan_id,
+                    plan_revision, task_id, task_revision, prior_attempt_id,
+                    retry_budget_consumption_id, attempt_number, attempt_state,
+                    receipt_json, receipt_hash, registered_at, authority, execution_enabled
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 3, 'registered', ?, ?, ?,
+                    'none', 0)""",
+                    (
+                        attempt_id,
+                        document["command_id"],
+                        command_digest,
+                        consumption["assessment_id"],
+                        consumption["plan_id"],
+                        consumption["plan_revision"],
+                        consumption["task_id"],
+                        consumption["task_revision"],
+                        consumption["attempt_id"],
+                        consumption["consumption_id"],
+                        canonical_json(receipt),
+                        content_hash(receipt),
+                        receipt["registered_at"],
+                    ),
+                )
+            except sqlite3.IntegrityError as error:
+                raise OrchestrationRetryAttemptError(
+                    "ORCHESTRATION_RETRY_ATTEMPT_CONFLICT",
+                    "retry attempt registration conflicts",
+                ) from error
+            _audit(connection, attempt_id, receipt)
+        return copy.deepcopy(receipt)
+
+    def _validate_consumption_v2(
+        self,
+        connection: sqlite3.Connection,
+        document: dict[str, Any],
+        instant: datetime,
+    ) -> dict[str, Any]:
+        row = connection.execute(
+            "SELECT * FROM orchestration_retry_budget_consumptions_v2 WHERE consumption_id=?",
+            (document["retry_budget_consumption_id"],),
+        ).fetchone()
+        if row is None:
+            raise OrchestrationRetryAttemptError(
+                "ORCHESTRATION_RETRY_ATTEMPT_CONSUMPTION_MISSING",
+                "retry budget consumption is missing",
+            )
+        try:
+            consumption = self._budget._load_receipt_v2(row)
+        except OrchestrationRetryBudgetError as error:
+            raise OrchestrationRetryAttemptError(
+                "ORCHESTRATION_RETRY_ATTEMPT_CONSUMPTION_INVALID",
+                "retry budget consumption is invalid",
+            ) from error
+        fields = {
+            "assessment_id": "assessment_id",
+            "plan_id": "plan_id",
+            "expected_plan_revision": "plan_revision",
+            "task_id": "task_id",
+            "expected_task_revision": "task_revision",
+            "prior_attempt_id": "attempt_id",
+            "prior_attempt_digest": "attempt_digest",
+            "retry_budget_consumption_id": "consumption_id",
+            "retry_budget_consumption_digest": "receipt_digest",
+        }
+        if (
+            any(document[left] != consumption[right] for left, right in fields.items())
+            or consumption["proposed_attempt_number"] != 3
+            or consumption["consumed_retry_units"] != 1
+            or consumption["previous_consumed_retry_units"] != 1
+            or parse_time(consumption["consumed_at"]) > instant
+            or parse_time(document["requested_at"]) < parse_time(consumption["consumed_at"])
+        ):
+            raise OrchestrationRetryAttemptError(
+                "ORCHESTRATION_RETRY_ATTEMPT_CONSUMPTION_MISMATCH",
+                "retry budget consumption binding mismatches",
+            )
+        validation = {
+            "assessment_id": consumption["assessment_id"],
+            "plan_id": consumption["plan_id"],
+            "expected_plan_revision": consumption["plan_revision"],
+            "task_id": consumption["task_id"],
+            "expected_task_revision": consumption["task_revision"],
+            "attempt_id": consumption["attempt_id"],
+            "attempt_digest": consumption["attempt_digest"],
+            "eligibility_decision_id": consumption["eligibility_decision_id"],
+            "eligibility_decision_digest": consumption["eligibility_decision_digest"],
+            "retry_policy_id": consumption["retry_policy_id"],
+            "retry_policy_revision": consumption["retry_policy_revision"],
+            "retry_policy_digest": consumption["retry_policy_digest"],
+            "prior_retry_budget_consumption_id": consumption[
+                "prior_retry_budget_consumption_id"
+            ],
+            "expected_budget_account_version": consumption[
+                "budget_account_version_before"
+            ],
+            "proposed_attempt_number": 3,
+        }
+        try:
+            self._budget._validate_replay_v2(connection, validation, consumption, instant)
+        except OrchestrationRetryBudgetError as error:
+            raise OrchestrationRetryAttemptError(
+                "ORCHESTRATION_RETRY_ATTEMPT_SECURITY_DENIED",
+                "current security state denies retry attempt registration",
+            ) from error
+        return consumption
+
+    @staticmethod
+    def _load_receipt_v2(row: sqlite3.Row) -> dict[str, Any]:
+        receipt = cast(dict[str, Any], json.loads(row["receipt_json"]))
+        expected_digest = "sha256:" + content_hash(
+            {key: value for key, value in receipt.items() if key != "attempt_digest"}
+        )
+        if (
+            contract_issues(receipt, "orchestration-retry-attempt-receipt-v2.schema.json")
+            or row["receipt_hash"] != content_hash(receipt)
+            or receipt["attempt_digest"] != expected_digest
+            or receipt["attempt_id"] != row["attempt_id"]
+            or receipt["command_id"] != row["command_id"]
+            or receipt["command_digest"] != row["command_digest"]
+            or receipt["prior_attempt_id"] != row["prior_attempt_id"]
+            or receipt["retry_budget_consumption_id"]
+            != row["retry_budget_consumption_id"]
+            or receipt["attempt_number"] != row["attempt_number"]
+            or receipt["attempt_state"] != row["attempt_state"]
+        ):
+            raise OrchestrationRetryAttemptError(
+                "ORCHESTRATION_RETRY_ATTEMPT_RECEIPT_INVALID",
+                "retry attempt receipt is invalid",
+            )
+        return receipt
 
     def _validate_consumption(
         self,
@@ -354,6 +556,72 @@ def _receipt(
         "attempt_number": 2,
         "attempt_state": "registered",
         "earliest_retry_at": decision["earliest_retry_at"],
+        "purpose": command["purpose"],
+        "registered_at": registered_at,
+        "attempt_digest": "",
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    receipt["attempt_digest"] = "sha256:" + content_hash(
+        {key: value for key, value in receipt.items() if key != "attempt_digest"}
+    )
+    return receipt
+
+
+def _receipt_v2(
+    command: dict[str, Any],
+    consumption: dict[str, Any],
+    attempt_id: str,
+    command_digest: str,
+    registered_at: str,
+) -> dict[str, Any]:
+    receipt = {
+        "schema_version": "2.0.0",
+        "attempt_id": attempt_id,
+        "command_id": command["command_id"],
+        "command_digest": command_digest,
+        "assessment_id": consumption["assessment_id"],
+        "plan_id": consumption["plan_id"],
+        "plan_revision": consumption["plan_revision"],
+        "task_id": consumption["task_id"],
+        "task_revision": consumption["task_revision"],
+        "prior_attempt_id": consumption["attempt_id"],
+        "prior_attempt_digest": consumption["attempt_digest"],
+        "failure_id": consumption["failure_id"],
+        "failure_receipt_digest": consumption["failure_receipt_digest"],
+        "checkpoint_id": consumption["checkpoint_id"],
+        "checkpoint_digest": consumption["checkpoint_digest"],
+        "lease_consumption_id": consumption["lease_consumption_id"],
+        "worker_id": consumption["worker_id"],
+        "worker_version": consumption["worker_version"],
+        "lease_generation": consumption["lease_generation"],
+        "fencing_token": consumption["fencing_token"],
+        "recovery_generation": consumption["recovery_generation"],
+        "capability_manifest_id": consumption["capability_manifest_id"],
+        "capability_manifest_digest": consumption["capability_manifest_digest"],
+        "manifest_revision": consumption["manifest_revision"],
+        "lineage_budget_reservation_id": consumption["lineage_budget_reservation_id"],
+        "budget_request_digest": consumption["budget_request_digest"],
+        "budget_account_id": consumption["budget_account_id"],
+        "capacity_budget_reservation_id": consumption["capacity_budget_reservation_id"],
+        "budget_account_version": consumption["budget_account_version_after"],
+        "approval_consumption_id": consumption["approval_consumption_id"],
+        "policy_bundle_id": consumption["policy_bundle_id"],
+        "policy_hash": consumption["policy_hash"],
+        "retry_activation_id": consumption["retry_activation_id"],
+        "retry_activation_digest": consumption["retry_activation_digest"],
+        "prior_retry_budget_consumption_id": consumption[
+            "prior_retry_budget_consumption_id"
+        ],
+        "retry_policy_id": consumption["retry_policy_id"],
+        "retry_policy_revision": consumption["retry_policy_revision"],
+        "retry_policy_digest": consumption["retry_policy_digest"],
+        "eligibility_decision_id": consumption["eligibility_decision_id"],
+        "eligibility_decision_digest": consumption["eligibility_decision_digest"],
+        "retry_budget_consumption_id": consumption["consumption_id"],
+        "retry_budget_consumption_digest": consumption["receipt_digest"],
+        "attempt_number": 3,
+        "attempt_state": "registered",
         "purpose": command["purpose"],
         "registered_at": registered_at,
         "attempt_digest": "",

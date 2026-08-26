@@ -113,7 +113,12 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `orchestration-retry-attempt-command-v1.schema.json` — exact consumption-bound
   registration command for non-activating attempt-two identity.
 - `orchestration-retry-attempt-receipt-v1.schema.json` — immutable registered attempt
-  lineage with no scheduling, task-state, lease, dispatch, or execution authority.
+  two identity bound to the first retry-consumption receipt, with no scheduling,
+  task-state, lease, dispatch, or execution authority.
+- `orchestration-retry-attempt-command-v2.schema.json` — version-exact registration
+  request for inert attempt three, bound to the second retry-consumption receipt.
+- `orchestration-retry-attempt-receipt-v2.schema.json` — immutable, fork-free attempt
+  three identity at the closed retry-policy ceiling.
 - `orchestration-retry-schedule-command-v1.schema.json` — exact attempt-two-bound
   registration command with no caller-controlled timing or activation fields.
 - `orchestration-retry-schedule-receipt-v1.schema.json` — immutable inert scheduling
