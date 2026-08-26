@@ -75,9 +75,9 @@ def test_consumes_one_unit_atomically_without_activating_work(tmp_path: Path) ->
         == ()
     )
     assert receipt["eligibility_decision_id"] == decision["decision_id"]
-    assert receipt["reserved_retry_units"] == 1
+    assert receipt["reserved_retry_units"] == 2
     assert receipt["consumed_retry_units"] == 1
-    assert receipt["remaining_retry_units"] == 0
+    assert receipt["remaining_retry_units"] == 1
     assert receipt["budget_account_version_before"] == before[0]
     assert receipt["budget_account_version_after"] == before[0] + 1
     assert receipt["authority"] == "none" and receipt["execution_enabled"] is False

@@ -258,10 +258,14 @@ class OrchestrationBudgetService:
             task_used = {field: 0 for field in _FIELDS}
             rows = connection.execute(
                 """SELECT r.task_id, r.amounts_json, r.state,
-                COALESCE(SUM(c.consumed_retry_units), 0) AS consumed_retries
+                (SELECT COALESCE(SUM(c1.consumed_retry_units), 0)
+                 FROM orchestration_retry_budget_consumptions c1
+                 WHERE c1.budget_reservation_id = r.reservation_id)
+                + (SELECT COALESCE(SUM(c2.consumed_retry_units), 0)
+                   FROM orchestration_retry_budget_consumptions_v2 c2
+                   WHERE c2.capacity_budget_reservation_id = r.reservation_id)
+                AS consumed_retries
                 FROM orchestration_task_budget_reservations r
-                LEFT JOIN orchestration_retry_budget_consumptions c
-                    ON c.budget_reservation_id = r.reservation_id
                 WHERE r.account_id = ?
                 GROUP BY r.reservation_id, r.task_id, r.amounts_json, r.state""",
                 (document["account_id"],),

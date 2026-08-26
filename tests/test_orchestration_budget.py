@@ -33,6 +33,7 @@ NOW = datetime.now(UTC).replace(microsecond=0)
 PLAN_ID = "33333333-3333-4333-8333-333333333333"
 TASK_ID = "44444444-4444-4444-8444-444444444444"
 WORKER_ID = "synthetic-worker-lease"
+RETRY_UNITS = 2
 
 
 def _provider_policy() -> ProviderPolicy:
@@ -295,7 +296,7 @@ def setup(
             "requests": 1,
             "cost_microusd": 0,
             "runtime_seconds": 3,
-            "retries": 1,
+            "retries": RETRY_UNITS,
         },
         "requested_at": NOW.isoformat(),
         "expires_at": (NOW + timedelta(minutes=2)).isoformat(),

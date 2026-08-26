@@ -40,6 +40,8 @@ class OrchestrationRetryBudgetService:
 
     def consume(self, command: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
         document = copy.deepcopy(command)
+        if document.get("schema_version") == "2.0.0":
+            return self._consume_v2(document, now=now)
         if contract_issues(
             document, "orchestration-retry-budget-consumption-command-v1.schema.json"
         ):
@@ -186,6 +188,346 @@ class OrchestrationRetryBudgetService:
                 ) from error
             _audit(connection, consumption_id, receipt)
         return copy.deepcopy(receipt)
+
+    def _consume_v2(
+        self, document: dict[str, Any], *, now: datetime | None
+    ) -> dict[str, Any]:
+        if contract_issues(
+            document, "orchestration-retry-budget-consumption-command-v2.schema.json"
+        ):
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_COMMAND_MALFORMED",
+                "retry budget consumption command is malformed",
+            )
+        instant = _instant(now)
+        requested_at = parse_time(document["requested_at"])
+        expires_at = parse_time(document["expires_at"])
+        if (
+            requested_at > instant
+            or instant - requested_at > _MAX_COMMAND_AGE
+            or expires_at <= instant
+            or expires_at <= requested_at
+            or expires_at - requested_at > _MAX_COMMAND_VALIDITY
+        ):
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_COMMAND_STALE",
+                "retry budget consumption command is stale",
+            )
+        command_digest = "sha256:" + content_hash(document)
+        consumption_id = str(uuid5(_NAMESPACE, "retry-budget-v2:" + document["command_id"]))
+        self.authorization._require_storage_safe()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            replay = connection.execute(
+                """SELECT * FROM orchestration_retry_budget_consumptions_v2
+                WHERE command_id = ?""",
+                (document["command_id"],),
+            ).fetchone()
+            if replay is not None:
+                if replay["command_digest"] != command_digest:
+                    raise OrchestrationRetryBudgetError(
+                        "ORCHESTRATION_RETRY_BUDGET_IDENTITY_CONFLICT",
+                        "retry budget consumption identity conflicts",
+                    )
+                receipt = self._load_receipt_v2(replay)
+                self._validate_replay_v2(connection, document, receipt, instant)
+                return copy.deepcopy(receipt)
+
+            decision, attempt, policy = self._validate_decision_v2(
+                connection, document, instant
+            )
+            prior, reservation, account, reserved, consumed = self._load_budget_v2(
+                connection, document, decision, attempt, instant
+            )
+            if consumed >= reserved:
+                raise OrchestrationRetryBudgetError(
+                    "ORCHESTRATION_RETRY_BUDGET_EXHAUSTED",
+                    "reserved retry capacity is exhausted",
+                )
+            version_before = int(account["version"])
+            version_after = version_before + 1
+            if version_after > 2**63 - 1:
+                raise OrchestrationRetryBudgetError(
+                    "ORCHESTRATION_RETRY_BUDGET_VERSION_OVERFLOW",
+                    "budget account version cannot advance",
+                )
+            receipt = _receipt_v2(
+                document=document,
+                decision=decision,
+                attempt=attempt,
+                policy=policy,
+                prior=prior,
+                reservation=reservation,
+                consumption_id=consumption_id,
+                command_digest=command_digest,
+                version_before=version_before,
+                version_after=version_after,
+                reserved_units=reserved,
+                prior_consumed=consumed,
+                consumed_at=_timestamp(instant),
+            )
+            if contract_issues(
+                receipt, "orchestration-retry-budget-consumption-receipt-v2.schema.json"
+            ):
+                raise OrchestrationRetryBudgetError(
+                    "ORCHESTRATION_RETRY_BUDGET_RECEIPT_INVALID",
+                    "retry budget consumption receipt is invalid",
+                )
+            updated = connection.execute(
+                """UPDATE orchestration_budget_accounts SET version = ?
+                WHERE account_id = ? AND version = ?""",
+                (version_after, reservation["account_id"], version_before),
+            )
+            if updated.rowcount != 1:
+                raise OrchestrationRetryBudgetError(
+                    "ORCHESTRATION_RETRY_BUDGET_VERSION_FENCED",
+                    "budget account version is fenced",
+                )
+            try:
+                connection.execute(
+                    """INSERT INTO orchestration_retry_budget_consumptions_v2 (
+                    consumption_id, command_id, command_digest, assessment_id, plan_id,
+                    plan_revision, task_id, task_revision, attempt_id,
+                    eligibility_decision_id, retry_policy_id,
+                    prior_retry_budget_consumption_id, budget_account_id,
+                    capacity_budget_reservation_id, proposed_attempt_number,
+                    budget_account_version_before, budget_account_version_after,
+                    consumed_retry_units, remaining_retry_units, receipt_json,
+                    receipt_hash, consumed_at, authority, execution_enabled
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 3, ?, ?, 1, ?, ?, ?, ?,
+                    'none', 0)""",
+                    (
+                        consumption_id,
+                        document["command_id"],
+                        command_digest,
+                        attempt["assessment_id"],
+                        attempt["plan_id"],
+                        attempt["plan_revision"],
+                        attempt["task_id"],
+                        attempt["task_revision"],
+                        attempt["attempt_id"],
+                        decision["decision_id"],
+                        policy["retry_policy_id"],
+                        prior["consumption_id"],
+                        reservation["account_id"],
+                        reservation["reservation_id"],
+                        version_before,
+                        version_after,
+                        receipt["remaining_retry_units"],
+                        canonical_json(receipt),
+                        content_hash(receipt),
+                        receipt["consumed_at"],
+                    ),
+                )
+            except sqlite3.IntegrityError as error:
+                raise OrchestrationRetryBudgetError(
+                    "ORCHESTRATION_RETRY_BUDGET_CONFLICT",
+                    "retry budget consumption conflicts",
+                ) from error
+            _audit(connection, consumption_id, receipt)
+        return copy.deepcopy(receipt)
+
+    def _validate_decision_v2(
+        self,
+        connection: sqlite3.Connection,
+        document: dict[str, Any],
+        instant: datetime,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        row = connection.execute(
+            "SELECT * FROM orchestration_retry_decisions_v2 WHERE decision_id = ?",
+            (document["eligibility_decision_id"],),
+        ).fetchone()
+        if row is None:
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_DECISION_MISSING",
+                "retry eligibility decision is missing",
+            )
+        decision = cast(dict[str, Any], json.loads(row["decision_json"]))
+        expected_digest = "sha256:" + content_hash(
+            {key: value for key, value in decision.items() if key != "decision_digest"}
+        )
+        if (
+            contract_issues(decision, "orchestration-retry-decision-v2.schema.json")
+            or row["decision_hash"] != content_hash(decision)
+            or decision["decision_digest"] != expected_digest
+            or decision["decision_digest"] != document["eligibility_decision_digest"]
+            or decision["outcome"] != "eligible"
+            or decision["retry_units_consumed"] != 0
+            or decision["current_attempt_number"] != 2
+            or decision["proposed_attempt_number"] != 3
+            or decision["proposed_attempt_number"] != document["proposed_attempt_number"]
+            or decision["assessment_id"] != document["assessment_id"]
+            or decision["plan_id"] != document["plan_id"]
+            or decision["plan_revision"] != document["expected_plan_revision"]
+            or decision["task_id"] != document["task_id"]
+            or decision["task_revision"] != document["expected_task_revision"]
+            or decision["attempt_id"] != document["attempt_id"]
+            or decision["attempt_digest"] != document["attempt_digest"]
+            or decision["retry_policy_id"] != document["retry_policy_id"]
+            or decision["retry_policy_revision"] != document["retry_policy_revision"]
+            or decision["retry_policy_digest"] != document["retry_policy_digest"]
+            or decision["retry_budget_consumption_id"]
+            != document["prior_retry_budget_consumption_id"]
+            or parse_time(decision["expires_at"]) <= instant
+            or decision["earliest_retry_at"] is None
+            or parse_time(decision["earliest_retry_at"]) > instant
+        ):
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_DECISION_INVALID",
+                "retry eligibility decision is invalid",
+            )
+        evaluation = {
+            "attempt_id": document["attempt_id"],
+            "attempt_digest": document["attempt_digest"],
+            "assessment_id": document["assessment_id"],
+            "plan_id": document["plan_id"],
+            "expected_plan_revision": document["expected_plan_revision"],
+            "task_id": document["task_id"],
+            "expected_task_revision": document["expected_task_revision"],
+            "retry_policy_id": document["retry_policy_id"],
+            "retry_policy_revision": document["retry_policy_revision"],
+            "retry_policy_digest": document["retry_policy_digest"],
+        }
+        try:
+            attempt = self._retry._load_retry_failed_attempt(connection, evaluation, instant)
+            policy = self._retry._load_policy_v2(connection, evaluation, attempt, instant)
+        except OrchestrationRetryError as error:
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_SECURITY_DENIED",
+                "current retry security state denies consumption",
+            ) from error
+        if not _decision_matches_retry_attempt(decision, attempt, policy):
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_LINEAGE_INVALID",
+                "retry decision lineage is invalid",
+            )
+        return decision, attempt, policy
+
+    @staticmethod
+    def _load_budget_v2(
+        connection: sqlite3.Connection,
+        document: dict[str, Any],
+        decision: dict[str, Any],
+        attempt: dict[str, Any],
+        instant: datetime,
+    ) -> tuple[dict[str, Any], sqlite3.Row, sqlite3.Row, int, int]:
+        row = connection.execute(
+            "SELECT * FROM orchestration_retry_budget_consumptions WHERE consumption_id=?",
+            (document["prior_retry_budget_consumption_id"],),
+        ).fetchone()
+        if row is None:
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_LINEAGE_INVALID",
+                "prior retry consumption is missing",
+            )
+        prior = cast(dict[str, Any], json.loads(row["receipt_json"]))
+        reservation = connection.execute(
+            "SELECT * FROM orchestration_task_budget_reservations WHERE reservation_id=?",
+            (prior["budget_reservation_id"],),
+        ).fetchone()
+        account = connection.execute(
+            "SELECT * FROM orchestration_budget_accounts WHERE account_id=?",
+            (prior["budget_account_id"],),
+        ).fetchone()
+        if reservation is None or account is None:
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_RESERVATION_MISSING",
+                "retry capacity reservation is missing",
+            )
+        amounts = json.loads(reservation["amounts_json"])
+        if (
+            contract_issues(
+                prior, "orchestration-retry-budget-consumption-receipt-v1.schema.json"
+            )
+            or row["receipt_hash"] != content_hash(prior)
+            or prior["consumption_id"] != document["prior_retry_budget_consumption_id"]
+            or prior["consumption_id"] != decision["retry_budget_consumption_id"]
+            or prior["assessment_id"] != attempt["assessment_id"]
+            or prior["plan_id"] != attempt["plan_id"]
+            or prior["task_id"] != attempt["task_id"]
+            or prior["proposed_attempt_number"] != 2
+            or prior["remaining_retry_units"] < 1
+            or reservation["reservation_id"] != prior["budget_reservation_id"]
+            or reservation["account_id"] != prior["budget_account_id"]
+            or reservation["state"] != "reserved"
+            or not isinstance(amounts.get("retries"), int)
+            or isinstance(amounts.get("retries"), bool)
+            or amounts["retries"] < 2
+            or account["assessment_id"] != attempt["assessment_id"]
+            or account["policy_bundle_id"] != attempt["policy_bundle_id"]
+            or account["policy_hash"] != attempt["policy_hash"]
+            or account["version"] != document["expected_budget_account_version"]
+            or parse_time(account["expires_at"]) <= instant
+        ):
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_RESERVATION_INVALID",
+                "retry capacity lineage is invalid",
+            )
+        v1_consumed = connection.execute(
+            """SELECT COALESCE(SUM(consumed_retry_units), 0)
+            FROM orchestration_retry_budget_consumptions WHERE budget_reservation_id=?""",
+            (reservation["reservation_id"],),
+        ).fetchone()[0]
+        v2_consumed = connection.execute(
+            """SELECT COALESCE(SUM(consumed_retry_units), 0)
+            FROM orchestration_retry_budget_consumptions_v2
+            WHERE capacity_budget_reservation_id=?""",
+            (reservation["reservation_id"],),
+        ).fetchone()[0]
+        return prior, reservation, account, int(amounts["retries"]), int(v1_consumed + v2_consumed)
+
+    @staticmethod
+    def _load_receipt_v2(row: sqlite3.Row) -> dict[str, Any]:
+        receipt = cast(dict[str, Any], json.loads(row["receipt_json"]))
+        expected_digest = "sha256:" + content_hash(
+            {key: value for key, value in receipt.items() if key != "receipt_digest"}
+        )
+        if (
+            contract_issues(
+                receipt, "orchestration-retry-budget-consumption-receipt-v2.schema.json"
+            )
+            or row["receipt_hash"] != content_hash(receipt)
+            or receipt["receipt_digest"] != expected_digest
+            or receipt["consumption_id"] != row["consumption_id"]
+            or receipt["command_id"] != row["command_id"]
+            or receipt["command_digest"] != row["command_digest"]
+            or receipt["eligibility_decision_id"] != row["eligibility_decision_id"]
+            or receipt["prior_retry_budget_consumption_id"]
+            != row["prior_retry_budget_consumption_id"]
+            or receipt["budget_account_version_before"]
+            != row["budget_account_version_before"]
+            or receipt["budget_account_version_after"]
+            != row["budget_account_version_after"]
+            or receipt["remaining_retry_units"] != row["remaining_retry_units"]
+        ):
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_RECEIPT_INVALID",
+                "retry budget consumption receipt is invalid",
+            )
+        return receipt
+
+    def _validate_replay_v2(
+        self,
+        connection: sqlite3.Connection,
+        document: dict[str, Any],
+        receipt: dict[str, Any],
+        instant: datetime,
+    ) -> None:
+        decision, attempt, _ = self._validate_decision_v2(connection, document, instant)
+        account = connection.execute(
+            "SELECT version FROM orchestration_budget_accounts WHERE account_id=?",
+            (receipt["budget_account_id"],),
+        ).fetchone()
+        if (
+            receipt["eligibility_decision_id"] != decision["decision_id"]
+            or receipt["attempt_id"] != attempt["attempt_id"]
+            or account is None
+            or account["version"] != receipt["budget_account_version_after"]
+        ):
+            raise OrchestrationRetryBudgetError(
+                "ORCHESTRATION_RETRY_BUDGET_REPLAY_FENCED",
+                "retry budget consumption replay is no longer current",
+            )
 
     def _validate_decision(
         self,
@@ -459,6 +801,49 @@ def _decision_matches_attempt(
     )
 
 
+def _decision_matches_retry_attempt(
+    decision: dict[str, Any], attempt: dict[str, Any], policy: dict[str, Any]
+) -> bool:
+    fields = (
+        "assessment_id",
+        "plan_id",
+        "task_id",
+        "attempt_id",
+        "attempt_digest",
+        "failure_id",
+        "failure_receipt_digest",
+        "failure_class",
+        "checkpoint_id",
+        "checkpoint_digest",
+        "lease_consumption_id",
+        "worker_id",
+        "worker_version",
+        "lease_generation",
+        "fencing_token",
+        "recovery_generation",
+        "capability_manifest_id",
+        "capability_manifest_digest",
+        "manifest_revision",
+        "budget_reservation_id",
+        "budget_request_digest",
+        "budget_account_version",
+        "approval_consumption_id",
+        "policy_bundle_id",
+        "policy_hash",
+        "retry_activation_id",
+        "retry_activation_digest",
+        "retry_budget_consumption_id",
+    )
+    return (
+        all(decision[field] == attempt[field] for field in fields)
+        and decision["plan_revision"] == attempt["plan_revision"]
+        and decision["task_revision"] == attempt["task_revision"]
+        and decision["retry_policy_id"] == policy["retry_policy_id"]
+        and decision["retry_policy_revision"] == policy["revision"]
+        and decision["retry_policy_digest"] == policy["policy_digest"]
+    )
+
+
 def _receipt(
     command: dict[str, Any],
     decision: dict[str, Any],
@@ -515,6 +900,81 @@ def _receipt(
         "eligibility_decision_digest": decision["decision_digest"],
         "proposed_attempt_number": decision["proposed_attempt_number"],
         "purpose": command["purpose"],
+        "consumed_at": consumed_at,
+        "receipt_digest": "",
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    receipt["receipt_digest"] = "sha256:" + content_hash(
+        {key: value for key, value in receipt.items() if key != "receipt_digest"}
+    )
+    return receipt
+
+
+def _receipt_v2(
+    *,
+    document: dict[str, Any],
+    decision: dict[str, Any],
+    attempt: dict[str, Any],
+    policy: dict[str, Any],
+    prior: dict[str, Any],
+    reservation: sqlite3.Row,
+    consumption_id: str,
+    command_digest: str,
+    version_before: int,
+    version_after: int,
+    reserved_units: int,
+    prior_consumed: int,
+    consumed_at: str,
+) -> dict[str, Any]:
+    receipt = {
+        "schema_version": "2.0.0",
+        "consumption_id": consumption_id,
+        "command_id": document["command_id"],
+        "command_digest": command_digest,
+        "assessment_id": attempt["assessment_id"],
+        "plan_id": attempt["plan_id"],
+        "plan_revision": attempt["plan_revision"],
+        "task_id": attempt["task_id"],
+        "task_revision": attempt["task_revision"],
+        "attempt_id": attempt["attempt_id"],
+        "attempt_digest": attempt["attempt_digest"],
+        "failure_id": attempt["failure_id"],
+        "failure_receipt_digest": attempt["failure_receipt_digest"],
+        "checkpoint_id": attempt["checkpoint_id"],
+        "checkpoint_digest": attempt["checkpoint_digest"],
+        "lease_consumption_id": attempt["lease_consumption_id"],
+        "worker_id": attempt["worker_id"],
+        "worker_version": attempt["worker_version"],
+        "lease_generation": attempt["lease_generation"],
+        "fencing_token": attempt["fencing_token"],
+        "recovery_generation": attempt["recovery_generation"],
+        "capability_manifest_id": attempt["capability_manifest_id"],
+        "capability_manifest_digest": attempt["capability_manifest_digest"],
+        "manifest_revision": attempt["manifest_revision"],
+        "lineage_budget_reservation_id": attempt["budget_reservation_id"],
+        "budget_request_digest": attempt["budget_request_digest"],
+        "budget_account_id": reservation["account_id"],
+        "capacity_budget_reservation_id": reservation["reservation_id"],
+        "budget_account_version_before": version_before,
+        "budget_account_version_after": version_after,
+        "reserved_retry_units": reserved_units,
+        "previous_consumed_retry_units": prior_consumed,
+        "consumed_retry_units": 1,
+        "remaining_retry_units": reserved_units - prior_consumed - 1,
+        "approval_consumption_id": attempt["approval_consumption_id"],
+        "policy_bundle_id": attempt["policy_bundle_id"],
+        "policy_hash": attempt["policy_hash"],
+        "retry_activation_id": attempt["retry_activation_id"],
+        "retry_activation_digest": attempt["retry_activation_digest"],
+        "prior_retry_budget_consumption_id": prior["consumption_id"],
+        "retry_policy_id": policy["retry_policy_id"],
+        "retry_policy_revision": policy["revision"],
+        "retry_policy_digest": policy["policy_digest"],
+        "eligibility_decision_id": decision["decision_id"],
+        "eligibility_decision_digest": decision["decision_digest"],
+        "proposed_attempt_number": 3,
+        "purpose": document["purpose"],
         "consumed_at": consumed_at,
         "receipt_digest": "",
         "authority": "none",
