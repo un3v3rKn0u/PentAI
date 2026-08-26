@@ -531,7 +531,9 @@ Emergency stop revokes grants, closes gateway sessions, stops workers, checkpoin
   receipt and is the closed ceiling; registration alone cannot schedule, activate,
   transition, lease, dispatch, or authorize an effect.
 - Attempt-three scheduling derives timing only from the immutable retry decision and
-  remains inert; a separate reviewed consumer is required before any readiness change.
+  remains inert. Its dedicated version-exact consumer may atomically restore only the
+  bound failed validation task to non-authoritative ready coordination state; refreshed
+  manifests, budgets, leases, and every execution boundary remain separate.
 - Heartbeats indicate liveness, while idempotency keys prevent duplicate effects.
 - Use exponential backoff with jitter only for classified transient failures.
 - Circuit-break failing AI providers, tools, source sites, and network routes.

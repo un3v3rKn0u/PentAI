@@ -28,3 +28,21 @@ Stored data is bounded identifiers, hashes, revisions, closed state values, and 
 Secrets, credentials, evidence, prompts, diagnostics, paths, URLs, commands, provider or
 plugin payloads, targets, and raw tokens are excluded. Application rollback disables new
 consumption while retaining immutable history; migration reversal is unsupported.
+
+## Version 2 attempt-three schedule consumption
+
+The additive v2 boundary consumes only the exact immutable schedule v2 for registered
+attempt three. Trusted core revalidates its current security lineage before atomically
+recording one immutable activation receipt and advancing only the exact failed plan/task
+revisions into active/ready coordination state.
+
+Migration 0064 stores v2 receipts separately and extends the storage transition guards
+with a version-exact schedule-v2 predicate. V1 rows and behavior remain unchanged, and
+the general transition service still cannot reopen failed tasks. Exact replay returns
+the recorded receipt only while current security state remains valid.
+
+Activation v2 remains `authority: none` with `execution_enabled: false`. It issues no
+manifest or reservation, creates no lease or worker assignment, contacts or dispatches
+no worker, invokes no provider or plugin, grants no network access, and performs no
+external effect. Refreshed attempt-three readiness prerequisites and all later execution
+lifecycle boundaries remain separately reviewed work.
