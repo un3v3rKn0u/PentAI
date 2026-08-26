@@ -820,9 +820,16 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     registered identity, derives its time from the eligible retry-decision v2, and
     records one metadata-only schedule after the deterministic backoff has elapsed.
     It cannot activate or reopen work, mutate budget, create attempt four, lease,
-    dispatch, or create authority. Schedule consumption, activation, readiness
-    prerequisites, later leasing, terminal/dead-letter handling, completion, dispatch,
-    and runtime composition remain required.
+    dispatch, or create authority. Readiness prerequisites, later leasing,
+    terminal/dead-letter handling, completion, dispatch, and runtime composition remain
+    required.
+  - Dedicated retry activation v2 now consumes only the exact current attempt-three
+    schedule after its deterministic due time, atomically records immutable audit/outbox
+    evidence, and storage-gates the exact failed-to-ready plan/task revision change.
+    The general transition path remains denied. Activation is non-authoritative and
+    issues no refreshed manifest or reservation, lease, worker assignment, dispatch,
+    provider/plugin call, network authority, or external effect. Attempt-three readiness
+    prerequisites and all later lifecycle/runtime requirements remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

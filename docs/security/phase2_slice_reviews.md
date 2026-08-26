@@ -1,5 +1,42 @@
 # Phase 2 slice security reviews
 
+## 2026-08-26 — Dedicated attempt-three retry activation v2
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author and security reviewer under the `GIT_WORKFLOW.md` exception. This
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed activation command/receipt v2 contracts, additive
+migration 0064, version-exact trusted-core schedule consumption, exact storage transition
+guards, immutable metadata-only audit/outbox linkage, compatibility documentation, and
+synthetic positive, malformed, mixed-version, tampering, replay, concurrency, safety,
+cancellation, worker, recovery, direct-transition, upgrade, and idempotency tests.
+
+**Security boundaries:** Only the exact current due schedule v2 for attempt three can
+advance its failed validation plan/task revisions into active/ready coordination state.
+The general transition path remains denied. Activation stays `authority: none` and
+`execution_enabled: false`; it issues no readiness prerequisite, lease, assignment,
+dispatch, provider/plugin call, network authority, or external effect. Phase 1
+authorization remains unchanged.
+
+**Threats and default deny:** Missing, malformed, mixed-version, premature, expired,
+tampered, duplicated, competing, changed-replay, cross-scope, stale-revision,
+cancelled, safety-paused, worker-revoked, recovery-stale, privilege-shaped, and direct
+storage inputs deny through stable service codes or exact database constraints.
+
+**Compatibility, privacy, migration, and rollback:** V1 activation behavior and rows are
+unchanged. Migration 0064 is additive and retains bounded metadata-only history;
+application rollback disables v2 consumption while retaining its rows, and migration
+reversal is unsupported. Contracts exclude secrets, credentials, raw tokens, evidence,
+assessment content, prompts, diagnostics, paths, URLs, commands, provider/plugin output,
+target content, and arbitrary blobs.
+
+**Limitations and residual risk:** Attempt-three manifest/budget issuance, leasing,
+running transition, checkpoints, failure/completion, terminal/dead-letter handling,
+dispatch, runtime composition, provider/plugin execution, UI, Phase 2 demonstrations,
+and independent review remain deferred. This non-independent review is accepted only for
+the narrow non-executing slice.
+
 ## 2026-08-26 — Immutable retry-schedule registration v2
 
 **Review record:** Sole-maintainer security review — non-independent. The repository

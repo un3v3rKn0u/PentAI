@@ -131,6 +131,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   command for the dedicated failed-task readiness transition.
 - `orchestration-retry-activation-receipt-v1.schema.json` — immutable non-authoritative
   receipt for one storage-fenced retry readiness activation.
+- `orchestration-retry-activation-command-v2.schema.json` — version-exact schedule-v2
+  consumption command for attempt-three readiness.
+- `orchestration-retry-activation-receipt-v2.schema.json` — immutable non-authoritative
+  receipt for the storage-fenced attempt-three failed-to-ready transition.
 - `agent-action-intent-request-v1.schema.json` — non-authoritative Validation Agent
   proposal retained for compatibility and denied for new conversion without a manifest.
 - `agent-action-intent-request-v2.schema.json` — manifest-bound, non-authoritative
