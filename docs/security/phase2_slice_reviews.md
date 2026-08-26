@@ -1,5 +1,44 @@
 # Phase 2 slice security reviews
 
+## 2026-08-26 — Attempt-three TaskCapabilityManifest v4
+
+**Review record:** Sole-maintainer security review — non-independent. The repository
+owner is also author and security reviewer under the `GIT_WORKFLOW.md` exception. This
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed request/manifest v4 contracts, additive migration 0065,
+trusted-core version-exact issuance, immutable storage predicates, metadata-only
+audit/outbox linkage, compatibility documentation, and synthetic positive, malformed,
+mixed-version, tampering, replay, concurrency, safety, cancellation, worker, recovery,
+ActionIntent-denial, direct-storage, upgrade, and idempotency tests.
+
+**Security boundaries:** Only the exact current activation-v2 attempt-three lineage can
+produce a v4 manifest. Trusted core revalidates active policy, ready plan/task,
+schedule, attempt, consumed capacity, approval, worker, fencing, safety, cancellation,
+and recovery state. V4 is `authority: none`, `execution_enabled: false`, and ready-only;
+the running-state ActionIntent boundary cannot consume it. No budget mutation, lease,
+transition, worker contact, dispatch, provider/plugin call, network authority, or
+external effect occurs. Phase 1 authorization is unchanged.
+
+**Threats and default deny:** Missing, malformed, mixed-version, stale, expired,
+tampered, cross-scope, attempt-four, prior-manifest reuse, duplicated, forked, competing,
+changed-replay, cancelled, safety-paused, worker-revoked, approval-invalid,
+recovery-stale, privilege-shaped, and direct-storage inputs deny through stable service
+codes or exact database constraints.
+
+**Compatibility, privacy, migration, and rollback:** V1–V3 manifests and rows remain
+unchanged. Migration 0065 is additive and retains bounded metadata-only history;
+application rollback disables v4 issuance while retaining rows, and migration reversal
+is unsupported. Contracts exclude secrets, credentials, raw tokens, evidence,
+assessment content, prompts, diagnostics, paths, URLs, commands, provider/plugin output,
+target content, and arbitrary blobs.
+
+**Limitations and residual risk:** Attempt-three budget reservation, leasing, running
+transition, checkpoints, failure/completion, terminal/dead-letter behavior, dispatch,
+runtime composition, providers/plugins, UI, Phase 2 demonstrations, and independent
+review remain deferred. The non-independent exception is accepted only for this narrow
+non-executing slice.
+
 ## 2026-08-26 — Dedicated attempt-three retry activation v2
 
 **Review record:** Sole-maintainer security review — non-independent. The repository

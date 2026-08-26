@@ -830,6 +830,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     issues no refreshed manifest or reservation, lease, worker assignment, dispatch,
     provider/plugin call, network authority, or external effect. Attempt-three readiness
     prerequisites and all later lifecycle/runtime requirements remain required.
+  - TaskCapabilityManifest v4 now binds only the exact current attempt-three
+    activation-v2 ready lineage in separate immutable storage. It preserves the closed
+    validation proposal ceiling but remains ready-only, non-authoritative, and unusable
+    for ActionIntent conversion. It neither refreshes approval nor mutates budget,
+    transitions work, leases, dispatches, or creates an external effect. Attempt-three
+    budget reservation and all later readiness/runtime boundaries remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

@@ -145,6 +145,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   ready/running task-state binding; ready manifests cannot produce ActionIntents.
 - `task-capability-manifest-v3.schema.json` — retry-activation- and attempt-bound ready
   manifest that remains non-authoritative and cannot produce an ActionIntent.
+- `task-capability-manifest-request-v4.schema.json` — closed trusted-core request for
+  one exact attempt-three activation-v2 ready lineage.
+- `task-capability-manifest-v4.schema.json` — immutable attempt-three ready manifest
+  that remains non-authoritative and cannot produce an ActionIntent.
 - `engagement-manifest-v2.schema.json` — normalized human-reviewed engagement data.
 - `policy-ir-v1.schema.json` — deterministic compiled authorization policy.
 - `action-intent-v1.schema.json` — immutable request for an external effect.

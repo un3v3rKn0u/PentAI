@@ -81,6 +81,7 @@ class MigrationTests(unittest.TestCase):
                     "0062",
                     "0063",
                     "0064",
+                    "0065",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -1164,6 +1165,46 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("orchestration_retry_activations_v2_binding_valid", triggers)
             self.assertIn("orchestration_retry_activations_v2_immutable", triggers)
             self.assertIn("orchestration_retry_activations_v2_no_delete", triggers)
+
+    def test_attempt_three_manifest_upgrade_is_additive_and_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("*.sql")):
+                if path.name >= "0065_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = repository_migrations / "0065_attempt_three_capability_manifests.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0065"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+            self.assertIn("task_capability_manifests_v4", tables)
+            self.assertIn("task_capability_manifests_v4_binding_valid", triggers)
+            self.assertIn("task_capability_manifests_v4_immutable", triggers)
+            self.assertIn("task_capability_manifests_v4_no_delete", triggers)
 
 
 if __name__ == "__main__":
