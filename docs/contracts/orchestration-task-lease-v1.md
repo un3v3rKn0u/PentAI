@@ -21,6 +21,13 @@ records. Original-attempt manifests, reservations, leases, worker ownership, and
 state cannot satisfy v2. The same durable worker registry remains the sole source of
 worker identity and eligibility.
 
+Acquisition and state v3 are separately versioned for the closed attempt-three lineage.
+They accept only TaskCapabilityManifest v4, task-budget reservation v4, retry activation
+v2, and attempt three under retry policy v2. Migration 0067 uses a separate immutable
+table because the earlier lease table is closed to older manifest and reservation
+versions. V3 shares the existing per-task fence, so lease generations and fencing tokens
+remain monotonic across all attempts. V1 and v2 rows cannot satisfy v3.
+
 ## Lifecycle and fencing
 
 Migration 0042 stores one active lease per task revision, immutable lease identities,
@@ -38,6 +45,12 @@ Startup recovery invalidates every active lease and increments its task recovery
 It never renews, reconstructs, reassigns, resumes, dispatches, or creates authority.
 Each lifecycle change produces bounded metadata-only hash-chained audit and outbox
 linkage.
+
+V3 preserves one-time bearer handling: trusted core returns the raw token once, persists
+only its SHA-256 digest, and denies acquisition replay rather than re-exposing secret
+material. Recovery invalidates active v3 leases and advances the shared fence without
+reconstructing tokens, changing task state, or contacting a worker. Renewal, consumption,
+and the attempt-three `ready` to `running` transition remain deferred.
 
 Migration 0054 adds nullable immutable retry-lineage fields and exact storage guards.
 Existing v1 rows require no conversion. Application rollback disables v2 acquisition,

@@ -249,6 +249,13 @@ units, and counts historical reservations plus both immutable retry consumptions
 Mixed-version, stale-account, cross-scope, recovery-stale, or concurrent requests deny;
 the record grants no execution or network authority.
 
+**Phase 2 attempt-three lease note:** Lease v3 accepts only the exact current manifest-v4,
+reservation-v4, activation-v2, and registered attempt-three lineage. Worker identity and
+eligibility come from the durable registry, while the shared task fence remains monotonic
+across attempts. The raw token is returned once and never persisted or audited.
+Acquisition leaves the task `ready` and grants no execution, dispatch, provider, plugin,
+gateway, network, or target authority.
+
 **Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
 and canonical-host token in the same immediate transaction as total-request and
 connection capacity. Refill uses persisted policy rates, burst capacity, and a
