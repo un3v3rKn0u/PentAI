@@ -858,7 +858,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     predecessor digest, current security-state replay checks, and version-exact storage
     guard reject mixed versions, forks, rollback, stale workers, stale budgets, and
     recovery changes. Checkpoints remain non-authoritative and cannot transition,
-    resume, dispatch, fail, complete, retry, or execute work.
+    resume, dispatch, fail, complete, retry, or execute work. Dedicated typed failure
+    consumption v3 now accepts only that exact running attempt-three lineage and its
+    current checkpoint-v3 head or explicit absence, records one closed immutable failure,
+    advances exact revisions, and storage-gates only `running` to `failed`. The policy
+    ceiling remains three: failure v3 creates no attempt four, retry, dead-letter state,
+    completion, dispatch, authority, or effect. Failed-attempt terminal projection and
+    the broader runtime lifecycle remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

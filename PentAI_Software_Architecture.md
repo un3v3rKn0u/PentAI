@@ -553,6 +553,11 @@ Emergency stop revokes grants, closes gateway sessions, stops workers, checkpoin
   progress metadata is stored; replay revalidates current policy, safety, worker,
   budget, fence, and recovery state. A checkpoint grants no authority and cannot resume,
   dispatch, fail, complete, retry, or execute the task.
+  Attempt-three failure consumption is a separate version-exact boundary. It binds the
+  spent lease and exact checkpoint-v3 head or explicit absence, stores only a closed
+  failure class, and storage-gates the bound `running` to `failed` revision change.
+  Under the three-attempt ceiling it creates no later attempt, retry authority,
+  dead-letter transition, dispatch, provider/plugin call, or external effect.
 - Heartbeats indicate liveness, while idempotency keys prevent duplicate effects.
 - Use exponential backoff with jitter only for classified transient failures.
 - Circuit-break failing AI providers, tools, source sites, and network routes.
