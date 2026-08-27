@@ -148,7 +148,11 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `task-capability-manifest-request-v4.schema.json` — closed trusted-core request for
   one exact attempt-three activation-v2 ready lineage.
 - `task-capability-manifest-v4.schema.json` — immutable attempt-three ready manifest
-  that remains non-authoritative and cannot produce an ActionIntent.
+  bound to the exact activation-v2 lineage without execution authority.
+- `orchestration-task-budget-request-v4.schema.json` — attempt-three ready-state,
+  manifest-v4-bound integer resource reservation request with zero retry capacity.
+- `orchestration-task-budget-reservation-v4.schema.json` — immutable attempt-three
+  reservation receipt that preserves both consumed retry units and grants no authority.
 - `engagement-manifest-v2.schema.json` — normalized human-reviewed engagement data.
 - `policy-ir-v1.schema.json` — deterministic compiled authorization policy.
 - `action-intent-v1.schema.json` — immutable request for an external effect.

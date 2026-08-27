@@ -535,7 +535,10 @@ Emergency stop revokes grants, closes gateway sessions, stops workers, checkpoin
   bound failed validation task to non-authoritative ready coordination state; refreshed
   manifests, budgets, leases, and every execution boundary remain separate. The
   attempt-three manifest is version-exact, immutable, and ready-only; it cannot satisfy
-  the running-state ActionIntent boundary or inherit prior-attempt authority.
+  the running-state ActionIntent boundary or inherit prior-attempt authority. Its
+  separately versioned task-budget reservation allocates only remaining integer
+  provider-resource capacity, fixes retry capacity to zero, and remains non-authoritative;
+  prior-attempt reservations cannot satisfy attempt-three readiness.
 - Heartbeats indicate liveness, while idempotency keys prevent duplicate effects.
 - Use exponential backoff with jitter only for classified transient failures.
 - Circuit-break failing AI providers, tools, source sites, and network routes.
