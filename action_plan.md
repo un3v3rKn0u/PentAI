@@ -865,6 +865,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     ceiling remains three: failure v3 creates no attempt four, retry, dead-letter state,
     completion, dispatch, authority, or effect. Failed-attempt terminal projection and
     the broader runtime lifecycle remain required.
+    Immutable failed-attempt registration v3 now links the existing attempt-three
+    identity to that exact failure-v3 receipt in separate append-only storage. It records
+    the closed three-attempt ceiling without changing task state, evaluating another
+    retry, dead-lettering, mutating budget, dispatching, or creating authority. Terminal
+    dead-letter behavior, completion, dispatch, and runtime composition remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

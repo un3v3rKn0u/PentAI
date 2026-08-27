@@ -1,5 +1,37 @@
 # Phase 2 slice security reviews
 
+## 2026-08-27 — Attempt-three failed-attempt registration v3
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author and security reviewer under the `GIT_WORKFLOW.md`
+exception. This is not independent review and does not satisfy dual control.
+
+**Scope and evidence:** Closed command/receipt v3 contracts, trusted-core derivation and
+current-state validation, additive migration 0071, immutable one-to-one storage,
+metadata-only audit/outbox linkage, compatibility documentation, and synthetic positive,
+malformed, mixed-version, replay, tampering, concurrency, safety, worker, account,
+recovery, storage-bypass, fresh-upgrade, additive-upgrade, and idempotency tests.
+
+**Security boundaries and default deny:** Only the existing attempt-three identity and
+its exact digest-verified failure-v3 receipt can be linked. Durable policy, activation,
+schedule, both retry consumptions, manifest-v4, reservation-v4, approval, worker,
+lease-consumption-v3, checkpoint-v3, fencing, and recovery state are revalidated.
+Missing, stale, mixed, cross-scope, tampered, changed-replay, or competing inputs deny.
+The receipt fixes `authority: none`, disables execution, and cannot transition work,
+evaluate retryability, create attempt four, dead-letter, dispatch, or perform an effect.
+
+**Compatibility, privacy, migration, and rollback:** V1/v2 attempt contracts, services,
+and immutable rows remain unchanged. Credentials, raw tokens, evidence, assessment
+content, prompts, diagnostics, paths, URLs, commands, provider/plugin output, targets,
+and arbitrary blobs are excluded. Migration 0071 is additive; application rollback
+disables v3 production while retaining history, and destructive reversal is unsupported.
+
+**Findings, limitations, and residual risk:** No material finding remains in this review.
+Dead-letter handling, successful completion, dispatch, runtime composition,
+providers/plugins, UI, Phase 2 demonstrations, and independent security review remain
+deferred. The governance risk of this explicitly non-independent review is accepted only
+for this narrow non-executing slice.
+
 ## 2026-08-27 — Attempt-three typed failure consumption v3
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The
