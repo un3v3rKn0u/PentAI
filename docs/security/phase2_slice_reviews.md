@@ -1,5 +1,45 @@
 # Phase 2 slice security reviews
 
+## 2026-08-27 — Attempt-three task-budget reservation v4
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author and security reviewer under the `GIT_WORKFLOW.md`
+exception. This does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed request/receipt v4 contracts, additive migration 0066,
+trusted-core version-exact reservation and recovery, immutable storage predicates,
+metadata-only audit/outbox linkage, compatibility documentation, and synthetic positive,
+malformed, mixed-version, retry-shaped, tampering, replay, concurrency, safety, worker,
+recovery, direct-storage, fresh-upgrade, additive-upgrade, and idempotency tests.
+
+**Security boundaries:** Only the exact current manifest-v4 and activation-v2 attempt-three
+ready lineage can reserve existing assessment capacity. Trusted core derives retry,
+approval, worker, fencing, and recovery provenance from durable records. Both consumed
+retry units remain charged and v4 requires zero retry capacity. The receipt is
+`authority: none` and `execution_enabled: false`; it cannot transition a task, lease,
+dispatch, invoke a provider/plugin, create an ActionIntent or grant, access a network,
+or perform an external effect. Phase 1 authorization remains unchanged.
+
+**Threats and default deny:** Missing, malformed, mixed-version, stale, expired,
+oversized, fractional, overflow-prone, tampered, cross-scope, stale-v3 reuse,
+caller-identity, approval-invalid, cancelled, safety-paused, worker-revoked,
+recovery-stale, account-version-mismatched, exhausted, replay-conflicting, concurrent,
+privilege-shaped, and direct-storage inputs deny through stable codes or exact database
+constraints.
+
+**Compatibility, privacy, migration, and rollback:** V1-v3 contracts, rows, and behavior
+remain unchanged. Migration 0066 is additive and retains bounded metadata-only history;
+application rollback disables v4 creation/recovery while retaining rows, and migration
+reversal is unsupported. Contracts exclude secrets, credentials, raw tokens, evidence,
+assessment content, prompts, diagnostics, paths, URLs, commands, provider/plugin output,
+target content, and arbitrary blobs.
+
+**Limitations and residual risk:** Attempt-three leasing, running transition,
+checkpoints, failure/completion, terminal/dead-letter behavior, dispatch, runtime
+composition, providers/plugins, UI, Phase 2 demonstrations, and independent review
+remain deferred. The non-independent exception is accepted only for this narrow,
+non-executing slice.
+
 ## 2026-08-26 — Attempt-three TaskCapabilityManifest v4
 
 **Review record:** Sole-maintainer security review — non-independent. The repository

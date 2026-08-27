@@ -30,6 +30,14 @@ produce at most one v3 reservation. V3 replay is byte-exact and remains valid on
 the stored reservation, task, plan, assessment, policy, manifest, and expiry bindings are
 current.
 
+Request and receipt v4 are separately stored, additive, and closed to attempt three.
+They accept only the exact current TaskCapabilityManifest v4 and activation-v2 ready
+lineage, derive the complete retry, approval, worker, fencing, and recovery bindings
+from durable trusted-core records, and reserve only existing provider-resource capacity.
+The retry amount is fixed to zero because both units permitted by retry policy v2 were
+already consumed. The attempt-two v3 reservation remains immutable history and cannot
+satisfy this boundary or replenish capacity.
+
 ## Accounting, cancellation, and recovery
 
 Migration 0038 stores immutable account identity/ceilings and reservation identity,
@@ -57,6 +65,10 @@ reversal is unsupported.
 Migration 0053 adds nullable immutable retry-lineage columns and an exact insert guard;
 existing v1/v2 rows require no conversion. Rollback disables v3 production while
 retaining history, and migration reversal is unsupported.
+Migration 0066 adds a separate append-only v4 reservation table and exact manifest-v4,
+activation-v2, attempt-three, ready-state storage predicate. Existing v1-v3 rows and
+service behavior are unchanged. Application rollback disables v4 reservation and
+recovery while retaining bounded history; migration reversal is unsupported.
 
 Only identifiers, hashes, integer ceilings/amounts, timestamps, and states are stored.
 Prompts, model content, evidence, target data, credentials, secret references, and
@@ -75,3 +87,6 @@ activation accounting remain deferred.
 The retry-bound reservation stores only identifiers, hashes, integer amounts, revisions,
 states, and timestamps. It does not refund or reinterpret the consumed retry unit, issue
 a lease, transition the ready task, contact a worker, or grant execution authority.
+The same restrictions apply to v4: account-version fencing prevents concurrent
+oversubscription, stale security lineage denies creation and replay, and recovery may
+release resource capacity but can never restore retry capacity or activate work.

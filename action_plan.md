@@ -834,8 +834,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     activation-v2 ready lineage in separate immutable storage. It preserves the closed
     validation proposal ceiling but remains ready-only, non-authoritative, and unusable
     for ActionIntent conversion. It neither refreshes approval nor mutates budget,
-    transitions work, leases, dispatches, or creates an external effect. Attempt-three
-    budget reservation and all later readiness/runtime boundaries remain required.
+    transitions work, leases, dispatches, or creates an external effect. A separate
+    task-budget reservation v4 now accepts only that exact manifest and activation-v2
+    lineage, allocates remaining integer provider-resource capacity under exact account
+    version fencing, and fixes retry capacity to zero so both consumed retry units remain
+    permanently accounted for. It cannot reuse the attempt-two v3 reservation, transition
+    work, lease, dispatch, or create authority. Attempt-three leasing and all later
+    readiness/runtime boundaries remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

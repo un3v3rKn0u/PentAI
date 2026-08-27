@@ -242,6 +242,13 @@ environment resolver identity cannot grant authority.
 **Primary enforcement:** Policy/budget service<br>
 **Verification:** Concurrency and race-condition tests.
 
+**Phase 2 attempt-three note:** The ready-state reservation is accepted only for one
+exact current manifest-v4 and activation-v2 lineage under an expected budget-account
+version. It allocates existing integer provider-resource capacity, requires zero retry
+units, and counts historical reservations plus both immutable retry consumptions.
+Mixed-version, stale-account, cross-scope, recovery-stale, or concurrent requests deny;
+the record grants no execution or network authority.
+
 **Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
 and canonical-host token in the same immediate transaction as total-request and
 connection capacity. Refill uses persisted policy rates, burst capacity, and a

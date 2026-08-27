@@ -254,35 +254,9 @@ class OrchestrationBudgetService:
                 raise OrchestrationBudgetError(
                     "ORCHESTRATION_BUDGET_REQUEST_STALE", "reservation outlives account"
                 )
-            used = {field: 0 for field in _FIELDS}
-            task_used = {field: 0 for field in _FIELDS}
-            rows = connection.execute(
-                """SELECT r.task_id, r.amounts_json, r.state,
-                (SELECT COALESCE(SUM(c1.consumed_retry_units), 0)
-                 FROM orchestration_retry_budget_consumptions c1
-                 WHERE c1.budget_reservation_id = r.reservation_id)
-                + (SELECT COALESCE(SUM(c2.consumed_retry_units), 0)
-                   FROM orchestration_retry_budget_consumptions_v2 c2
-                   WHERE c2.capacity_budget_reservation_id = r.reservation_id)
-                AS consumed_retries
-                FROM orchestration_task_budget_reservations r
-                WHERE r.account_id = ?
-                GROUP BY r.reservation_id, r.task_id, r.amounts_json, r.state""",
-                (document["account_id"],),
-            ).fetchall()
-            for row in rows:
-                amounts = json.loads(row["amounts_json"])
-                for field in _FIELDS:
-                    amount = (
-                        amounts[field]
-                        if row["state"] == "reserved"
-                        else row["consumed_retries"]
-                        if field == "retries"
-                        else 0
-                    )
-                    used[field] += amount
-                    if row["task_id"] == document["task_id"]:
-                        task_used[field] += amount
+            used, task_used = self._used_capacity(
+                connection, document["account_id"], document["task_id"]
+            )
             ceilings = json.loads(account["ceilings_json"])
             for field in _FIELDS:
                 if (
@@ -396,6 +370,451 @@ class OrchestrationBudgetService:
                 _audit_data(receipt, manifest),
             )
         return copy.deepcopy(receipt)
+
+    def reserve_v4(
+        self, request: dict[str, Any], *, now: datetime | None = None
+    ) -> dict[str, Any]:
+        """Reserve existing provider-resource capacity for exact attempt-three readiness."""
+        document = copy.deepcopy(request)
+        if contract_issues(document, "orchestration-task-budget-request-v4.schema.json"):
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_REQUEST_MALFORMED", "budget request is malformed"
+            )
+        instant = _instant(now)
+        requested_at = parse_time(document["requested_at"])
+        expires_at = parse_time(document["expires_at"])
+        if (
+            requested_at > instant
+            or instant - requested_at > _MAX_REQUEST_AGE
+            or expires_at <= instant
+            or expires_at <= requested_at
+            or expires_at - requested_at > _MAX_RESERVATION_LIFETIME
+        ):
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_REQUEST_STALE", "budget request is stale"
+            )
+        if document["amounts"]["retries"] != 0 or not any(
+            document["amounts"][field] > 0 for field in _FIELDS if field != "retries"
+        ):
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_AMOUNT_INVALID", "budget request is empty or retry-shaped"
+            )
+        request_digest = "sha256:" + content_hash(document)
+        reservation_id = str(uuid5(_NAMESPACE, "reservation-v4:" + document["request_id"]))
+        self.authorization._require_storage_safe()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            replay = connection.execute(
+                "SELECT * FROM orchestration_task_budget_reservations_v4 WHERE request_id=?",
+                (document["request_id"],),
+            ).fetchone()
+            if replay is not None:
+                if replay["request_digest"] != request_digest:
+                    raise OrchestrationBudgetError(
+                        "ORCHESTRATION_BUDGET_IDENTITY_CONFLICT", "request identity conflicts"
+                    )
+                receipt = cast(dict[str, Any], json.loads(replay["receipt_json"]))
+                self._validate_reservation_replay_v4(connection, receipt, instant)
+                return copy.deepcopy(receipt)
+
+            current = connection.execute(
+                "SELECT version FROM orchestration_budget_accounts WHERE account_id=?",
+                (document["account_id"],),
+            ).fetchone()
+            if current is not None and current["version"] != document["expected_account_version"]:
+                raise OrchestrationBudgetError(
+                    "ORCHESTRATION_BUDGET_VERSION_STALE", "account version is stale"
+                )
+            account, manifest = self._validate_current_v4(connection, document, instant)
+            if account["version"] != document["expected_account_version"]:
+                raise OrchestrationBudgetError(
+                    "ORCHESTRATION_BUDGET_VERSION_STALE", "account version is stale"
+                )
+            lineage_expires_at = min(
+                parse_time(account["expires_at"]), parse_time(manifest["expires_at"])
+            )
+            if expires_at > lineage_expires_at:
+                raise OrchestrationBudgetError(
+                    "ORCHESTRATION_BUDGET_REQUEST_STALE", "reservation outlives its lineage"
+                )
+            used, task_used = self._used_capacity(
+                connection, document["account_id"], document["task_id"]
+            )
+            ceilings = json.loads(account["ceilings_json"])
+            for field in _FIELDS:
+                if used[field] + document["amounts"][field] > ceilings["assessment"][field]:
+                    raise OrchestrationBudgetError(
+                        "ORCHESTRATION_BUDGET_EXCEEDED", f"{field} budget is exhausted"
+                    )
+                if task_used[field] + document["amounts"][field] > ceilings["per_task"][field]:
+                    raise OrchestrationBudgetError(
+                        "ORCHESTRATION_TASK_BUDGET_EXCEEDED", f"{field} task budget is exhausted"
+                    )
+            account_version = int(account["version"]) + 1
+            receipt = {
+                "schema_version": "4.0.0",
+                "reservation_id": reservation_id,
+                "request_id": document["request_id"],
+                "request_digest": request_digest,
+                "account_id": document["account_id"],
+                "account_version": account_version,
+                "assessment_id": manifest["assessment_id"],
+                "plan_id": manifest["plan_id"],
+                "plan_revision": manifest["plan_revision"],
+                "task_id": manifest["task_id"],
+                "task_revision": manifest["task_revision"],
+                "task_state": "ready",
+                "agent_id": manifest["agent_id"],
+                "capability_manifest_id": manifest["manifest_id"],
+                "capability_manifest_digest": document["capability_manifest_digest"],
+                "manifest_revision": manifest["manifest_revision"],
+                **{
+                    field: manifest[field]
+                    for field in (
+                        "retry_policy_id", "retry_policy_digest", "retry_activation_id",
+                        "retry_activation_digest", "retry_schedule_id", "retry_schedule_digest",
+                        "retry_attempt_id", "retry_attempt_digest", "attempt_number",
+                        "prior_retry_budget_consumption_id", "retry_budget_consumption_id",
+                        "approval_consumption_id", "worker_id", "worker_version",
+                        "lease_generation", "fencing_token", "recovery_generation",
+                    )
+                },
+                "policy_bundle_id": manifest["policy_bundle_id"],
+                "policy_hash": manifest["policy_hash"],
+                "purpose": document["purpose"],
+                "amounts": document["amounts"],
+                "state": "reserved",
+                "created_at": document["requested_at"],
+                "expires_at": document["expires_at"],
+                "released_at": None,
+                "release_reason": "none",
+                "authority": "none",
+                "execution_enabled": False,
+            }
+            if contract_issues(receipt, "orchestration-task-budget-reservation-v4.schema.json"):
+                raise OrchestrationBudgetError(
+                    "ORCHESTRATION_BUDGET_RESULT_INVALID", "budget receipt is invalid"
+                )
+            connection.execute(
+                "UPDATE orchestration_budget_accounts SET version=? WHERE account_id=?",
+                (account_version, document["account_id"]),
+            )
+            try:
+                connection.execute(
+                    """INSERT INTO orchestration_task_budget_reservations_v4 (
+                    reservation_id, request_id, request_digest, account_id, account_version,
+                    assessment_id, plan_id, plan_revision, task_id, task_revision, agent_id,
+                    capability_manifest_id, retry_activation_id, retry_attempt_id,
+                    policy_bundle_id, policy_hash, purpose, amounts_json, state, created_at,
+                    expires_at, released_at, release_reason, receipt_json, authority,
+                    execution_enabled) VALUES
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reserved', ?, ?,
+                    NULL, 'none', ?, 'none', 0)""",
+                    (
+                        reservation_id, document["request_id"], request_digest,
+                        document["account_id"], account_version, manifest["assessment_id"],
+                        manifest["plan_id"], manifest["plan_revision"], manifest["task_id"],
+                        manifest["task_revision"], manifest["agent_id"], manifest["manifest_id"],
+                        manifest["retry_activation_id"], manifest["retry_attempt_id"],
+                        manifest["policy_bundle_id"], manifest["policy_hash"], document["purpose"],
+                        canonical_json(document["amounts"]), document["requested_at"],
+                        document["expires_at"], canonical_json(receipt),
+                    ),
+                )
+            except sqlite3.IntegrityError as error:
+                raise OrchestrationBudgetError(
+                    "ORCHESTRATION_BUDGET_CONFLICT", "budget reservation conflicts"
+                ) from error
+            _audit(
+                connection,
+                "orchestration.attempt_three_task_budget_reserved",
+                reservation_id,
+                _audit_data(receipt, manifest),
+            )
+        return copy.deepcopy(receipt)
+
+    def _validate_current_v4(
+        self, connection: sqlite3.Connection, document: dict[str, Any], instant: datetime
+    ) -> tuple[sqlite3.Row, dict[str, Any]]:
+        self._validate_assessment_policy(
+            connection, document["assessment_id"], document["policy_bundle_id"],
+            document["policy_hash"], instant
+        )
+        account = connection.execute(
+            "SELECT * FROM orchestration_budget_accounts WHERE account_id=?",
+            (document["account_id"],),
+        ).fetchone()
+        if account is None:
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_ACCOUNT_MISSING", "account is missing"
+            )
+        if (
+            account["assessment_id"] != document["assessment_id"]
+            or account["policy_bundle_id"] != document["policy_bundle_id"]
+            or account["policy_hash"] != document["policy_hash"]
+            or parse_time(account["expires_at"]) <= instant
+        ):
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_ACCOUNT_MISMATCH", "account binding mismatches"
+            )
+        row = connection.execute(
+            "SELECT * FROM task_capability_manifests_v4 WHERE manifest_id=?",
+            (document["capability_manifest_id"],),
+        ).fetchone()
+        if row is None:
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_MANIFEST_MISSING", "manifest is missing"
+            )
+        try:
+            manifest = OrchestrationRetryManifestService._load_manifest_v4(row)
+            activation, schedule, agent_id = OrchestrationRetryManifestService(
+                self.authorization
+            )._load_activation_v2(connection, {
+                "retry_activation_id": document["retry_activation_id"],
+                "retry_activation_digest": document["retry_activation_digest"],
+                "assessment_id": document["assessment_id"],
+                "plan_id": document["plan_id"],
+                "expected_plan_revision": document["expected_plan_revision"],
+                "task_id": document["task_id"],
+                "expected_task_revision": document["expected_task_revision"],
+                "policy_bundle_id": document["policy_bundle_id"],
+                "policy_hash": document["policy_hash"],
+                "agent_id": document["agent_id"],
+            }, instant)
+            OrchestrationRetryManifestService._validate_replay_v4(
+                connection, manifest, activation, schedule, instant
+            )
+        except OrchestrationRetryManifestError as error:
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_RETRY_INVALID", "retry lineage is invalid"
+            ) from error
+        if (
+            row["manifest_hash"] != document["capability_manifest_digest"][7:]
+            or manifest["manifest_revision"] != document["expected_manifest_revision"]
+            or manifest["agent_id"] != agent_id
+            or manifest["retry_attempt_id"] != document["retry_attempt_id"]
+            or manifest["retry_attempt_digest"] != document["retry_attempt_digest"]
+            or manifest["attempt_number"] != 3
+            or manifest["task_state"] != "ready"
+        ):
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_RETRY_MISMATCH", "retry binding mismatches"
+            )
+        return account, manifest
+
+    def _validate_reservation_replay_v4(
+        self, connection: sqlite3.Connection, receipt: dict[str, Any], instant: datetime
+    ) -> None:
+        row = connection.execute(
+            "SELECT * FROM orchestration_task_budget_reservations_v4 WHERE reservation_id=?",
+            (receipt.get("reservation_id"),),
+        ).fetchone()
+        account = connection.execute(
+            "SELECT * FROM orchestration_budget_accounts WHERE account_id=?",
+            (receipt.get("account_id"),),
+        ).fetchone()
+        manifest_row = connection.execute(
+            "SELECT * FROM task_capability_manifests_v4 WHERE manifest_id=?",
+            (receipt.get("capability_manifest_id"),),
+        ).fetchone()
+        try:
+            self._validate_assessment_policy(
+                connection, receipt["assessment_id"], receipt["policy_bundle_id"],
+                receipt["policy_hash"], instant
+            )
+            manifest = (
+                OrchestrationRetryManifestService._load_manifest_v4(manifest_row)
+                if manifest_row is not None else None
+            )
+        except (KeyError, OrchestrationBudgetError, OrchestrationRetryManifestError) as error:
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_REPLAY_FENCED", "reservation replay is fenced"
+            ) from error
+        plan = connection.execute(
+            "SELECT state, revision FROM orchestration_plans WHERE plan_id=?",
+            (receipt.get("plan_id"),),
+        ).fetchone()
+        task = connection.execute(
+            "SELECT state, revision FROM orchestration_tasks WHERE task_id=?",
+            (receipt.get("task_id"),),
+        ).fetchone()
+        worker = connection.execute(
+            "SELECT status, version FROM worker_runtime_instances WHERE worker_id=?",
+            (receipt.get("worker_id"),),
+        ).fetchone()
+        fence = connection.execute(
+            """SELECT current_lease_generation, recovery_generation
+            FROM orchestration_task_lease_fences WHERE task_id=?""",
+            (receipt.get("task_id"),),
+        ).fetchone()
+        lease = connection.execute(
+            """SELECT 1 FROM orchestration_task_leases
+            WHERE task_id=? AND lease_generation=? AND fencing_token=? AND worker_id=?""",
+            (
+                receipt.get("task_id"), receipt.get("lease_generation"),
+                receipt.get("fencing_token"), receipt.get("worker_id"),
+            ),
+        ).fetchone()
+        approval_valid = True
+        if receipt.get("approval_consumption_id") is not None:
+            approval = connection.execute(
+                """SELECT approval_expires_at FROM orchestration_task_approval_consumptions
+                WHERE consumption_id=?""",
+                (receipt["approval_consumption_id"],),
+            ).fetchone()
+            approval_valid = (
+                approval is not None and parse_time(approval["approval_expires_at"]) > instant
+            )
+        manifest_matches = manifest is not None and all(
+            receipt.get(field) == manifest.get(field)
+            for field in (
+                "assessment_id", "plan_id", "plan_revision", "task_id", "task_revision",
+                "task_state", "agent_id", "policy_bundle_id", "policy_hash",
+                "retry_policy_id", "retry_policy_digest", "retry_activation_id",
+                "retry_activation_digest", "retry_schedule_id", "retry_schedule_digest",
+                "retry_attempt_id", "retry_attempt_digest", "attempt_number",
+                "prior_retry_budget_consumption_id", "retry_budget_consumption_id",
+                "approval_consumption_id", "worker_id", "worker_version",
+                "lease_generation", "fencing_token", "recovery_generation",
+            )
+        )
+        if (
+            contract_issues(receipt, "orchestration-task-budget-reservation-v4.schema.json")
+            or row is None or row["receipt_json"] != canonical_json(receipt)
+            or row["account_version"] != receipt["account_version"]
+            or row["assessment_id"] != receipt["assessment_id"]
+            or row["plan_id"] != receipt["plan_id"]
+            or row["plan_revision"] != receipt["plan_revision"]
+            or row["task_id"] != receipt["task_id"]
+            or row["task_revision"] != receipt["task_revision"]
+            or row["agent_id"] != receipt["agent_id"]
+            or row["capability_manifest_id"] != receipt["capability_manifest_id"]
+            or row["retry_activation_id"] != receipt["retry_activation_id"]
+            or row["retry_attempt_id"] != receipt["retry_attempt_id"]
+            or json.loads(row["amounts_json"]) != receipt["amounts"]
+            or row["state"] != "reserved" or parse_time(row["expires_at"]) <= instant
+            or account is None or account["version"] != receipt["account_version"]
+            or parse_time(account["expires_at"]) <= instant
+            or manifest is None
+            or not manifest_matches
+            or manifest_row["manifest_hash"]
+            != receipt["capability_manifest_digest"][7:]
+            or parse_time(manifest["expires_at"]) <= instant
+            or plan is None or tuple(plan) != ("active", receipt["plan_revision"])
+            or task is None or tuple(task) != ("ready", receipt["task_revision"])
+            or worker is None
+            or tuple(worker) != ("running", receipt["worker_version"])
+            or fence is None
+            or fence["current_lease_generation"] != receipt["lease_generation"]
+            or fence["recovery_generation"] != receipt["recovery_generation"]
+            or lease is None
+            or not approval_valid
+        ):
+            raise OrchestrationBudgetError(
+                "ORCHESTRATION_BUDGET_REPLAY_FENCED", "reservation replay is fenced"
+            )
+
+    def recover_v4(self, *, now: datetime | None = None) -> tuple[dict[str, Any], ...]:
+        """Release stale attempt-three reservations without restoring retry capacity."""
+        instant = _instant(now)
+        released: list[dict[str, Any]] = []
+        self.authorization._require_storage_safe()
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                """SELECT * FROM orchestration_task_budget_reservations_v4
+                WHERE state='reserved' ORDER BY reservation_id"""
+            ).fetchall()
+            for row in rows:
+                receipt = cast(dict[str, Any], json.loads(row["receipt_json"]))
+                reason = "expired" if parse_time(row["expires_at"]) <= instant else None
+                if reason is None:
+                    try:
+                        self._validate_reservation_replay_v4(connection, receipt, instant)
+                    except OrchestrationBudgetError:
+                        task = connection.execute(
+                            "SELECT state FROM orchestration_tasks WHERE task_id=?",
+                            (row["task_id"],),
+                        ).fetchone()
+                        reason = (
+                            "cancelled"
+                            if task is not None
+                            and task["state"] in {"cancelling", "cancelled", "succeeded", "failed"}
+                            else "recovery"
+                        )
+                if reason is None:
+                    continue
+                account = connection.execute(
+                    "SELECT version FROM orchestration_budget_accounts WHERE account_id=?",
+                    (row["account_id"],),
+                ).fetchone()
+                if account is None:
+                    raise OrchestrationBudgetError(
+                        "ORCHESTRATION_BUDGET_RECOVERY_INVALID", "account is missing"
+                    )
+                version = int(account["version"]) + 1
+                receipt["account_version"] = version
+                receipt["state"] = "released"
+                receipt["released_at"] = _timestamp(instant)
+                receipt["release_reason"] = reason
+                if contract_issues(
+                    receipt, "orchestration-task-budget-reservation-v4.schema.json"
+                ):
+                    raise OrchestrationBudgetError(
+                        "ORCHESTRATION_BUDGET_RECOVERY_INVALID", "reservation is invalid"
+                    )
+                connection.execute(
+                    "UPDATE orchestration_budget_accounts SET version=? WHERE account_id=?",
+                    (version, row["account_id"]),
+                )
+                connection.execute(
+                    """UPDATE orchestration_task_budget_reservations_v4
+                    SET account_version=?, state='released', released_at=?, release_reason=?,
+                    receipt_json=? WHERE reservation_id=? AND state='reserved'""",
+                    (
+                        version, receipt["released_at"], reason, canonical_json(receipt),
+                        row["reservation_id"],
+                    ),
+                )
+                _audit(
+                    connection, "orchestration.attempt_three_task_budget_released",
+                    row["reservation_id"], receipt
+                )
+                released.append(copy.deepcopy(receipt))
+        return tuple(released)
+
+    @staticmethod
+    def _used_capacity(
+        connection: sqlite3.Connection, account_id: str, task_id: str
+    ) -> tuple[dict[str, int], dict[str, int]]:
+        used = {field: 0 for field in _FIELDS}
+        task_used = {field: 0 for field in _FIELDS}
+        rows = connection.execute(
+            """SELECT r.task_id, r.amounts_json, r.state,
+            (SELECT COALESCE(SUM(c1.consumed_retry_units), 0)
+             FROM orchestration_retry_budget_consumptions c1
+             WHERE c1.budget_reservation_id = r.reservation_id)
+            + (SELECT COALESCE(SUM(c2.consumed_retry_units), 0)
+               FROM orchestration_retry_budget_consumptions_v2 c2
+               WHERE c2.capacity_budget_reservation_id = r.reservation_id) AS consumed_retries
+            FROM orchestration_task_budget_reservations r WHERE r.account_id=?
+            GROUP BY r.reservation_id, r.task_id, r.amounts_json, r.state
+            UNION ALL
+            SELECT task_id, amounts_json, state, 0
+            FROM orchestration_task_budget_reservations_v4 WHERE account_id=?""",
+            (account_id, account_id),
+        ).fetchall()
+        for row in rows:
+            amounts = json.loads(row["amounts_json"])
+            for field in _FIELDS:
+                amount = (
+                    amounts[field] if row["state"] == "reserved"
+                    else row["consumed_retries"] if field == "retries" else 0
+                )
+                used[field] += amount
+                if row["task_id"] == task_id:
+                    task_used[field] += amount
+        return used, task_used
 
     def recover(self, *, now: datetime | None = None) -> tuple[dict[str, Any], ...]:
         instant = _instant(now)
