@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-task-lease-state-v3.schema.json",
+  "title": "PentAI OrchestrationTaskLeaseState v3",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "lease_id", "request_id", "request_digest", "assessment_id", "plan_id", "plan_revision", "task_id", "task_revision", "task_type", "agent_id", "capability_manifest_id", "capability_manifest_digest", "manifest_revision", "budget_reservation_id", "budget_request_digest", "budget_account_version", "retry_policy_id", "retry_policy_digest", "retry_activation_id", "retry_activation_digest", "retry_schedule_id", "retry_schedule_digest", "retry_attempt_id", "retry_attempt_digest", "attempt_number", "prior_retry_budget_consumption_id", "retry_budget_consumption_id", "approval_consumption_id", "policy_bundle_id", "policy_hash", "worker_id", "worker_version", "recovery_generation", "lease_generation", "fencing_token", "lease_version", "state", "acquired_at", "expires_at", "maximum_expires_at", "released_at", "release_reason", "purpose", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "3.0.0"}, "lease_id": {"type": "string", "format": "uuid"},
+    "request_id": {"type": "string", "format": "uuid"}, "request_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "assessment_id": {"type": "string", "format": "uuid"}, "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 6}, "task_id": {"type": "string", "format": "uuid"},
+    "task_revision": {"type": "integer", "minimum": 6}, "task_type": {"const": "validation"},
+    "agent_id": {"type": "string", "pattern": "^agent://validation/[a-z0-9][a-z0-9._-]{0,63}$"},
+    "capability_manifest_id": {"type": "string", "format": "uuid"}, "capability_manifest_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "manifest_revision": {"const": 1},
+    "budget_reservation_id": {"type": "string", "format": "uuid"}, "budget_request_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "budget_account_version": {"type": "integer", "minimum": 2},
+    "retry_policy_id": {"type": "string", "format": "uuid"}, "retry_policy_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "retry_activation_id": {"type": "string", "format": "uuid"}, "retry_activation_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "retry_schedule_id": {"type": "string", "format": "uuid"}, "retry_schedule_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "retry_attempt_id": {"type": "string", "format": "uuid"}, "retry_attempt_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "attempt_number": {"const": 3}, "prior_retry_budget_consumption_id": {"type": "string", "format": "uuid"}, "retry_budget_consumption_id": {"type": "string", "format": "uuid"},
+    "approval_consumption_id": {"type": ["string", "null"], "format": "uuid"}, "policy_bundle_id": {"type": "string", "format": "uuid"}, "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "worker_id": {"type": "string", "minLength": 1, "maxLength": 128}, "worker_version": {"type": "integer", "minimum": 1},
+    "recovery_generation": {"type": "integer", "minimum": 1}, "lease_generation": {"type": "integer", "minimum": 1}, "fencing_token": {"type": "integer", "minimum": 1}, "lease_version": {"type": "integer", "minimum": 1},
+    "state": {"enum": ["active", "expired", "invalidated"]}, "acquired_at": {"type": "string", "format": "date-time"}, "expires_at": {"type": "string", "format": "date-time"}, "maximum_expires_at": {"type": "string", "format": "date-time"},
+    "released_at": {"type": ["string", "null"], "format": "date-time"}, "release_reason": {"enum": ["none", "expired", "recovery"]},
+    "purpose": {"const": "coordinate_attempt_three_validation_task"}, "authority": {"const": "none"}, "execution_enabled": {"const": false}
+  },
+  "allOf": [{"if": {"properties": {"state": {"const": "active"}}}, "then": {"properties": {"released_at": {"const": null}, "release_reason": {"const": "none"}}}, "else": {"properties": {"released_at": {"type": "string", "format": "date-time"}, "release_reason": {"enum": ["expired", "recovery"]}}}}]
+}

@@ -1,5 +1,39 @@
 # Phase 2 slice security reviews
 
+## 2026-08-27 — Attempt-three durable task lease v3
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author and security reviewer under the `GIT_WORKFLOW.md`
+exception. This does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed acquire/state v3 contracts, additive migration 0067,
+trusted-core acquisition and fail-closed recovery, shared monotonic task fencing,
+one-time raw-token handling, immutable storage guards, metadata-only audit/outbox
+linkage, compatibility documentation, and synthetic positive, malformed, mixed-version,
+tampering, replay, concurrency, expiry, safety, worker, account, recovery, direct-storage,
+fresh-upgrade, additive-upgrade, and idempotency tests.
+
+**Security boundaries:** Only the exact current activation-v2, attempt-three,
+manifest-v4, and reservation-v4 ready lineage can acquire lease v3. Trusted core derives
+worker state from the durable registry and advances the shared task fence atomically.
+Only the token digest is durable. The record is `authority: none` and
+`execution_enabled: false`; it leaves the task ready and cannot contact a worker,
+dispatch, invoke a provider/plugin, create an ActionIntent or grant, access a network,
+or perform an external effect. Phase 1 authorization remains unchanged.
+
+**Compatibility, privacy, migration, and rollback:** V1/v2 contracts, rows, and behavior
+remain unchanged and cannot satisfy v3. Migration 0067 is additive and retains bounded
+metadata-only history. Application rollback disables v3 acquisition/recovery while
+retaining rows; migration reversal is unsupported. Contracts exclude credentials,
+secrets, raw stored tokens, evidence, assessment content, prompts, diagnostics, paths,
+URLs, commands, provider/plugin output, target content, and arbitrary blobs.
+
+**Limitations and residual risk:** Lease renewal/release, consumption, the attempt-three
+running transition, checkpoints, failure/completion, terminal/dead-letter behavior,
+dispatch, runtime composition, providers/plugins, UI, Phase 2 demonstrations, and
+independent review remain deferred. The non-independent exception is accepted only for
+this narrow, non-executing slice.
+
 ## 2026-08-27 — Attempt-three task-budget reservation v4
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

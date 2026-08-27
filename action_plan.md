@@ -841,6 +841,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     permanently accounted for. It cannot reuse the attempt-two v3 reservation, transition
     work, lease, dispatch, or create authority. Attempt-three leasing and all later
     readiness/runtime boundaries remain required.
+  - Durable task-lease v3 acquisition now accepts only that exact current attempt-three
+    manifest-v4/reservation-v4 readiness lineage and one trusted worker-runtime version.
+    It atomically advances the shared monotonic task fence, persists only a bearer-token
+    digest, and invalidates outstanding ownership on recovery. The lease leaves the task
+    ready; consumption, running transition, worker contact/dispatch, checkpoints,
+    failure/completion, and runtime execution remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
