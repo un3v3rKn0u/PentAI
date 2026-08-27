@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/task-capability-manifest-request-v4.schema.json",
+  "title": "PentAI TaskCapabilityManifestRequest v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "assessment_id", "plan_id", "expected_plan_revision", "task_id", "expected_task_revision", "agent_id", "retry_activation_id", "retry_activation_digest", "policy_bundle_id", "policy_hash", "limits", "purpose", "requested_at", "expires_at", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "4.0.0"},
+    "request_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "expected_plan_revision": {"type": "integer", "minimum": 6},
+    "task_id": {"type": "string", "format": "uuid"},
+    "expected_task_revision": {"type": "integer", "minimum": 6},
+    "agent_id": {"type": "string", "pattern": "^agent://validation/[a-z0-9][a-z0-9._-]{0,63}$"},
+    "retry_activation_id": {"type": "string", "format": "uuid"},
+    "retry_activation_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "limits": {"type": "object", "additionalProperties": false, "required": ["maximum_impact", "maximum_timeout_seconds", "maximum_response_bytes"], "properties": {"maximum_impact": {"enum": ["passive", "benign"]}, "maximum_timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 30}, "maximum_response_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576}}},
+    "purpose": {"const": "issue_attempt_three_validation_manifest"},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

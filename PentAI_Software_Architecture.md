@@ -533,7 +533,9 @@ Emergency stop revokes grants, closes gateway sessions, stops workers, checkpoin
 - Attempt-three scheduling derives timing only from the immutable retry decision and
   remains inert. Its dedicated version-exact consumer may atomically restore only the
   bound failed validation task to non-authoritative ready coordination state; refreshed
-  manifests, budgets, leases, and every execution boundary remain separate.
+  manifests, budgets, leases, and every execution boundary remain separate. The
+  attempt-three manifest is version-exact, immutable, and ready-only; it cannot satisfy
+  the running-state ActionIntent boundary or inherit prior-attempt authority.
 - Heartbeats indicate liveness, while idempotency keys prevent duplicate effects.
 - Use exponential backoff with jitter only for classified transient failures.
 - Circuit-break failing AI providers, tools, source sites, and network routes.
