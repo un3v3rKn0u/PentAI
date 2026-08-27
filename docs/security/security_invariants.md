@@ -256,6 +256,13 @@ across attempts. The raw token is returned once and never persisted or audited.
 Acquisition leaves the task `ready` and grants no execution, dispatch, provider, plugin,
 gateway, network, or target authority.
 
+**Phase 2 attempt-three consumption note:** Consumption v3 transiently verifies the
+exact lease-v3 holder proof and revalidates manifest-v4, reservation-v4, activation-v2,
+attempt, worker, approval, policy, budget-account, fencing, safety, and recovery state in
+one transaction. Only its immutable receipt can storage-gate the exact `ready` to
+`running` coordination edge. Raw token material is excluded from all durable and audit
+records, and neither the receipt nor `running` creates execution or network authority.
+
 **Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
 and canonical-host token in the same immediate transaction as total-request and
 connection capacity. Refill uses persisted policy rates, burst capacity, and a

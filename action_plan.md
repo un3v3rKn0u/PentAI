@@ -847,6 +847,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     digest, and invalidates outstanding ownership on recovery. The lease leaves the task
     ready; consumption, running transition, worker contact/dispatch, checkpoints,
     failure/completion, and runtime execution remain required.
+  - Dedicated lease-consumption v3 now transiently verifies one exact current
+    attempt-three holder proof and atomically stores an immutable spent-lease receipt,
+    advances plan/task revisions, and storage-gates only the exact `ready` to `running`
+    coordination edge. Consumed leases cannot be recovered or reused. Raw tokens never
+    enter receipts, storage, audit, or outbox. Running remains non-authoritative; worker
+    contact/dispatch, checkpoints, failure/completion, providers/plugins, and runtime
+    execution remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

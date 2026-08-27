@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-task-lease-consumption-receipt-v3.schema.json",
+  "title": "PentAI AttemptThreeTaskLeaseConsumptionReceipt v3",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "consumption_id", "command_id", "command_digest", "assessment_id", "plan_id", "expected_plan_revision", "resulting_plan_revision", "task_id", "expected_task_revision", "resulting_task_revision", "agent_id", "capability_manifest_id", "capability_manifest_digest", "manifest_revision", "budget_reservation_id", "budget_request_digest", "budget_account_version", "retry_policy_id", "retry_policy_digest", "retry_activation_id", "retry_activation_digest", "retry_schedule_id", "retry_schedule_digest", "retry_attempt_id", "retry_attempt_digest", "attempt_number", "prior_retry_budget_consumption_id", "retry_budget_consumption_id", "approval_consumption_id", "policy_bundle_id", "policy_hash", "worker_id", "worker_version", "lease_id", "consumed_lease_version", "lease_generation", "fencing_token", "recovery_generation", "lease_state_digest", "purpose", "consumed_at", "resulting_task_state", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "3.0.0"}, "consumption_id": {"type": "string", "format": "uuid"}, "command_id": {"type": "string", "format": "uuid"}, "command_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "assessment_id": {"type": "string", "format": "uuid"}, "plan_id": {"type": "string", "format": "uuid"}, "expected_plan_revision": {"type": "integer", "minimum": 6}, "resulting_plan_revision": {"type": "integer", "minimum": 7},
+    "task_id": {"type": "string", "format": "uuid"}, "expected_task_revision": {"type": "integer", "minimum": 6}, "resulting_task_revision": {"type": "integer", "minimum": 7},
+    "agent_id": {"type": "string"}, "capability_manifest_id": {"type": "string", "format": "uuid"}, "capability_manifest_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "manifest_revision": {"const": 1},
+    "budget_reservation_id": {"type": "string", "format": "uuid"}, "budget_request_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "budget_account_version": {"type": "integer", "minimum": 2},
+    "retry_policy_id": {"type": "string", "format": "uuid"}, "retry_policy_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "retry_activation_id": {"type": "string", "format": "uuid"}, "retry_activation_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "retry_schedule_id": {"type": "string", "format": "uuid"}, "retry_schedule_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "retry_attempt_id": {"type": "string", "format": "uuid"}, "retry_attempt_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "attempt_number": {"const": 3},
+    "prior_retry_budget_consumption_id": {"type": "string", "format": "uuid"}, "retry_budget_consumption_id": {"type": "string", "format": "uuid"}, "approval_consumption_id": {"type": ["string", "null"], "format": "uuid"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"}, "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "worker_id": {"type": "string"}, "worker_version": {"type": "integer", "minimum": 1},
+    "lease_id": {"type": "string", "format": "uuid"}, "consumed_lease_version": {"const": 1}, "lease_generation": {"type": "integer", "minimum": 1}, "fencing_token": {"type": "integer", "minimum": 1}, "recovery_generation": {"type": "integer", "minimum": 1}, "lease_state_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "purpose": {"const": "start_attempt_three_validation_coordination"}, "consumed_at": {"type": "string", "format": "date-time"}, "resulting_task_state": {"const": "running"},
+    "authority": {"const": "none"}, "execution_enabled": {"const": false}
+  }
+}
