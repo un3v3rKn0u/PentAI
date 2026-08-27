@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import hmac
 import json
 import secrets
 import sqlite3
@@ -194,6 +195,221 @@ class OrchestrationLeaseV3Service:
             )
         return {**copy.deepcopy(state), "lease_token": raw_token}
 
+    def consume(
+        self, command: dict[str, Any], *, now: datetime | None = None
+    ) -> dict[str, Any]:
+        """Consume exact attempt-three ownership into non-authoritative running state."""
+        document = copy.deepcopy(command)
+        if contract_issues(document, "orchestration-task-lease-consumption-v3.schema.json"):
+            raise OrchestrationLeaseV3Error(
+                "ORCHESTRATION_LEASE_V3_CONSUMPTION_MALFORMED",
+                "lease consumption is malformed",
+            )
+        instant = _instant(now)
+        requested_at = parse_time(document["requested_at"])
+        if requested_at > instant or instant - requested_at > _MAX_REQUEST_AGE:
+            raise OrchestrationLeaseV3Error(
+                "ORCHESTRATION_LEASE_V3_CONSUMPTION_STALE",
+                "lease consumption is stale",
+            )
+        command_digest = "sha256:" + content_hash(document)
+        consumption_id = str(uuid5(_NAMESPACE, "consumption-v3:" + document["command_id"]))
+        self.authorization._require_storage_safe()
+        self._verified_policy(document, instant)
+        with transaction(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            replay = connection.execute(
+                """SELECT command_digest, receipt_json, receipt_hash
+                FROM orchestration_task_lease_consumptions_v3 WHERE command_id=?""",
+                (document["command_id"],),
+            ).fetchone()
+            if replay is not None:
+                if replay["command_digest"] != command_digest:
+                    raise OrchestrationLeaseV3Error(
+                        "ORCHESTRATION_LEASE_V3_CONSUMPTION_IDENTITY_CONFLICT",
+                        "consumption identity conflicts",
+                    )
+                receipt = cast(dict[str, Any], json.loads(replay["receipt_json"]))
+                self._validate_consumption_replay(connection, receipt, replay, instant)
+                return receipt
+            row = connection.execute(
+                "SELECT * FROM orchestration_task_leases_v3 WHERE lease_id=?",
+                (document["lease_id"],),
+            ).fetchone()
+            if row is None:
+                raise OrchestrationLeaseV3Error(
+                    "ORCHESTRATION_LEASE_V3_MISSING", "lease is missing"
+                )
+            if connection.execute(
+                "SELECT 1 FROM orchestration_task_lease_consumptions_v3 WHERE lease_id=?",
+                (document["lease_id"],),
+            ).fetchone():
+                raise OrchestrationLeaseV3Error(
+                    "ORCHESTRATION_LEASE_V3_ALREADY_CONSUMED", "lease is already consumed"
+                )
+            state = self._load_state(row)
+            expected = {
+                "assessment_id": state["assessment_id"],
+                "plan_id": state["plan_id"],
+                "expected_plan_revision": state["plan_revision"],
+                "task_id": state["task_id"],
+                "expected_task_revision": state["task_revision"],
+                "agent_id": state["agent_id"],
+                "capability_manifest_id": state["capability_manifest_id"],
+                "capability_manifest_digest": state["capability_manifest_digest"],
+                "manifest_revision": state["manifest_revision"],
+                "budget_reservation_id": state["budget_reservation_id"],
+                "budget_request_digest": state["budget_request_digest"],
+                "budget_account_version": state["budget_account_version"],
+                "retry_policy_id": state["retry_policy_id"],
+                "retry_policy_digest": state["retry_policy_digest"],
+                "retry_activation_id": state["retry_activation_id"],
+                "retry_activation_digest": state["retry_activation_digest"],
+                "retry_schedule_id": state["retry_schedule_id"],
+                "retry_schedule_digest": state["retry_schedule_digest"],
+                "retry_attempt_id": state["retry_attempt_id"],
+                "retry_attempt_digest": state["retry_attempt_digest"],
+                "attempt_number": 3,
+                "prior_retry_budget_consumption_id": state[
+                    "prior_retry_budget_consumption_id"
+                ],
+                "retry_budget_consumption_id": state["retry_budget_consumption_id"],
+                "approval_consumption_id": state["approval_consumption_id"],
+                "policy_bundle_id": state["policy_bundle_id"],
+                "policy_hash": state["policy_hash"],
+                "worker_id": state["worker_id"],
+                "expected_worker_version": state["worker_version"],
+                "expected_lease_version": state["lease_version"],
+                "lease_generation": state["lease_generation"],
+                "fencing_token": state["fencing_token"],
+                "expected_recovery_generation": state["recovery_generation"],
+            }
+            if any(document[key] != value for key, value in expected.items()):
+                raise OrchestrationLeaseV3Error(
+                    "ORCHESTRATION_LEASE_V3_CONSUMPTION_BINDING_MISMATCH",
+                    "lease consumption binding mismatches",
+                )
+            state_digest = "sha256:" + content_hash(state)
+            if document["lease_state_digest"] != state_digest:
+                raise OrchestrationLeaseV3Error(
+                    "ORCHESTRATION_LEASE_V3_STATE_TAMPERED", "lease state mismatches"
+                )
+            if row["state"] != "active" or parse_time(row["expires_at"]) <= instant:
+                raise OrchestrationLeaseV3Error(
+                    "ORCHESTRATION_LEASE_V3_NOT_ACTIVE", "lease is not current"
+                )
+            if not hmac.compare_digest(
+                row["token_hash"], _token_hash(document["lease_token"])
+            ):
+                raise OrchestrationLeaseV3Error(
+                    "ORCHESTRATION_LEASE_V3_TOKEN_MISMATCH", "holder proof mismatches"
+                )
+            self._validate_current(connection, document, instant)
+            fence = connection.execute(
+                "SELECT * FROM orchestration_task_lease_fences WHERE task_id=?",
+                (document["task_id"],),
+            ).fetchone()
+            if (
+                fence is None
+                or fence["current_lease_generation"] != document["lease_generation"]
+                or fence["recovery_generation"]
+                != document["expected_recovery_generation"]
+            ):
+                raise OrchestrationLeaseV3Error(
+                    "ORCHESTRATION_LEASE_V3_CONSUMPTION_FENCED", "lease fence is stale"
+                )
+            receipt = _consumption_receipt(
+                document,
+                state,
+                consumption_id=consumption_id,
+                command_digest=command_digest,
+                consumed_at=_timestamp(instant),
+            )
+            if contract_issues(
+                receipt, "orchestration-task-lease-consumption-receipt-v3.schema.json"
+            ):
+                raise OrchestrationLeaseV3Error(
+                    "ORCHESTRATION_LEASE_V3_CONSUMPTION_RESULT_INVALID",
+                    "lease consumption result is invalid",
+                )
+            connection.execute(
+                """INSERT INTO orchestration_task_lease_consumptions_v3 VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', 0)""",
+                (
+                    consumption_id,
+                    document["command_id"],
+                    command_digest,
+                    state["assessment_id"],
+                    state["plan_id"],
+                    state["plan_revision"],
+                    receipt["resulting_plan_revision"],
+                    state["task_id"],
+                    state["task_revision"],
+                    receipt["resulting_task_revision"],
+                    state["lease_id"],
+                    state["lease_generation"],
+                    state["fencing_token"],
+                    state["recovery_generation"],
+                    canonical_json(receipt),
+                    content_hash(receipt),
+                    receipt["consumed_at"],
+                ),
+            )
+            task_update = connection.execute(
+                """UPDATE orchestration_tasks SET state='running', revision=revision+1,
+                updated_at=? WHERE plan_id=? AND task_id=? AND state='ready' AND revision=?""",
+                (
+                    receipt["consumed_at"],
+                    state["plan_id"],
+                    state["task_id"],
+                    state["task_revision"],
+                ),
+            )
+            plan_update = connection.execute(
+                """UPDATE orchestration_plans SET revision=revision+1, updated_at=?
+                WHERE plan_id=? AND state='active' AND revision=?""",
+                (receipt["consumed_at"], state["plan_id"], state["plan_revision"]),
+            )
+            if task_update.rowcount != 1 or plan_update.rowcount != 1:
+                raise OrchestrationLeaseV3Error(
+                    "ORCHESTRATION_LEASE_V3_CONSUMPTION_CONFLICT",
+                    "coordination revisions conflict",
+                )
+            audit = append_audit_event(
+                connection,
+                action="orchestration.attempt_three_task_lease_consumed",
+                subject_type="orchestration_task_lease",
+                subject_id=state["lease_id"],
+                actor_type="service",
+                actor_id="pentai-core",
+                data={
+                    "consumption_id": consumption_id,
+                    "lease_id": state["lease_id"],
+                    "resulting_task_state": "running",
+                    "consumed_at": receipt["consumed_at"],
+                    "authority": "none",
+                    "execution_enabled": False,
+                },
+                occurred_at=receipt["consumed_at"],
+            )
+            connection.execute(
+                """INSERT INTO outbox(id, aggregate_type, aggregate_id, event_type,
+                payload_json) VALUES (?, 'orchestration_task_lease', ?,
+                'orchestration.attempt_three_task_lease_consumed', ?)""",
+                (
+                    str(uuid4()),
+                    state["lease_id"],
+                    canonical_json(
+                        {
+                            "event_hash": audit["event_hash"],
+                            "occurred_at": receipt["consumed_at"],
+                            "subject_id": state["lease_id"],
+                        }
+                    ),
+                ),
+            )
+        return receipt
+
     def recover(self, *, now: datetime | None = None) -> tuple[dict[str, Any], ...]:
         instant = _instant(now)
         events: list[dict[str, Any]] = []
@@ -201,7 +417,9 @@ class OrchestrationLeaseV3Service:
         with transaction(self.database_path) as connection:
             connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
-                "SELECT * FROM orchestration_task_leases_v3 WHERE state='active' ORDER BY lease_id"
+                """SELECT * FROM orchestration_task_leases_v3 l WHERE state='active'
+                AND NOT EXISTS (SELECT 1 FROM orchestration_task_lease_consumptions_v3 c
+                    WHERE c.lease_id=l.lease_id) ORDER BY lease_id"""
             ).fetchall()
             for row in rows:
                 state = self._load_state(row)
@@ -471,6 +689,69 @@ class OrchestrationLeaseV3Service:
             )
         return verified
 
+    def _validate_consumption_replay(
+        self,
+        connection: sqlite3.Connection,
+        receipt: dict[str, Any],
+        row: sqlite3.Row,
+        instant: datetime,
+    ) -> None:
+        plan = connection.execute(
+            "SELECT state, revision FROM orchestration_plans WHERE plan_id=?",
+            (receipt["plan_id"],),
+        ).fetchone()
+        task = connection.execute(
+            "SELECT state, revision FROM orchestration_tasks WHERE plan_id=? AND task_id=?",
+            (receipt["plan_id"], receipt["task_id"]),
+        ).fetchone()
+        worker = connection.execute(
+            """SELECT status, version, execution_enabled
+            FROM worker_runtime_instances WHERE worker_id=?""",
+            (receipt["worker_id"],),
+        ).fetchone()
+        fence = connection.execute(
+            """SELECT current_lease_generation, recovery_generation
+            FROM orchestration_task_lease_fences WHERE task_id=?""",
+            (receipt["task_id"],),
+        ).fetchone()
+        engagement = connection.execute(
+            "SELECT status, active_policy_id, expires_at FROM engagements WHERE id=?",
+            (receipt["assessment_id"],),
+        ).fetchone()
+        safety = connection.execute(
+            "SELECT global_status FROM safety_state WHERE singleton_id=1"
+        ).fetchone()
+        if (
+            contract_issues(
+                receipt, "orchestration-task-lease-consumption-receipt-v3.schema.json"
+            )
+            or canonical_json(receipt) != row["receipt_json"]
+            or content_hash(receipt) != row["receipt_hash"]
+            or plan is None
+            or (plan["state"], plan["revision"])
+            != ("active", receipt["resulting_plan_revision"])
+            or task is None
+            or (task["state"], task["revision"])
+            != ("running", receipt["resulting_task_revision"])
+            or worker is None
+            or worker["status"] != "running"
+            or worker["version"] != receipt["worker_version"]
+            or worker["execution_enabled"] != 0
+            or fence is None
+            or fence["current_lease_generation"] != receipt["lease_generation"]
+            or fence["recovery_generation"] != receipt["recovery_generation"]
+            or engagement is None
+            or engagement["status"] != "active"
+            or engagement["active_policy_id"] != receipt["policy_bundle_id"]
+            or parse_time(engagement["expires_at"]) <= instant
+            or safety is None
+            or safety["global_status"] != "active"
+        ):
+            raise OrchestrationLeaseV3Error(
+                "ORCHESTRATION_LEASE_V3_CONSUMPTION_REPLAY_STALE",
+                "consumption replay is stale",
+            )
+
     @staticmethod
     def _load_state(row: sqlite3.Row) -> dict[str, Any]:
         state = cast(dict[str, Any], json.loads(row["state_json"]))
@@ -614,6 +895,71 @@ def _state(
         }
     )
     return state
+
+
+def _consumption_receipt(
+    command: dict[str, Any],
+    state: dict[str, Any],
+    *,
+    consumption_id: str,
+    command_digest: str,
+    consumed_at: str,
+) -> dict[str, Any]:
+    receipt = {
+        "schema_version": "3.0.0",
+        "consumption_id": consumption_id,
+        "command_id": command["command_id"],
+        "command_digest": command_digest,
+        "assessment_id": state["assessment_id"],
+        "plan_id": state["plan_id"],
+        "expected_plan_revision": state["plan_revision"],
+        "resulting_plan_revision": state["plan_revision"] + 1,
+        "task_id": state["task_id"],
+        "expected_task_revision": state["task_revision"],
+        "resulting_task_revision": state["task_revision"] + 1,
+        "agent_id": state["agent_id"],
+    }
+    for field in (
+        "capability_manifest_id",
+        "capability_manifest_digest",
+        "manifest_revision",
+        "budget_reservation_id",
+        "budget_request_digest",
+        "budget_account_version",
+        "retry_policy_id",
+        "retry_policy_digest",
+        "retry_activation_id",
+        "retry_activation_digest",
+        "retry_schedule_id",
+        "retry_schedule_digest",
+        "retry_attempt_id",
+        "retry_attempt_digest",
+        "attempt_number",
+        "prior_retry_budget_consumption_id",
+        "retry_budget_consumption_id",
+        "approval_consumption_id",
+        "policy_bundle_id",
+        "policy_hash",
+        "worker_id",
+    ):
+        receipt[field] = state[field]
+    receipt.update(
+        {
+            "worker_version": state["worker_version"],
+            "lease_id": state["lease_id"],
+            "consumed_lease_version": state["lease_version"],
+            "lease_generation": state["lease_generation"],
+            "fencing_token": state["fencing_token"],
+            "recovery_generation": state["recovery_generation"],
+            "lease_state_digest": command["lease_state_digest"],
+            "purpose": command["purpose"],
+            "consumed_at": consumed_at,
+            "resulting_task_state": "running",
+            "authority": "none",
+            "execution_enabled": False,
+        }
+    )
+    return receipt
 
 
 def _token_hash(token: str) -> str:

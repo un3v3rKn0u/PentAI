@@ -11,11 +11,13 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from pentai_core.orchestration import DurablePlanGraphService, OrchestrationError
 from pentai_core.orchestration_lease import OrchestrationLeaseError, OrchestrationLeaseService
 from pentai_core.orchestration_lease_v3 import (
     OrchestrationLeaseV3Error,
     OrchestrationLeaseV3Service,
 )
+from pentai_policy import content_hash
 from pentai_policy.document import contract_issues
 from test_orchestration_budget import NOW
 from test_orchestration_budget_v4 import setup as budget_setup
@@ -68,6 +70,52 @@ def setup(tmp_path: Path) -> tuple[OrchestrationLeaseV3Service, dict[str, Any]]:
         "execution_enabled": False,
     }
     return OrchestrationLeaseV3Service(budgets.authorization), command
+
+
+def consumption(state: dict[str, Any], token: str) -> dict[str, Any]:
+    return {
+        "schema_version": "3.0.0",
+        "command_id": str(uuid4()),
+        "assessment_id": state["assessment_id"],
+        "plan_id": state["plan_id"],
+        "expected_plan_revision": state["plan_revision"],
+        "task_id": state["task_id"],
+        "expected_task_revision": state["task_revision"],
+        "agent_id": state["agent_id"],
+        "capability_manifest_id": state["capability_manifest_id"],
+        "capability_manifest_digest": state["capability_manifest_digest"],
+        "manifest_revision": state["manifest_revision"],
+        "budget_reservation_id": state["budget_reservation_id"],
+        "budget_request_digest": state["budget_request_digest"],
+        "budget_account_version": state["budget_account_version"],
+        "retry_policy_id": state["retry_policy_id"],
+        "retry_policy_digest": state["retry_policy_digest"],
+        "retry_activation_id": state["retry_activation_id"],
+        "retry_activation_digest": state["retry_activation_digest"],
+        "retry_schedule_id": state["retry_schedule_id"],
+        "retry_schedule_digest": state["retry_schedule_digest"],
+        "retry_attempt_id": state["retry_attempt_id"],
+        "retry_attempt_digest": state["retry_attempt_digest"],
+        "attempt_number": 3,
+        "prior_retry_budget_consumption_id": state["prior_retry_budget_consumption_id"],
+        "retry_budget_consumption_id": state["retry_budget_consumption_id"],
+        "approval_consumption_id": state["approval_consumption_id"],
+        "policy_bundle_id": state["policy_bundle_id"],
+        "policy_hash": state["policy_hash"],
+        "worker_id": state["worker_id"],
+        "expected_worker_version": state["worker_version"],
+        "lease_id": state["lease_id"],
+        "expected_lease_version": state["lease_version"],
+        "lease_generation": state["lease_generation"],
+        "fencing_token": state["fencing_token"],
+        "expected_recovery_generation": state["recovery_generation"],
+        "lease_state_digest": "sha256:" + content_hash(state),
+        "lease_token": token,
+        "purpose": "start_attempt_three_validation_coordination",
+        "requested_at": (NOW + timedelta(seconds=46)).isoformat(),
+        "authority": "none",
+        "execution_enabled": False,
+    }
 
 
 def test_acquires_attempt_three_lease_without_transition_or_authority(tmp_path: Path) -> None:
@@ -217,3 +265,148 @@ def test_storage_guards_and_legacy_consumers_reject_v3(tmp_path: Path) -> None:
             },
             now=NOW + timedelta(seconds=45),
         )
+
+
+def test_consumes_attempt_three_lease_atomically_without_dispatch_or_authority(
+    tmp_path: Path,
+) -> None:
+    service, request = setup(tmp_path)
+    acquired = service.acquire(request, now=NOW + timedelta(seconds=45))
+    token = acquired.pop("lease_token")
+    command = consumption(acquired, token)
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        grants_before = connection.execute("SELECT COUNT(*) FROM action_grants").fetchone()
+        links_before = connection.execute(
+            "SELECT COUNT(*) FROM agent_action_intent_links"
+        ).fetchone()
+    receipt = service.consume(command, now=NOW + timedelta(seconds=46))
+    assert contract_issues(
+        receipt, "orchestration-task-lease-consumption-receipt-v3.schema.json"
+    ) == ()
+    assert receipt["attempt_number"] == 3
+    assert receipt["resulting_task_state"] == "running"
+    assert receipt["authority"] == "none" and receipt["execution_enabled"] is False
+    assert service.consume(command, now=NOW + timedelta(seconds=46)) == receipt
+    assert service.recover(now=NOW + timedelta(seconds=47)) == ()
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        assert connection.execute(
+            "SELECT state FROM orchestration_tasks WHERE task_id=?", (request["task_id"],)
+        ).fetchone() == ("running",)
+        stored = connection.execute(
+            "SELECT receipt_json FROM orchestration_task_lease_consumptions_v3"
+        ).fetchone()[0]
+        assert token not in stored and "lease_token" not in json.loads(stored)
+        assert connection.execute("SELECT COUNT(*) FROM action_grants").fetchone() == grants_before
+        assert connection.execute(
+            "SELECT COUNT(*) FROM agent_action_intent_links"
+        ).fetchone() == links_before
+
+
+def test_consumption_denies_transition_bypass_tampering_and_changed_replay(
+    tmp_path: Path,
+) -> None:
+    direct, request = setup(tmp_path / "direct")
+    with pytest.raises(OrchestrationError):
+        DurablePlanGraphService(direct.database_path).transition(
+            {
+                "schema_version": "1.0.0",
+                "command_id": str(uuid4()),
+                "plan_id": request["plan_id"],
+                "assessment_id": request["assessment_id"],
+                "task_id": request["task_id"],
+                "expected_plan_revision": request["expected_plan_revision"],
+                "expected_task_revision": request["expected_task_revision"],
+                "target_state": "running",
+                "requested_at": request["requested_at"],
+                "authority": "none",
+                "execution_enabled": False,
+            }
+        )
+    with closing(sqlite3.connect(direct.database_path)) as connection, connection:
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """UPDATE orchestration_tasks SET state='running', revision=revision+1
+                WHERE task_id=?""",
+                (request["task_id"],),
+            )
+
+    service, request = setup(tmp_path / "tampered")
+    state = service.acquire(request, now=NOW + timedelta(seconds=45))
+    token = state.pop("lease_token")
+    command = consumption(state, token)
+    changed = copy.deepcopy(command)
+    changed["lease_token"] = "x" * 43
+    with pytest.raises(OrchestrationLeaseV3Error) as token_error:
+        service.consume(changed, now=NOW + timedelta(seconds=46))
+    assert token_error.value.code == "ORCHESTRATION_LEASE_V3_TOKEN_MISMATCH"
+    receipt = service.consume(command, now=NOW + timedelta(seconds=46))
+    changed = copy.deepcopy(command)
+    changed["purpose"] = "start_attempt_three_validation_coordination"
+    changed["lease_token"] = token[:-1] + ("A" if token[-1] != "A" else "B")
+    with pytest.raises(OrchestrationLeaseV3Error) as replay:
+        service.consume(changed, now=NOW + timedelta(seconds=46))
+    assert replay.value.code == "ORCHESTRATION_LEASE_V3_CONSUMPTION_IDENTITY_CONFLICT"
+    assert receipt["resulting_task_state"] == "running"
+
+
+def test_consumption_concurrency_and_current_security_fences(tmp_path: Path) -> None:
+    service, request = setup(tmp_path / "concurrent")
+    state = service.acquire(request, now=NOW + timedelta(seconds=45))
+    token = state.pop("lease_token")
+    commands = [consumption(state, token), consumption(state, token)]
+
+    def consume_one(command: dict[str, Any]) -> str:
+        try:
+            return service.consume(command, now=NOW + timedelta(seconds=46))[
+                "resulting_task_state"
+            ]
+        except OrchestrationLeaseV3Error as error:
+            return error.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(consume_one, commands))
+    assert outcomes.count("running") == 1
+    assert len([outcome for outcome in outcomes if outcome != "running"]) == 1
+
+    for name in ("safety", "worker", "account", "recovery", "cancelled", "expired"):
+        fenced, request = setup(tmp_path / name)
+        state = fenced.acquire(request, now=NOW + timedelta(seconds=45))
+        token = state.pop("lease_token")
+        command = consumption(state, token)
+        with closing(sqlite3.connect(fenced.database_path)) as connection, connection:
+            if name == "safety":
+                connection.execute("UPDATE safety_state SET global_status='paused'")
+            elif name == "worker":
+                connection.execute(
+                    "UPDATE worker_runtime_instances SET version=version+1 WHERE worker_id=?",
+                    (state["worker_id"],),
+                )
+            elif name == "account":
+                connection.execute("UPDATE orchestration_budget_accounts SET version=version+1")
+            elif name == "recovery":
+                connection.execute(
+                    """UPDATE orchestration_task_lease_fences
+                    SET recovery_generation=recovery_generation+1, version=version+1
+                    WHERE task_id=?""",
+                    (state["task_id"],),
+                )
+        if name == "cancelled":
+            DurablePlanGraphService(fenced.database_path).transition(
+                {
+                    "schema_version": "1.0.0",
+                    "command_id": str(uuid4()),
+                    "plan_id": state["plan_id"],
+                    "assessment_id": state["assessment_id"],
+                    "task_id": state["task_id"],
+                    "expected_plan_revision": state["plan_revision"],
+                    "expected_task_revision": state["task_revision"],
+                    "target_state": "cancelled",
+                    "requested_at": (NOW + timedelta(seconds=46)).isoformat(),
+                    "authority": "none",
+                    "execution_enabled": False,
+                },
+                now=NOW + timedelta(seconds=46),
+            )
+        at = NOW + timedelta(seconds=51 if name == "expired" else 46)
+        with pytest.raises(OrchestrationLeaseV3Error):
+            fenced.consume(command, now=at)

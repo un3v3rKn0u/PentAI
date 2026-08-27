@@ -1,5 +1,47 @@
 # Phase 2 slice security reviews
 
+## 2026-08-27 — Attempt-three lease consumption v3
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author and security reviewer under the `GIT_WORKFLOW.md`
+exception. This does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed consumption command/receipt v3 contracts, additive
+migration 0068, trusted-core holder-proof verification, exact storage-gated
+`ready`-to-`running` coordination transition, immutable spent-lease ledger,
+metadata-only audit/outbox linkage, compatibility documentation, and synthetic positive,
+malformed, mixed-version, token-tampering, replay, concurrency, expiry, safety, worker,
+account, recovery, direct-transition, direct-storage, fresh-upgrade, additive-upgrade,
+and idempotency tests.
+
+**Security boundaries:** Only the exact current lease-v3 holder can consume the same
+activation-v2, attempt-three, manifest-v4, reservation-v4, policy, approval, worker,
+budget-account, fencing, and recovery lineage. The raw token is compared transiently
+with its stored digest and is absent from receipts, storage, audit, outbox, and replay
+output. The receipt and resulting `running` state remain `authority: none` and
+`execution_enabled: false`; they do not contact or dispatch a worker, invoke a
+provider/plugin, create an ActionIntent or grant, access a network, or perform an effect.
+Phase 1 authorization remains unchanged.
+
+**Threats and default deny:** Missing, malformed, mixed-version, stale, expired,
+token-mismatched, state-digest-mismatched, cross-scope, changed-replay, concurrent,
+policy-replaced, safety-paused, cancelled, approval-invalid, worker-revoked,
+account-version-stale, fencing-stale, recovery-stale, privilege-shaped, and direct
+transition/storage inputs deny through stable codes or exact database constraints.
+
+**Compatibility, privacy, migration, and rollback:** V1/v2 consumption contracts,
+tables, rows, and behavior remain unchanged and cannot satisfy v3. Migration 0068 adds
+an immutable v3 consumption ledger and extends only the exact task-transition predicate.
+Application rollback disables v3 consumption while retaining records; migration reversal
+is unsupported. Contracts exclude credentials, persisted raw tokens, evidence,
+assessment content, prompts, diagnostics, paths, URLs, commands, provider/plugin output,
+target content, and arbitrary blobs.
+
+**Limitations and residual risk:** Worker contact/dispatch, checkpoints,
+failure/completion, terminal/dead-letter behavior, runtime composition,
+providers/plugins, UI, Phase 2 demonstrations, and independent review remain deferred.
+The non-independent exception is accepted only for this narrow, non-executing slice.
+
 ## 2026-08-27 — Attempt-three durable task lease v3
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

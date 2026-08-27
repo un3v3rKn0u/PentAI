@@ -77,7 +77,11 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `orchestration-task-lease-consumption-v2.schema.json` — retry-bound holder-proof
   command for one exact attempt-two readiness transition.
 - `orchestration-task-lease-consumption-receipt-v2.schema.json` — immutable retry-lineage
-  receipt for the storage-enforced coordination-only running transition.
+  receipt for the attempt-two readiness transition.
+- `orchestration-task-lease-consumption-v3.schema.json` — exact attempt-three holder-proof
+  command bound to lease v3 and its v4 readiness lineage.
+- `orchestration-task-lease-consumption-receipt-v3.schema.json` — immutable,
+  non-authoritative receipt for the attempt-three readiness transition.
 - `orchestration-task-checkpoint-command-v1.schema.json` — exact running-task command
   carrying only bounded progress metadata.
 - `orchestration-task-checkpoint-receipt-v1.schema.json` — immutable monotonic

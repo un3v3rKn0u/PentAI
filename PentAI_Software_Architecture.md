@@ -543,7 +543,10 @@ Emergency stop revokes grants, closes gateway sessions, stops workers, checkpoin
   and reservation v4 lineage, derives the worker from the durable registry, and advances
   the shared task fence atomically. Only a token digest is durable. The lease leaves the
   task ready and cannot dispatch, execute, or create network authority; consumption
-  remains a later boundary.
+  is a separate version-exact boundary. Consumption v3 transiently verifies one current
+  holder proof, records an immutable spent-lease receipt, and storage-gates only the
+  attempt-three `ready` to `running` coordination transition. It does not contact the
+  worker, dispatch, invoke providers/plugins, or create effect authority.
 - Heartbeats indicate liveness, while idempotency keys prevent duplicate effects.
 - Use exponential backoff with jitter only for classified transient failures.
 - Circuit-break failing AI providers, tools, source sites, and network routes.

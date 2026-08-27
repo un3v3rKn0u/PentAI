@@ -50,7 +50,17 @@ V3 preserves one-time bearer handling: trusted core returns the raw token once, 
 only its SHA-256 digest, and denies acquisition replay rather than re-exposing secret
 material. Recovery invalidates active v3 leases and advances the shared fence without
 reconstructing tokens, changing task state, or contacting a worker. Renewal, consumption,
-and the attempt-three `ready` to `running` transition remain deferred.
+and the attempt-three `ready` to `running` transition were originally deferred from
+acquisition and remain separate contracts.
+
+Consumption v3 additively accepts only one exact current lease-v3 holder proof and the
+same activation-v2, attempt-three, manifest-v4, reservation-v4, policy, approval, worker,
+budget-account, fencing, and recovery lineage. Migration 0068 stores an immutable
+version-exact receipt and permits only its exact `ready` to `running` coordination edge.
+V1/v2 consumers and rows remain unchanged and cannot satisfy v3. The raw token is
+verified transiently and is absent from the receipt, database, audit, and outbox.
+Consumed acquisition rows remain immutable history; the unique consumption receipt is
+the spent-lease projection and prevents recovery or reuse.
 
 Migration 0054 adds nullable immutable retry-lineage fields and exact storage guards.
 Existing v1 rows require no conversion. Application rollback disables v2 acquisition,
@@ -93,6 +103,10 @@ Consumption is still non-executing: it does not contact or dispatch the register
 worker, debit provider usage, invoke a model or plugin, evaluate an ActionIntent, mint a
 grant, create a gateway request, or contact a target. Checkpoints, retries, dispatch,
 completion consumption, and runtime enforcement remain deferred.
+
+The v3 path has the same non-executing separation. `running` is coordination state only;
+worker contact/dispatch, checkpoints, failure/completion, provider/plugin calls, network
+access, and effects remain later independently reviewed boundaries.
 
 The v2 path provides the same atomic receipt, lease release, plan/task revision update,
 and metadata-only audit/outbox guarantees for attempt two. The raw holder token is
