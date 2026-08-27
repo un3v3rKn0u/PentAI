@@ -270,6 +270,13 @@ transactions reject gaps, rollback, forks, and competing heads. Bounded progress
 remain `authority: none` and `execution_enabled: false` and cannot be interpreted as
 worker instructions, resume permission, execution authority, or effect authorization.
 
+**Phase 2 attempt-three failure note:** Failure v3 accepts only the exact current running
+attempt-three lineage and either its current checkpoint-v3 head or the complete explicit
+absence tuple. A separate immutable ledger and exact storage predicate gate only the
+bound `running` to `failed` transition. Closed failure classification remains
+non-authoritative; at the three-attempt ceiling it cannot create attempt four, retry,
+dead-letter, dispatch, network, provider/plugin, or target authority.
+
 **Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
 and canonical-host token in the same immediate transaction as total-request and
 connection capacity. Refill uses persisted policy rates, burst capacity, and a

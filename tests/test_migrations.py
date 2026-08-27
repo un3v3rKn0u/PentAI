@@ -86,6 +86,7 @@ class MigrationTests(unittest.TestCase):
                     "0067",
                     "0068",
                     "0069",
+                    "0070",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -156,6 +157,7 @@ class MigrationTests(unittest.TestCase):
                     "orchestration_task_lease_consumptions",
                     "orchestration_task_checkpoints",
                     "orchestration_task_checkpoints_v3",
+                    "orchestration_task_failures_v3",
                     "orchestration_retry_budget_consumptions",
                     "orchestration_retry_attempts",
                     "orchestration_retry_schedules",
@@ -1377,6 +1379,46 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("orchestration_task_checkpoints_v3_binding_valid", triggers)
             self.assertIn("orchestration_task_checkpoints_v3_immutable", triggers)
             self.assertIn("orchestration_task_checkpoints_v3_no_delete", triggers)
+
+    def test_attempt_three_failure_upgrade_is_additive_and_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).resolve().parents[1] / "migrations"
+            for path in sorted(repository_migrations.glob("*.sql")):
+                if path.name >= "0070_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = repository_migrations / "0070_attempt_three_task_failures.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0070"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+            self.assertIn("orchestration_task_failures_v3", tables)
+            self.assertIn("orchestration_task_failures_v3_binding_valid", triggers)
+            self.assertIn("orchestration_task_failures_v3_immutable", triggers)
+            self.assertIn("orchestration_task_failures_v3_no_delete", triggers)
 
 
 if __name__ == "__main__":

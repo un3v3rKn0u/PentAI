@@ -1,5 +1,38 @@
 # Phase 2 slice security reviews
 
+## 2026-08-27 — Attempt-three typed failure consumption v3
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author and security reviewer under the `GIT_WORKFLOW.md`
+exception. This does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed failure command/receipt v3 contracts, trusted-core exact
+lineage validation, checkpoint-head/absence binding, additive migration 0070, an
+immutable v3 failure ledger, exact storage-gated `running`-to-`failed` coordination
+transition, metadata-only audit/outbox linkage, compatibility documentation, and
+synthetic positive, malformed, mixed-version, replay, tampering, concurrency, safety,
+cancellation, worker, account, recovery, transition/storage bypass, upgrade, and
+idempotency tests.
+
+**Security boundaries and default deny:** Only lease-consumption v3 for the current
+attempt-three task and its exact checkpoint-v3 head or all-null absence can produce a
+failure. Policy, manifest-v4, reservation-v4, worker, budget-account, fencing, and
+recovery bindings are revalidated. Missing, partial, stale, mixed, cross-scope,
+privilege-shaped, changed-replay, or competing inputs deny with stable codes or storage
+constraints. The closed class grants no retryability or authority; attempt four is
+unsupported and all records remain `authority: none` and execution-disabled.
+
+**Compatibility, privacy, migration, and rollback:** V1/v2 failure contracts, rows, and
+services are unchanged and cannot satisfy v3. Credentials, raw tokens, evidence,
+assessment content, prompts, diagnostics, paths, URLs, commands, provider/plugin output,
+targets, and arbitrary blobs are excluded. Migration 0070 is additive; rollback disables
+v3 production while retaining immutable history, and destructive reversal is unsupported.
+
+**Limitations and residual risk:** Failed-attempt terminal projection, dead-letter
+handling, successful completion, dispatch, runtime composition, providers/plugins, UI,
+Phase 2 demonstrations, and independent review remain deferred. The non-independent
+exception is accepted only for this narrow non-executing slice.
+
 ## 2026-08-27 — Attempt-three metadata-only checkpoint v3
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

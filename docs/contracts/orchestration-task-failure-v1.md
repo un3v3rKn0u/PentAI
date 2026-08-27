@@ -44,3 +44,20 @@ v2 production while retaining its historical rows; reversing the migration is
 unsupported. Attempt-two failure remains non-authoritative and does not evaluate a
 further retry, consume retry capacity, create attempt three, reopen work, dispatch, or
 perform an external effect.
+
+## Terminal attempt-three v3 compatibility
+
+Failure command and receipt v3 bind only the exact running attempt-three lineage created
+through lease-consumption v3, including activation v2, schedule v2, both consumed retry
+units, TaskCapabilityManifest v4, task-budget reservation v4, trusted worker/fencing
+state, and either the exact checkpoint-v3 head or the explicit all-null absence tuple.
+The closed failure class is copied as coordination metadata only. Because retry policy
+v2 fixes the ceiling at three total attempts, the receipt cannot imply or authorize an
+attempt four; dead-letter projection remains a separate deferred boundary.
+
+Migration 0070 adds a separate immutable v3 ledger and extends storage enforcement only
+with the exact failure-v3 predicate for `running` to `failed`. V1/v2 rows and behavior
+remain unchanged and cannot satisfy v3. Application rollback disables v3 production
+while retaining immutable history; destructive reversal is unsupported. V3 cannot
+retry, reopen, complete, dispatch, contact a worker, invoke providers/plugins, create
+network authority, or perform an effect.
