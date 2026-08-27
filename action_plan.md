@@ -852,8 +852,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     advances plan/task revisions, and storage-gates only the exact `ready` to `running`
     coordination edge. Consumed leases cannot be recovered or reused. Raw tokens never
     enter receipts, storage, audit, or outbox. Running remains non-authoritative; worker
-    contact/dispatch, checkpoints, failure/completion, providers/plugins, and runtime
-    execution remain required.
+    contact/dispatch, failure/completion, providers/plugins, and runtime execution remain
+    required. Attempt-three checkpoint v3 now records only bounded, immutable,
+    monotonically ordered progress for that exact running lineage. Its separate table,
+    predecessor digest, current security-state replay checks, and version-exact storage
+    guard reject mixed versions, forks, rollback, stale workers, stale budgets, and
+    recovery changes. Checkpoints remain non-authoritative and cannot transition,
+    resume, dispatch, fail, complete, retry, or execute work.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
