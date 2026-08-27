@@ -90,6 +90,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   bound to retry activation, v3 readiness records, and lease-consumption v2.
 - `orchestration-task-checkpoint-receipt-v2.schema.json` — immutable retry-lineage
   checkpoint receipt with metadata-only coordination semantics.
+- `orchestration-task-checkpoint-command-v3.schema.json` — exact attempt-three command
+  bound to lease-consumption v3 and the v4 readiness lineage.
+- `orchestration-task-checkpoint-receipt-v3.schema.json` — immutable, predecessor-chained
+  metadata-only checkpoint for the running attempt-three task.
 - `orchestration-task-failure-command-v1.schema.json` — closed original-attempt failure
   command bound to the current lease/checkpoint lineage.
 - `orchestration-task-failure-receipt-v1.schema.json` — immutable original-attempt

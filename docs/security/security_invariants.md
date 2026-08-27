@@ -263,6 +263,13 @@ one transaction. Only its immutable receipt can storage-gate the exact `ready` t
 `running` coordination edge. Raw token material is excluded from all durable and audit
 records, and neither the receipt nor `running` creates execution or network authority.
 
+**Phase 2 attempt-three checkpoint note:** Checkpoint v3 accepts only the exact current
+running task and immutable lease-consumption v3 lineage. Sequence begins at one and each
+later record binds the current predecessor digest; immutable storage and immediate
+transactions reject gaps, rollback, forks, and competing heads. Bounded progress fields
+remain `authority: none` and `execution_enabled: false` and cannot be interpreted as
+worker instructions, resume permission, execution authority, or effect authorization.
+
 **Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
 and canonical-host token in the same immediate transaction as total-request and
 connection capacity. Refill uses persisted policy rates, burst capacity, and a

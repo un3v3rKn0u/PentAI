@@ -547,6 +547,12 @@ Emergency stop revokes grants, closes gateway sessions, stops workers, checkpoin
   holder proof, records an immutable spent-lease receipt, and storage-gates only the
   attempt-three `ready` to `running` coordination transition. It does not contact the
   worker, dispatch, invoke providers/plugins, or create effect authority.
+  Attempt-three checkpoints use a separate version-exact immutable ledger bound to the
+  spent lease-consumption v3 receipt. Strict integer sequence and predecessor-digest
+  chaining maintain one unambiguous head for the running task revision. Only bounded
+  progress metadata is stored; replay revalidates current policy, safety, worker,
+  budget, fence, and recovery state. A checkpoint grants no authority and cannot resume,
+  dispatch, fail, complete, retry, or execute the task.
 - Heartbeats indicate liveness, while idempotency keys prevent duplicate effects.
 - Use exponential backoff with jitter only for classified transient failures.
 - Circuit-break failing AI providers, tools, source sites, and network routes.

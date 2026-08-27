@@ -35,3 +35,22 @@ the existing checkpoint table. V1 rows require no conversion. Application rollba
 disables v2 production while retaining immutable history; migration reversal is
 unsupported. V2 remains metadata-only and cannot fail, complete, retry, resume, lease,
 dispatch, contact a worker, invoke providers/plugins, or create execution authority.
+
+## Attempt-three checkpoint v3
+
+Command and receipt v3 are version-exact to the spent lease-consumption v3 lineage,
+attempt three, activation v2, TaskCapabilityManifest v4, and task-budget reservation v4.
+They use a separate immutable table so v1/v2 rows and head semantics remain unchanged.
+Sequence starts at one for the exact running attempt-three task revision; every later
+record names the current predecessor digest, and progress cannot decrease.
+
+Trusted core revalidates the active policy and assessment, safety state, running task,
+worker registry version, budget account version, manifest and reservation validity,
+lease fence, and recovery generation on creation and exact replay. Migration 0069 adds
+the version-exact table, unique head constraints, immutable triggers, and a storage guard
+that requires the matching lease-consumption v3 receipt. Rollback disables production
+while retaining immutable history; destructive migration reversal is unsupported.
+
+V3 stores bounded progress metadata only, fixes `authority: none` and
+`execution_enabled: false`, and cannot transition state, resume work, dispatch a worker,
+record failure or completion, contact providers/plugins/targets, or create an effect.

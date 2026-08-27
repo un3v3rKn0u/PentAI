@@ -1,5 +1,32 @@
 # Phase 2 slice security reviews
 
+## 2026-08-27 — Attempt-three metadata-only checkpoint v3
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author and reviewer under the `GIT_WORKFLOW.md` exception; this
+does not satisfy independent review or dual control.
+
+**Scope and evidence:** Closed checkpoint command/receipt v3 contracts, trusted-core
+current-lineage validation, additive migration 0069, an immutable version-exact ledger,
+predecessor chaining, bounded progress metadata, hash-chained audit/outbox linkage, and
+synthetic positive, malformed, mixed-version, replay, tampering, concurrency, ordering,
+safety, worker, account, recovery, storage, upgrade, and idempotency tests.
+
+**Security boundaries and default deny:** Only the current running attempt-three task
+created by lease-consumption v3 can checkpoint. Exact policy, activation, attempt,
+manifest-v4, reservation-v4, worker, lease, budget-account, fencing, and recovery
+bindings are revalidated on creation and replay. Missing, stale, mixed, forked,
+cross-scope, privilege-shaped, or changed inputs deny with stable codes or database
+constraints. Records are metadata-only, `authority: none`, and execution-disabled.
+
+**Compatibility, privacy, rollback, and residual risk:** V1/v2 checkpoint behavior is
+unchanged and cannot satisfy v3. Credentials, raw tokens, evidence, prompts, provider or
+plugin output, target content, commands, paths, URLs, free-form diagnostics, and blobs
+are excluded. Rollback disables production while retaining immutable history; migration
+reversal is unsupported. Failure/completion, terminal handling, dispatch, runtime
+composition, providers/plugins, UI, exit demonstrations, and independent review remain
+deferred.
+
 ## 2026-08-27 — Attempt-three lease consumption v3
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The
