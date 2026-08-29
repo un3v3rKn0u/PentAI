@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import unittest
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -9,7 +10,11 @@ from pentai_core.ai_provider_config import (
     ProviderConfigurationError,
     validate_provider_configuration,
 )
-from pentai_core.ai_provider_registry import ProviderRegistryError, build_provider_policy
+from pentai_core.ai_provider_registry import (
+    ProviderRegistryError,
+    build_provider_policy,
+    derive_provider_registry_digests,
+)
 from pentai_policy.document import contract_issues
 
 NOW = datetime(2026, 8, 20, 14, 0, tzinfo=UTC)
@@ -81,6 +86,100 @@ def assert_denied(test: unittest.TestCase, document: dict[str, object], code: st
 
 
 class AIProviderRegistryTests(unittest.TestCase):
+    def test_derives_order_independent_registry_and_provider_digests(self) -> None:
+        original = registry()
+        original_copy = copy.deepcopy(original)
+        reordered = copy.deepcopy(original)
+        providers = reordered["providers"]
+        assert isinstance(providers, list)
+        providers.reverse()
+        for provider in providers:
+            assert isinstance(provider, dict)
+            models = provider["models"]
+            classifications = provider["allowed_input_classifications"]
+            assert isinstance(models, list)
+            assert isinstance(classifications, list)
+            models.reverse()
+            classifications.reverse()
+
+        first = derive_provider_registry_digests(original, now=NOW)
+        second = derive_provider_registry_digests(reordered, now=NOW)
+
+        self.assertEqual(first.registry_digest, second.registry_digest)
+        self.assertEqual(first.providers_digest, second.providers_digest)
+        self.assertEqual(first.normalized_registry_json, second.normalized_registry_json)
+        self.assertEqual(first.normalized_providers_json, second.normalized_providers_json)
+        normalized_registry = json.loads(first.normalized_registry_json)
+        normalized_providers = normalized_registry["providers"]
+        self.assertEqual(
+            [provider["provider_id"] for provider in normalized_providers],
+            ["local-approved", "remote-approved"],
+        )
+        for provider in normalized_providers:
+            self.assertEqual(provider["models"], sorted(provider["models"]))
+            self.assertEqual(
+                provider["allowed_input_classifications"],
+                sorted(provider["allowed_input_classifications"]),
+            )
+        self.assertEqual(original, original_copy)
+
+    def test_registry_and_provider_digests_bind_distinct_semantics(self) -> None:
+        base = registry()
+        baseline = derive_provider_registry_digests(base, now=NOW)
+
+        ceiling_change = copy.deepcopy(base)
+        ceilings = ceiling_change["budget_ceilings"]
+        assert isinstance(ceilings, dict)
+        ceilings["max_requests"] = 19
+        ceiling_result = derive_provider_registry_digests(ceiling_change, now=NOW)
+        self.assertNotEqual(baseline.registry_digest, ceiling_result.registry_digest)
+        self.assertEqual(baseline.providers_digest, ceiling_result.providers_digest)
+
+        provider_change = copy.deepcopy(base)
+        providers = provider_change["providers"]
+        assert isinstance(providers, list)
+        provider = providers[0]
+        assert isinstance(provider, dict)
+        provider["models"] = ["remote-model-v2"]
+        provider_result = derive_provider_registry_digests(provider_change, now=NOW)
+        self.assertNotEqual(baseline.registry_digest, provider_result.registry_digest)
+        self.assertNotEqual(baseline.providers_digest, provider_result.providers_digest)
+
+        remote_policy_change = copy.deepcopy(base)
+        remote_policy_change["remote_providers_enabled"] = False
+        remote_result = derive_provider_registry_digests(remote_policy_change, now=NOW)
+        self.assertNotEqual(baseline.registry_digest, remote_result.registry_digest)
+        self.assertEqual(baseline.providers_digest, remote_result.providers_digest)
+
+    def test_digest_derivation_preserves_registry_default_denial(self) -> None:
+        invalid_documents: list[tuple[dict[str, object], str]] = []
+        future = registry()
+        future["configured_at"] = (NOW + timedelta(seconds=1)).isoformat()
+        invalid_documents.append((future, "AI_PROVIDER_REGISTRY_STALE"))
+        all_disabled = registry()
+        providers = all_disabled["providers"]
+        assert isinstance(providers, list)
+        for provider in providers:
+            assert isinstance(provider, dict)
+            provider["state"] = "disabled"
+        invalid_documents.append((all_disabled, "AI_PROVIDER_REGISTRY_EMPTY"))
+        unsafe = registry()
+        unsafe_providers = unsafe["providers"]
+        assert isinstance(unsafe_providers, list)
+        unsafe_provider = unsafe_providers[0]
+        assert isinstance(unsafe_provider, dict)
+        unsafe_provider["allowed_input_classifications"] = ["secret"]
+        invalid_documents.append((unsafe, "AI_PROVIDER_REGISTRY_PRIVACY_DENIED"))
+        enabled = registry()
+        enabled["execution_enabled"] = True
+        invalid_documents.append((enabled, "AI_PROVIDER_REGISTRY_MALFORMED"))
+
+        for document, code in invalid_documents:
+            with self.subTest(code=code):
+                with self.assertRaises(ProviderRegistryError) as raised:
+                    derive_provider_registry_digests(document, now=NOW)
+                self.assertEqual(raised.exception.code, code)
+
     def test_compiles_exact_immutable_policy_and_composes_with_configuration(self) -> None:
         document = registry()
         self.assertEqual(contract_issues(document, "ai-provider-registry-v1.schema.json"), ())

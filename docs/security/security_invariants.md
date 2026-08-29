@@ -343,8 +343,10 @@ local desktop principal and per-process authenticated session. Migration 0082 de
 production and mutation, so neither shape can create, activate, revoke, or supersede a
 snapshot. The policy/approval signer is not widened to registry material. Registry
 documents, signatures, credentials, secret references, provider content, diagnostics,
-and arbitrary payloads remain excluded; canonical normalization, monotonic revision
-enforcement, source governance, and runtime composition remain required.
+and arbitrary payloads remain excluded. Pure trusted-core normalization now validates
+before deriving order-independent canonical registry and provider-list hashes and cannot
+persist or activate state. Monotonic revision enforcement, source governance, producer
+composition, and runtime composition remain required.
 
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in

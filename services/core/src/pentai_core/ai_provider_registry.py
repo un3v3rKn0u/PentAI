@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import copy
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from pentai_policy import canonical_json, content_hash
 from pentai_policy.document import contract_issues, parse_time
 
 from pentai_core.ai_provider_config import ProviderBudgetCeilings, ProviderPolicy
@@ -16,6 +19,16 @@ class ProviderRegistryError(ValueError):
 
 _MAX_REGISTRY_LIFETIME = timedelta(days=30)
 _FORBIDDEN_MODEL_INPUTS = frozenset({"secret", "restricted_raw_evidence"})
+
+
+@dataclass(frozen=True)
+class ProviderRegistryDigests:
+    """Canonical inert registry provenance for a future snapshot producer."""
+
+    normalized_registry_json: str
+    normalized_providers_json: str
+    registry_digest: str
+    providers_digest: str
 
 
 def build_provider_policy(
@@ -85,4 +98,33 @@ def build_provider_policy(
         max_configuration_lifetime=min(
             _MAX_REGISTRY_LIFETIME, expires_at - configured_at
         ),
+    )
+
+
+def _normalize_provider_registry(
+    document: dict[str, Any], *, now: datetime | None = None
+) -> dict[str, Any]:
+    """Return one validated order-independent registry representation."""
+    build_provider_policy(document, now=now)
+    normalized = copy.deepcopy(document)
+    providers = normalized["providers"]
+    for provider in providers:
+        provider["models"] = sorted(provider["models"])
+        provider["allowed_input_classifications"] = sorted(
+            provider["allowed_input_classifications"]
+        )
+    normalized["providers"] = sorted(providers, key=lambda provider: provider["provider_id"])
+    return normalized
+
+
+def derive_provider_registry_digests(
+    document: dict[str, Any], *, now: datetime | None = None
+) -> ProviderRegistryDigests:
+    """Derive canonical SHA-256 registry and provider-list provenance."""
+    normalized = _normalize_provider_registry(document, now=now)
+    return ProviderRegistryDigests(
+        normalized_registry_json=canonical_json(normalized),
+        normalized_providers_json=canonical_json(normalized["providers"]),
+        registry_digest="sha256:" + content_hash(normalized),
+        providers_digest="sha256:" + content_hash(normalized["providers"]),
     )
