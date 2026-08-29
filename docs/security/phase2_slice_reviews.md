@@ -1,5 +1,37 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Authoritative dead-letter state representation
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review.
+
+**Scope and evidence:** Migration 0074's verified reconstruction of only
+`orchestration_tasks`; complete synthetic row, column, constraint, key, foreign-key,
+index, trigger, dependent-reference, interruption, integrity, upgrade, and idempotency
+tests; ADR and compatibility updates; and review of all state readers and transition
+guards.
+
+**Security boundaries and default deny:** `orchestration_tasks.state` remains the sole
+authoritative source. The migration adds only representability of `dead_letter`. A new
+insert guard denies direct creation, the unchanged version fence denies
+`failed → dead_letter`, the general transition service cannot request it, and the PR
+#227 terminal-consumption producer remains deny-all. No task/plan row, revision, event,
+queue item, notification, authority, or effect is created.
+
+**Compatibility, privacy, migration, and rollback:** Plan-graph v1 is not silently
+widened because no reachable runtime row can yet contain the new state; an additive read
+contract is required before a later consumer enables it. The rebuild runs atomically
+under ADR 0006 and verifies integrity and foreign keys before commit. Synthetic fixtures
+contain no secrets, tokens, targets, evidence, prompts, diagnostics, or external data.
+Downgrade is unsupported once a future consumer persists the new value.
+
+**Findings, limitations, and residual risk:** Terminal consumption, its versioned runtime
+read contract and exact transition predicate, queueing, operator review, completion,
+dispatch, runtime composition, providers/plugins, UI, exit demonstrations, and
+independent review remain deferred. The non-independent governance risk is accepted only
+for this inert state-representation prerequisite.
+
 ## 2026-08-29 — Verified SQLite table-rebuild protocol
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The
