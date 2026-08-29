@@ -293,10 +293,10 @@ state deny rather than being reclassified.
 **Phase 2 terminal-consumption prerequisite note:** The additive v1 command/receipt
 contracts and persistence guard bind only the exact current terminal-disposition v1
 decision and failed task revision. They create no producer and cannot change task or
-plan state. The existing task-table constraint remains authoritative until a separately
-reviewed migration or versioned-state strategy can represent `dead_letter` without
-losing rows, foreign keys, triggers, or version fencing. Queueing, operator review,
-dispatch, authority, and effects remain disabled.
+plan state. Migration 0074 makes `dead_letter` representable but unreachable, and the
+version-exact task-snapshot v2 reader requires exact terminal-consumption lineage before
+returning that state. It cannot create, translate, or advance state. Queueing, operator
+review, dispatch, authority, and effects remain disabled.
 
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in
@@ -306,6 +306,13 @@ the authoritative task table and all dependent schema while adding only the repr
 `dead_letter` value. Insert and version guards keep it unreachable, so the migration
 creates no task state, transition, terminal-consumption record, queue, authority, or
 effect.
+
+**Phase 2 terminal snapshot note:** Task snapshot v2 reads one exact task only from the
+authoritative task table and binds its plan/task revisions. Non-terminal states require
+no terminal lineage; `dead_letter` requires one contract-valid, hash-verified immutable
+terminal-consumption receipt for the same scope and resulting revision. Missing,
+ambiguous, malformed, tampered, mixed-version, or cross-scope lineage denies. Reading
+creates no state, audit/outbox record, queue work, authority, or effect.
 
 **Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
 and canonical-host token in the same immediate transaction as total-request and

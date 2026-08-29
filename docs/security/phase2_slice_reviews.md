@@ -1,5 +1,34 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Version-exact orchestration task snapshot v2
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review.
+
+**Scope and evidence:** Additive task-snapshot v2 contract, read-only trusted-core
+serializer, exact terminal-consumption lineage validation, v1 compatibility
+documentation, synthetic contract/service tests, and complete authorization and privacy
+boundary review.
+
+**Security boundaries and default deny:** State is read only from the authoritative
+task table. `dead_letter` requires one matching terminal-consumption receipt with a valid
+contract, stored hash, self-digest, decision identity/digest, scope, and revisions.
+Missing, ambiguous, malformed, tampered, mixed-version, and cross-scope lineage denies.
+The reader performs no write, transition, audit/outbox append, recovery action, queue
+operation, notification, dispatch, authority creation, or effect.
+
+**Compatibility, privacy, and rollback:** Plan-graph v1 remains unchanged. The new
+contract is a separate opt-in read model; rollback removes only the reader and schema and
+changes no database. Snapshots exclude objectives, input references, evidence, prompts,
+diagnostics, secrets, tokens, targets, commands, paths, URLs, and provider/plugin output.
+
+**Findings, limitations, and residual risk:** Terminal consumption and its exact
+`failed → dead_letter` predicate remain deferred, as do queueing, operator review,
+completion, dispatch, runtime composition, providers/plugins, UI, exit demonstrations,
+and independent review. The non-independent governance risk is accepted only for this
+read-only prerequisite.
+
 ## 2026-08-29 — Authoritative dead-letter state representation
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

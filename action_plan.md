@@ -885,8 +885,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Migration 0074 uses it to preserve the complete authoritative task table and
     dependent schema while adding only a representable `dead_letter` value. Dedicated
     insert and unchanged version guards keep the value unreachable; plan state and all
-    existing rows/revisions remain unchanged. An additive runtime read contract,
-    terminal consumer and exact transition predicate, dead-letter queueing, and all
+    existing rows/revisions remain unchanged. Additive task snapshot v2 now reads one
+    exact authoritative task and requires digest-verified terminal-consumption lineage
+    before representing `dead_letter`, without widening plan-graph v1 or writing state.
+    The terminal consumer and exact transition predicate, dead-letter queueing, and all
     broader runtime behavior remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves

@@ -112,6 +112,139 @@ def test_graph_is_durable_deterministic_and_non_authoritative(tmp_path: Path) ->
     )
 
 
+def test_task_snapshot_v2_reads_authoritative_state_without_writes(tmp_path: Path) -> None:
+    planner = service(tmp_path)
+    planner.create(graph())
+    with closing(sqlite3.connect(planner.database_path)) as connection:
+        before = connection.total_changes
+    snapshot = planner.get_task_snapshot_v2(PLAN, FIRST, now=NOW)
+    with closing(sqlite3.connect(planner.database_path)) as connection:
+        after = connection.total_changes
+    assert snapshot == {
+        "schema_version": "2.0.0",
+        "assessment_id": ASSESSMENT,
+        "plan_id": PLAN,
+        "plan_revision": 1,
+        "plan_state": "active",
+        "task_id": FIRST,
+        "task_revision": 1,
+        "task_type": "scope",
+        "task_state": "ready",
+        "terminal_lineage": None,
+        "observed_at": NOW.isoformat().replace("+00:00", "Z"),
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    assert before == after == 0
+    assert contract_issues(snapshot, "orchestration-task-snapshot-v2.schema.json") == ()
+    assert contract_issues(snapshot, "orchestration-plan-graph-v1.schema.json")
+
+
+def test_task_snapshot_v2_contract_requires_terminal_lineage_for_dead_letter() -> None:
+    snapshot = {
+        "schema_version": "2.0.0",
+        "assessment_id": ASSESSMENT,
+        "plan_id": PLAN,
+        "plan_revision": 11,
+        "plan_state": "failed",
+        "task_id": FIRST,
+        "task_revision": 9,
+        "task_type": "validation",
+        "task_state": "dead_letter",
+        "terminal_lineage": {
+            "consumption_id": "55555555-5555-4555-8555-555555555555",
+            "consumption_digest": "sha256:" + "a" * 64,
+            "terminal_decision_id": "66666666-6666-4666-8666-666666666666",
+            "terminal_decision_digest": "sha256:" + "b" * 64,
+            "outcome": "dead_letter_eligible",
+            "reason_code": "retry_ceiling_exhausted",
+        },
+        "observed_at": NOW.isoformat(),
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    assert contract_issues(snapshot, "orchestration-task-snapshot-v2.schema.json") == ()
+    for field in ("terminal_lineage", "authority", "execution_enabled"):
+        invalid = copy.deepcopy(snapshot)
+        invalid[field] = None if field == "terminal_lineage" else True
+        assert contract_issues(invalid, "orchestration-task-snapshot-v2.schema.json")
+
+
+def test_task_snapshot_v2_denies_malformed_missing_and_unbacked_terminal_state(
+    tmp_path: Path,
+) -> None:
+    planner = service(tmp_path)
+    planner.create(graph())
+    cases = (
+        ("not-a-uuid", FIRST, "ORCHESTRATION_SNAPSHOT_MALFORMED"),
+        (PLAN, "not-a-uuid", "ORCHESTRATION_SNAPSHOT_MALFORMED"),
+        (PLAN, str(uuid4()), "ORCHESTRATION_SNAPSHOT_NOT_FOUND"),
+        (str(uuid4()), FIRST, "ORCHESTRATION_SNAPSHOT_NOT_FOUND"),
+    )
+    for plan_id, task_id, code in cases:
+        with pytest.raises(OrchestrationError) as raised:
+            planner.get_task_snapshot_v2(plan_id, task_id, now=NOW)
+        assert raised.value.code == code
+
+    with closing(sqlite3.connect(planner.database_path)) as connection, connection:
+        connection.execute("DROP TRIGGER orchestration_tasks_version_fenced")
+        connection.execute(
+            "UPDATE orchestration_tasks SET state='dead_letter',revision=2 WHERE task_id=?",
+            (FIRST,),
+        )
+    with pytest.raises(OrchestrationError) as missing:
+        planner.get_task_snapshot_v2(PLAN, FIRST, now=NOW)
+    assert missing.value.code == "ORCHESTRATION_SNAPSHOT_TERMINAL_LINEAGE_MISSING"
+
+
+def test_task_snapshot_v2_denies_tampered_mixed_version_terminal_lineage(
+    tmp_path: Path,
+) -> None:
+    planner = service(tmp_path)
+    planner.create(graph())
+    with closing(sqlite3.connect(planner.database_path)) as connection, connection:
+        connection.execute("PRAGMA foreign_keys=OFF")
+        connection.execute("DROP TRIGGER orchestration_tasks_version_fenced")
+        connection.execute("DROP TRIGGER orchestration_terminal_consumptions_producer_disabled")
+        connection.execute("DROP TRIGGER orchestration_terminal_consumptions_binding_valid")
+        connection.execute(
+            "UPDATE orchestration_tasks SET state='dead_letter',revision=2 WHERE task_id=?",
+            (FIRST,),
+        )
+        connection.execute(
+            """INSERT INTO orchestration_terminal_consumptions(
+            consumption_id,command_id,command_digest,assessment_id,plan_id,plan_revision,
+            task_id,expected_task_revision,resulting_task_revision,terminal_decision_id,
+            terminal_decision_digest,receipt_json,receipt_hash,consumed_at,authority,
+            execution_enabled) VALUES(
+            '55555555-5555-4555-8555-555555555555',
+            '66666666-6666-4666-8666-666666666666',?,?,?,1,?,1,2,
+            '77777777-7777-4777-8777-777777777777',?,?,?,?,'none',0)""",
+            (
+                "sha256:" + "a" * 64,
+                ASSESSMENT,
+                PLAN,
+                FIRST,
+                "sha256:" + "b" * 64,
+                '{"schema_version":"9.0.0"}',
+                "c" * 64,
+                NOW.isoformat(),
+            ),
+        )
+    with pytest.raises(OrchestrationError) as invalid:
+        planner.get_task_snapshot_v2(PLAN, FIRST, now=NOW)
+    assert invalid.value.code == "ORCHESTRATION_SNAPSHOT_TERMINAL_LINEAGE_INVALID"
+
+
+def test_task_snapshot_v2_leaves_v1_creation_and_read_contract_unchanged(tmp_path: Path) -> None:
+    planner = service(tmp_path)
+    created = planner.create(graph())
+    loaded = planner.get(PLAN)
+    assert created == loaded
+    assert created["schema_version"] == "1.0.0"
+    assert contract_issues(created, "orchestration-plan-graph-v1.schema.json") == ()
+
+
 def test_graph_rejects_malformed_duplicate_missing_cycle_and_conflict(tmp_path: Path) -> None:
     planner = service(tmp_path)
     malformed = graph()
