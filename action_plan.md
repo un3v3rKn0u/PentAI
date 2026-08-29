@@ -879,8 +879,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     later consumer. The existing task-state SQLite constraint still excludes
     `dead_letter`; no task transition or consumption producer is implemented until a
     reviewed table-reconstruction or authoritative versioned-state strategy preserves
-    all foreign keys, triggers, rows, and compatibility. Dead-letter transition/queueing
-    and all broader runtime behavior remain required.
+    all foreign keys, triggers, rows, and compatibility. An explicit opt-in SQLite table-
+    rebuild protocol now provides transaction-bound foreign-key handling, legacy rename
+    semantics, pre-commit integrity/foreign-key verification, and rollback on mismatch;
+    it does not reconstruct the task table or enable a transition. The exact task-state
+    migration, dead-letter transition/queueing, and all broader runtime behavior remain
+    required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

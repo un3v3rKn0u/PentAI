@@ -7,7 +7,7 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
-from pentai_core.migrate import migrate
+from pentai_core.migrate import MigrationIntegrityError, migrate
 
 
 class MigrationTests(unittest.TestCase):
@@ -323,6 +323,144 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("stable", tables)
             self.assertNotIn("should_rollback", tables)
             self.assertEqual(versions, {"0001"})
+
+    def test_opt_in_table_rebuild_preserves_rows_references_indexes_and_triggers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            (migrations / "0001_valid.sql").write_text(
+                """
+                CREATE TABLE tasks(id INTEGER PRIMARY KEY,state TEXT NOT NULL
+                  CHECK(state IN ('failed')));
+                CREATE TABLE children(id INTEGER PRIMARY KEY,task_id INTEGER NOT NULL
+                  REFERENCES tasks(id));
+                CREATE INDEX children_task_id ON children(task_id);
+                CREATE TRIGGER children_task_valid BEFORE INSERT ON children
+                WHEN NOT EXISTS(SELECT 1 FROM tasks WHERE id=NEW.task_id)
+                BEGIN SELECT RAISE(ABORT,'missing task'); END;
+                INSERT INTO tasks VALUES (1,'failed');
+                INSERT INTO children VALUES (1,1);
+                """,
+                encoding="utf-8",
+            )
+            (migrations / "0002_tasks_table_rebuild.sql").write_text(
+                """-- pentai: table-rebuild
+                ALTER TABLE tasks RENAME TO tasks_old;
+                CREATE TABLE tasks(id INTEGER PRIMARY KEY,state TEXT NOT NULL
+                  CHECK(state IN ('failed','dead_letter')));
+                INSERT INTO tasks SELECT * FROM tasks_old;
+                DROP TABLE tasks_old;
+                """,
+                encoding="utf-8",
+            )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0001", "0002"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection, connection:
+                connection.execute("PRAGMA foreign_keys=ON")
+                self.assertEqual(
+                    connection.execute("SELECT * FROM tasks").fetchall(), [(1, "failed")]
+                )
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+                child_fk = connection.execute("PRAGMA foreign_key_list(children)").fetchone()
+                self.assertEqual(child_fk[2], "tasks")
+                objects = {
+                    (row[0], row[1])
+                    for row in connection.execute(
+                        "SELECT type,name FROM sqlite_master WHERE name IN "
+                        "('children_task_id','children_task_valid')"
+                    )
+                }
+                self.assertEqual(
+                    objects,
+                    {("index", "children_task_id"), ("trigger", "children_task_valid")},
+                )
+                with self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute("INSERT INTO children VALUES (2,99)")
+
+    def test_table_rebuild_integrity_failure_rolls_back_and_restores_enforcement(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            (migrations / "0001_valid.sql").write_text(
+                """
+                CREATE TABLE parents(id INTEGER PRIMARY KEY);
+                CREATE TABLE children(id INTEGER PRIMARY KEY,parent_id INTEGER NOT NULL
+                  REFERENCES parents(id));
+                INSERT INTO parents VALUES (1);
+                """,
+                encoding="utf-8",
+            )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0001"])
+            (migrations / "0002_children_table_rebuild.sql").write_text(
+                """-- pentai: table-rebuild
+                INSERT INTO children VALUES (1,999);
+                """,
+                encoding="utf-8",
+            )
+            with (
+                patch("pentai_core.migrate.MIGRATIONS_DIR", migrations),
+                self.assertRaises(MigrationIntegrityError),
+            ):
+                migrate(database)
+            with closing(sqlite3.connect(database)) as connection, connection:
+                connection.execute("PRAGMA foreign_keys=ON")
+                self.assertEqual(connection.execute("SELECT * FROM children").fetchall(), [])
+                self.assertEqual(
+                    connection.execute("SELECT version FROM schema_migrations").fetchall(),
+                    [("0001",)],
+                )
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+                with self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute("INSERT INTO children VALUES (1,999)")
+
+    def test_table_rebuild_rejects_controls_and_interrupted_sql_without_version(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            (migrations / "0001_valid.sql").write_text(
+                "CREATE TABLE stable(id INTEGER PRIMARY KEY); INSERT INTO stable VALUES(1);",
+                encoding="utf-8",
+            )
+            rebuild = migrations / "0002_stable_table_rebuild.sql"
+            rebuild.write_text(
+                """-- pentai: table-rebuild
+                PRAGMA foreign_keys=OFF;
+                """,
+                encoding="utf-8",
+            )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                with self.assertRaises(MigrationIntegrityError):
+                    migrate(database)
+            rebuild.write_text(
+                """-- pentai: table-rebuild
+                CREATE TABLE interrupted(id INTEGER PRIMARY KEY);
+                THIS IS NOT VALID SQL;
+                """,
+                encoding="utf-8",
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                with self.assertRaises(sqlite3.OperationalError):
+                    migrate(database)
+            with closing(sqlite3.connect(database)) as connection:
+                self.assertEqual(connection.execute("SELECT * FROM stable").fetchall(), [(1,)])
+                self.assertIsNone(
+                    connection.execute(
+                        "SELECT 1 FROM sqlite_master WHERE name='interrupted'"
+                    ).fetchone()
+                )
+                self.assertEqual(
+                    connection.execute("SELECT version FROM schema_migrations").fetchall(),
+                    [("0001",)],
+                )
 
     def test_existing_authorization_database_receives_immutability_upgrade(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
