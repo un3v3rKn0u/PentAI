@@ -89,6 +89,7 @@ class MigrationTests(unittest.TestCase):
                     "0070",
                     "0071",
                     "0072",
+                    "0073",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -1503,6 +1504,52 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("orchestration_terminal_dispositions_binding_valid", triggers)
             self.assertIn("orchestration_terminal_dispositions_immutable", triggers)
             self.assertIn("orchestration_terminal_dispositions_no_delete", triggers)
+
+    def test_terminal_consumption_prerequisite_upgrades_additively(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0073_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = repository_migrations / "0073_terminal_consumption_prerequisite.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0073"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                task_sql = connection.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' "
+                    "AND name='orchestration_tasks'"
+                ).fetchone()[0]
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+            self.assertIn("orchestration_terminal_consumptions", tables)
+            self.assertIn("orchestration_terminal_consumptions_binding_valid", triggers)
+            self.assertIn("orchestration_terminal_consumptions_producer_disabled", triggers)
+            self.assertIn("orchestration_terminal_consumptions_immutable", triggers)
+            self.assertIn("orchestration_terminal_consumptions_no_delete", triggers)
+            self.assertNotIn("dead_letter", task_sql)
 
 
 if __name__ == "__main__":

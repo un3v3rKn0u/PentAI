@@ -180,3 +180,70 @@ def test_storage_guards_are_immutable_and_version_exact(tmp_path: Path) -> None:
             "SELECT COUNT(*) FROM orchestration_terminal_dispositions WHERE decision_id=?",
             (decision["decision_id"],),
         ).fetchone()[0] == 1
+
+
+def test_terminal_consumption_prerequisite_is_closed_and_storage_guarded(
+    tmp_path: Path,
+) -> None:
+    service, command = setup(tmp_path)
+    decision = service.decide(command, now=NOW + timedelta(seconds=49))
+    consumption_command = {
+        "schema_version": "1.0.0",
+        "command_id": str(uuid4()),
+        "assessment_id": decision["assessment_id"],
+        "plan_id": decision["plan_id"],
+        "expected_plan_revision": decision["plan_revision"],
+        "task_id": decision["task_id"],
+        "expected_task_revision": decision["task_revision"],
+        "terminal_decision_id": decision["decision_id"],
+        "terminal_decision_digest": decision["decision_digest"],
+        "purpose": "consume_attempt_three_terminal_disposition",
+        "requested_at": (NOW + timedelta(seconds=50)).isoformat(),
+        "expires_at": (NOW + timedelta(minutes=2)).isoformat(),
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    assert contract_issues(
+        consumption_command, "orchestration-terminal-consumption-command-v1.schema.json"
+    ) == ()
+    forbidden = copy.deepcopy(consumption_command)
+    forbidden["queue"] = "synthetic"
+    assert contract_issues(
+        forbidden, "orchestration-terminal-consumption-command-v1.schema.json"
+    )
+
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        before = connection.execute(
+            "SELECT state,revision FROM orchestration_tasks WHERE task_id=?",
+            (decision["task_id"],),
+        ).fetchone()
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """INSERT INTO orchestration_terminal_consumptions(
+                consumption_id,command_id,command_digest,assessment_id,plan_id,
+                plan_revision,task_id,expected_task_revision,resulting_task_revision,
+                terminal_decision_id,terminal_decision_digest,receipt_json,receipt_hash,
+                consumed_at,authority,execution_enabled)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'none',0)""",
+                (
+                    str(uuid4()),
+                    consumption_command["command_id"],
+                    "sha256:" + "0" * 64,
+                    decision["assessment_id"],
+                    decision["plan_id"],
+                    decision["plan_revision"],
+                    decision["task_id"],
+                    decision["task_revision"],
+                    decision["task_revision"] + 1,
+                    decision["decision_id"],
+                    decision["decision_digest"],
+                    "{}",
+                    "0" * 64,
+                    consumption_command["requested_at"],
+                ),
+            )
+        after = connection.execute(
+            "SELECT state,revision FROM orchestration_tasks WHERE task_id=?",
+            (decision["task_id"],),
+        ).fetchone()
+        assert after == before

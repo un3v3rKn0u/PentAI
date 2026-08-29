@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-terminal-consumption-receipt-v1.schema.json",
+  "title": "PentAI OrchestrationTerminalConsumptionReceipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "consumption_id", "command_id", "command_digest", "assessment_id", "plan_id", "plan_revision", "task_id", "expected_task_revision", "resulting_task_revision", "resulting_task_state", "terminal_decision_id", "terminal_decision_digest", "outcome", "reason_code", "queue_enabled", "operator_review_enabled", "purpose", "consumed_at", "receipt_digest", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "consumption_id": {"type": "string", "format": "uuid"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "command_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "task_id": {"type": "string", "format": "uuid"},
+    "expected_task_revision": {"type": "integer", "minimum": 1, "maximum": 2147483646},
+    "resulting_task_revision": {"type": "integer", "minimum": 2, "maximum": 2147483647},
+    "resulting_task_state": {"const": "dead_letter"},
+    "terminal_decision_id": {"type": "string", "format": "uuid"},
+    "terminal_decision_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "outcome": {"const": "dead_letter_eligible"},
+    "reason_code": {"const": "retry_ceiling_exhausted"},
+    "queue_enabled": {"const": false},
+    "operator_review_enabled": {"const": false},
+    "purpose": {"const": "consume_attempt_three_terminal_disposition"},
+    "consumed_at": {"type": "string", "format": "date-time"},
+    "receipt_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}
