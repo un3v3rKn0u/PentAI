@@ -10,14 +10,15 @@ The table has an explicit deny-all insert trigger: no caller, including one that
 construct a contract-valid row, can turn the prerequisite into a consumption result.
 The existing `orchestration_tasks.state` SQLite constraint does not contain
 `dead_letter`. Safely widening it would require reconstruction of a table referenced by
-many immutable security-lineage tables. The current migration policy and runner do not
-define or verify that reconstruction. This slice therefore does not insert consumption
-rows, revise a task, or claim that the `failed → dead_letter` transition exists.
+many immutable security-lineage tables. ADR 0006 now defines an explicit verified
+rebuild protocol, but no task-table reconstruction has yet inventoried and preserved the
+complete production schema. This slice therefore does not insert consumption rows,
+revise a task, or claim that the `failed → dead_letter` transition exists.
 
 The receipt contract fixes queue and operator-review behavior to false and fixes
 `authority: none` and `execution_enabled: false`. A future slice must either establish a
-reviewed, data/trigger/foreign-key-preserving task-table migration protocol or adopt an
-equally authoritative versioned task-state representation, then implement the atomic
+reviewed, data/trigger/foreign-key-preserving task-table migration using ADR 0006, then
+implement the atomic
 consumer, audit/outbox linkage, replay validation, and exact storage-enforced state
 change. Queue insertion, notification, dispatch, provider/plugin use, and every external
 effect remain out of scope.

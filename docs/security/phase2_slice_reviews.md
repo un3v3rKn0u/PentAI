@@ -1,5 +1,36 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Verified SQLite table-rebuild protocol
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review.
+
+**Scope and evidence:** Migration-runner transaction handling, an explicit rebuild
+directive and filename rule, forbidden migration controls, pre-commit SQLite integrity
+and foreign-key verification, rollback/restoration behavior, ADR 0006, compatibility
+documentation, and synthetic row/reference/index/trigger preservation and failure tests.
+
+**Security boundaries and default deny:** The protocol changes no schema itself. Only an
+explicit `_table_rebuild.sql` migration with the exact first-line directive can enter
+the controlled mode. Rebuild SQL cannot control foreign-key enforcement, use
+`writable_schema`, or commit itself. Integrity or foreign-key mismatch denies before the
+migration version commits, and enforcement is restored after success or failure.
+
+**Compatibility, privacy, migration, and rollback:** Ordinary migrations retain their
+existing behavior. No task rows, contracts, state sets, triggers, indexes, or foreign
+keys are changed by this slice. Tests use synthetic integer records and contain no
+secrets, evidence, targets, prompts, tokens, diagnostics, or external data. Reverting
+the code removes future rebuild support; no database downgrade is required because this
+slice applies no migration.
+
+**Findings, limitations, and residual risk:** The exact orchestration-task reconstruction
+and its complete production-schema inventory remain deferred. So do terminal
+consumption, `failed → dead_letter`, queueing, operator review, completion, dispatch,
+runtime composition, providers/plugins, UI, exit demonstrations, and independent
+review. The non-independent governance risk is accepted only for this migration-safety
+prerequisite.
+
 ## 2026-08-29 — Terminal-consumption contracts and storage prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The
