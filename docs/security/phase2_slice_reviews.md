@@ -1,5 +1,37 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Attempt-three dead-letter registration v1
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review.
+
+**Scope and evidence:** Closed registration contracts, migration 0076 immutable storage
+guards, trusted-core current-lineage validation, deterministic identity, replay and
+concurrency behavior, metadata-only audit/outbox linkage, migration tests, synthetic
+positive/default-deny tests, and authorization/privacy boundary review.
+
+**Security boundaries and default deny:** Only the exact current attempt-three terminal-
+consumption receipt and authoritative dead-letter task revision can produce one record.
+Malformed or mixed versions, caller queue semantics, changed replay, competing
+registration, tampered or cross-scope lineage, stale security state, cancellation,
+safety pause, worker revocation, fencing changes, and recovery advancement deny. Task
+and plan state remain unchanged.
+
+**Compatibility, privacy, migration, and rollback:** The older workflow queue and all
+historical orchestration contracts remain unchanged and cannot satisfy this boundary.
+Migration 0076 is additive; application rollback disables new registrations while
+retaining immutable history, and destructive migration reversal is unsupported. Records
+contain bounded identifiers, hashes, closed enums, revisions, and timestamps only—no
+secrets, tokens, targets, evidence, prompts, diagnostics, queue/operator payloads, or
+provider/plugin output.
+
+**Findings, limitations, and residual risk:** Delivery, claiming, acknowledgement,
+retry/deletion/cleanup, operator workflows, completion, dispatch, runtime composition,
+providers/plugins, UI, exit demonstrations, and independent review remain deferred.
+The non-independent governance risk is accepted only for this non-executing metadata
+registration boundary.
+
 ## 2026-08-29 — Attempt-three terminal-disposition consumption v1
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

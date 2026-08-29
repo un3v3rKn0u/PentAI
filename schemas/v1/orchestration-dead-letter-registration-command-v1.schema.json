@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-dead-letter-registration-command-v1.schema.json",
+  "title": "PentAI OrchestrationDeadLetterRegistrationCommand v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command_id", "assessment_id", "plan_id", "expected_plan_revision", "task_id", "expected_task_revision", "terminal_consumption_id", "terminal_consumption_digest", "purpose", "requested_at", "expires_at", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "expected_plan_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "task_id": {"type": "string", "format": "uuid"},
+    "expected_task_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "terminal_consumption_id": {"type": "string", "format": "uuid"},
+    "terminal_consumption_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "purpose": {"const": "register_attempt_three_dead_letter"},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

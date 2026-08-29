@@ -297,6 +297,13 @@ storage permits only `failed → dead_letter`. Plan state is unchanged. Task sna
 requires that exact receipt before returning the new state. Queueing, operator review,
 dispatch, authority, and effects remain disabled.
 
+**Phase 2 dead-letter registration note:** Registration v1 accepts only the exact current
+terminal-consumption receipt and authoritative dead-letter task revision. It revalidates
+the complete attempt-three security lineage and appends immutable metadata without
+changing task or plan state. Delivery, claim, acknowledgement, retry, deletion, cleanup,
+operator review, dispatch, authority, and effects remain disabled. The older workflow
+task lifecycle is a separate subsystem and cannot satisfy this boundary.
+
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in
 one immediate transaction. Integrity and foreign-key verification must pass before its

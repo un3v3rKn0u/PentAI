@@ -92,6 +92,7 @@ class MigrationTests(unittest.TestCase):
                     "0073",
                     "0074",
                     "0075",
+                    "0076",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -1856,7 +1857,7 @@ class MigrationTests(unittest.TestCase):
                         'none',0)"""
                     )
 
-    def test_terminal_prerequisites_upgrade_from_0072_through_consumer(self) -> None:
+    def test_terminal_prerequisites_upgrade_from_0072_through_registration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             migrations = root / "migrations"
@@ -1875,13 +1876,14 @@ class MigrationTests(unittest.TestCase):
                 "0073_terminal_consumption_prerequisite.sql",
                 "0074_orchestration_tasks_table_rebuild.sql",
                 "0075_terminal_consumption.sql",
+                "0076_dead_letter_registration.sql",
             ):
                 (migrations / name).write_text(
                     (repository_migrations / name).read_text(encoding="utf-8"),
                     encoding="utf-8",
                 )
             with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
-                self.assertEqual(migrate(database), ["0073", "0074", "0075"])
+                self.assertEqual(migrate(database), ["0073", "0074", "0075", "0076"])
                 self.assertEqual(migrate(database), [])
             with closing(sqlite3.connect(database)) as connection:
                 self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
@@ -1901,6 +1903,15 @@ class MigrationTests(unittest.TestCase):
                     "orchestration_terminal_consumptions_producer_disabled", triggers
                 )
                 self.assertIn("orchestration_tasks_dead_letter_insert_disabled", triggers)
+                self.assertIn("orchestration_dead_letter_registrations_binding_valid", triggers)
+                self.assertIn("orchestration_dead_letter_registrations_immutable", triggers)
+                self.assertIn("orchestration_dead_letter_registrations_no_delete", triggers)
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM orchestration_dead_letter_registrations"
+                    ).fetchone(),
+                    (0,),
+                )
                 with self.assertRaises(sqlite3.IntegrityError):
                     connection.execute(
                         """INSERT INTO orchestration_tasks VALUES(
