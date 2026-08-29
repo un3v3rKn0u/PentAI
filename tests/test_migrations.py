@@ -96,6 +96,7 @@ class MigrationTests(unittest.TestCase):
                     "0077",
                     "0078",
                     "0079",
+                    "0080",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -171,6 +172,7 @@ class MigrationTests(unittest.TestCase):
                     "orchestration_terminal_dispositions",
                     "orchestration_task_completions_v3",
                     "orchestration_provider_usage_measurements_v1",
+                    "ai_provider_configuration_snapshots_v1",
                     "orchestration_retry_budget_consumptions",
                     "orchestration_retry_attempts",
                     "orchestration_retry_schedules",
@@ -1885,6 +1887,83 @@ class MigrationTests(unittest.TestCase):
             self.assertIn(
                 "orchestration_provider_usage_measurements_v1_no_delete", triggers
             )
+
+    def test_provider_configuration_snapshot_prerequisite_is_additive_and_inert(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0080_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = (
+                repository_migrations
+                / "0080_provider_configuration_snapshot_prerequisite.sql"
+            )
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0080"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM ai_provider_configuration_snapshots_v1"
+                    ).fetchone()[0],
+                    0,
+                )
+                with self.assertRaisesRegex(
+                    sqlite3.IntegrityError,
+                    "provider configuration snapshot producer is disabled",
+                ):
+                    connection.execute(
+                        """INSERT INTO ai_provider_configuration_snapshots_v1(
+                        snapshot_id,configuration_id,configuration_hash,registry_id,
+                        registry_revision,provider_type,provider_id,model_id,snapshot_json,
+                        snapshot_digest,recorded_at,state,meter_binding_enabled,authority,
+                        execution_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,'inactive',0,'none',0)""",
+                        (
+                            "00000000-0000-4000-8000-000000000001",
+                            "00000000-0000-4000-8000-000000000002",
+                            "a" * 64,
+                            "00000000-0000-4000-8000-000000000003",
+                            1,
+                            "approved_remote",
+                            "synthetic-remote",
+                            "synthetic-model-v1",
+                            "{}",
+                            "sha256:" + "b" * 64,
+                            "2026-08-29T20:00:01Z",
+                        ),
+                    )
+                self.assertEqual(
+                    connection.execute("PRAGMA integrity_check").fetchone()[0], "ok"
+                )
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self.assertIn(
+                "ai_provider_configuration_snapshots_v1_binding_valid", triggers
+            )
+            self.assertIn(
+                "ai_provider_configuration_snapshots_v1_producer_disabled", triggers
+            )
+            self.assertIn("ai_provider_configuration_snapshots_v1_immutable", triggers)
+            self.assertIn("ai_provider_configuration_snapshots_v1_no_delete", triggers)
 
     def test_orchestration_task_state_rebuild_preserves_authoritative_schema(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

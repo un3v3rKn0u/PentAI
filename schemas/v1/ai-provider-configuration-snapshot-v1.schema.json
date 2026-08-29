@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/ai-provider-configuration-snapshot-v1.schema.json",
+  "title": "PentAI AI Provider Configuration Snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "snapshot_id", "configuration_id", "configuration_hash", "registry_id", "registry_revision", "provider_type", "provider_id", "model_id", "privacy_classification", "allowed_input_classifications", "budgets", "remote_provider_opt_in", "secret_reference_state", "secret_reference_digest", "configured_at", "expires_at", "snapshotted_at", "state", "meter_binding_enabled", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "snapshot_id": {"type": "string", "format": "uuid"},
+    "configuration_id": {"type": "string", "format": "uuid"},
+    "configuration_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "registry_id": {"type": "string", "format": "uuid"},
+    "registry_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "provider_type": {"enum": ["approved_remote", "local_runtime"]},
+    "provider_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,63}$"},
+    "model_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
+    "privacy_classification": {"enum": ["remote_third_party", "local_device"]},
+    "allowed_input_classifications": {
+      "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true,
+      "items": {"enum": ["public", "internal", "confidential", "restricted_redacted"]}
+    },
+    "budgets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_input_tokens", "max_output_tokens", "max_requests", "max_cost_microusd", "max_runtime_seconds"],
+      "properties": {
+        "max_input_tokens": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "max_output_tokens": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "max_requests": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "max_cost_microusd": {"type": "integer", "minimum": 0, "maximum": 1000000000},
+        "max_runtime_seconds": {"type": "integer", "minimum": 1, "maximum": 86400}
+      }
+    },
+    "remote_provider_opt_in": {"type": "boolean"},
+    "secret_reference_state": {"enum": ["present_digest_only", "absent"]},
+    "secret_reference_digest": {
+      "oneOf": [
+        {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        {"type": "null"}
+      ]
+    },
+    "configured_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "snapshotted_at": {"type": "string", "format": "date-time"},
+    "state": {"const": "inactive"},
+    "meter_binding_enabled": {"const": false},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"provider_type": {"const": "approved_remote"}}},
+      "then": {"properties": {"privacy_classification": {"const": "remote_third_party"}, "remote_provider_opt_in": {"const": true}, "secret_reference_state": {"const": "present_digest_only"}, "secret_reference_digest": {"type": "string"}}},
+      "else": {"properties": {"privacy_classification": {"const": "local_device"}, "remote_provider_opt_in": {"const": false}, "secret_reference_state": {"const": "absent"}, "secret_reference_digest": {"const": null}, "budgets": {"properties": {"max_cost_microusd": {"const": 0}}}}}
+    }
+  ]
+}

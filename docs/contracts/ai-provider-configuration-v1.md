@@ -46,11 +46,13 @@ chain.
 
 ## Compatibility, migration, and rollback
 
-This additive v1 contract has no earlier producer or consumer. No database migration
-is required because the slice persists no provider configuration. Removing the schema,
-validator, tests, and this document fully rolls back the slice; no durable state or
-authority requires conversion. Future compatible additions must remain optional and
-default-denying. Required-field or semantic changes require a new major contract.
+This additive v1 contract has no earlier producer or consumer and remains a pure
+validation contract. The separate provider-configuration snapshot v1 contracts and
+migration 0080 reserve an inert durable copy of exact provider/model provenance without
+widening or reinterpreting this contract. Their producer remains storage-denied, so no
+configuration is active or durable through runtime behavior. Future compatible
+additions must remain optional and default-denying. Required-field or semantic changes
+require a new major contract.
 
 ## Verification and residual risk
 

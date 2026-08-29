@@ -911,6 +911,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     checkpoint, fencing, and recovery shape for a later trusted runtime meter. The
     producer remains storage-denied because no authoritative runtime usage source exists;
     no measurement, reconciliation, debit, release, or budget finalization is possible.
+    Additive provider-configuration snapshot v1 contracts and migration 0080 now reserve
+    the exact inactive registry/configuration/provider/model provenance needed before a
+    meter identity can be trusted. The producer remains storage-denied; no registry
+    activation, secret resolution, meter attestation, provider execution, measurement,
+    pricing, reconciliation, or finalization exists.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

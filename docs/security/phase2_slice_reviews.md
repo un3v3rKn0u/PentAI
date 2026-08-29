@@ -1,5 +1,38 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Provider-configuration snapshot v1 inert prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review and does not
+satisfy dual control.
+
+**Scope and evidence:** Closed provider-configuration snapshot and receipt contracts,
+migration 0080, deny-all producer enforcement, immutable update/delete guards, exact
+registry/configuration/provider/model provenance, compatibility documentation, and
+synthetic contract, migration, storage-denial, integrity, and foreign-key tests.
+
+**Dependency and trust decision:** Current repository code validates provider
+configuration and registry policy but has no durable active configuration, provider
+adapter, authenticated execution receipt, or runtime meter. This slice therefore
+reserves only inactive provenance needed by a future meter and does not activate the
+PR #235 measurement producer or invent pricing, tokenizer, cache, streaming, retry,
+partial-request, cancellation, or failure accounting semantics.
+
+**Security, privacy, and compatibility:** The contracts and storage exclude raw secret
+references and values, prompts, contexts, provider responses, evidence, targets,
+diagnostics, pricing, tokenizer rules, commands, paths, URLs, and arbitrary payloads.
+Existing pure configuration/registry contracts and all completion, reservation, and
+measurement behavior remain unchanged. Application rollback leaves an empty additive
+table; destructive downgrade is unsupported.
+
+**Findings, limitations, and residual risk:** No material finding remains. Authenticated
+snapshot production, registry activation, meter identity/attestation, adapter execution
+receipts, provider execution, usage production, reconciliation, reservation closure,
+dispatch, runtime composition, UI, exit demonstrations, and independent review remain
+deferred. The sole maintainer accepts the reduced governance assurance for this inert
+prerequisite.
+
 ## 2026-08-29 — Attempt-three provider-usage v1 inert prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

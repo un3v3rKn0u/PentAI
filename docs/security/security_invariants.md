@@ -321,6 +321,14 @@ cannot manufacture usage. Reconciliation, debit, release, finalization, dispatch
 authority, and external effects remain disabled; retry capacity is absent and cannot be
 refunded or reinterpreted.
 
+**Phase 2 provider-configuration snapshot prerequisite note:** Snapshot v1 reserves an
+exact inactive configuration, registry revision, provider, model, privacy classification,
+integer ceiling, and secret-reference digest for a future meter. Migration 0080 denies
+all production and all mutation or deletion. The snapshot cannot activate a registry,
+resolve a secret, attest a meter, invoke a provider, manufacture usage, reconcile an
+account, authorize execution, or perform an effect. Raw secret references, prompts,
+responses, evidence, diagnostics, pricing, and tokenizer semantics remain excluded.
+
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in
 one immediate transaction. Integrity and foreign-key verification must pass before its
