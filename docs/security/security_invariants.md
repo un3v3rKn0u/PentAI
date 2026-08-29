@@ -337,6 +337,15 @@ configuration snapshot, attest a meter, invoke a provider, create usage, authori
 effect, or recover work. Credentials, secret references, prompts, responses, evidence,
 diagnostics, pricing, tokenizer rules, and arbitrary payloads remain excluded.
 
+**Phase 2 provider-registry production authentication prerequisite note:** The additive
+command v1 and receipt v2 shapes bind a future snapshot producer to the server-derived
+local desktop principal and per-process authenticated session. Migration 0082 denies all
+production and mutation, so neither shape can create, activate, revoke, or supersede a
+snapshot. The policy/approval signer is not widened to registry material. Registry
+documents, signatures, credentials, secret references, provider content, diagnostics,
+and arbitrary payloads remain excluded; canonical normalization, monotonic revision
+enforcement, source governance, and runtime composition remain required.
+
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in
 one immediate transaction. Integrity and foreign-key verification must pass before its

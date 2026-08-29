@@ -16,6 +16,11 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   one exact normalized registry revision, with activation and revocation disabled.
 - `ai-provider-registry-snapshot-receipt-v1.schema.json` — immutable metadata-only
   registry-snapshot receipt with authority and execution disabled.
+- `ai-provider-registry-snapshot-command-v1.schema.json` — authenticated local-core
+  command identity reserved for future registry-snapshot production; production remains
+  disabled.
+- `ai-provider-registry-snapshot-receipt-v2.schema.json` — additive source-bound inert
+  receipt shape that cannot satisfy or replace snapshot receipt v1.
 - `ai-secret-reference-v1.schema.json` — non-resolving opaque provider-secret metadata
   bound to one exact provider configuration, purpose, lifecycle, and validity window.
 - `ai-budget-reservation-request-v1.schema.json` — version-fenced, idempotent request
@@ -285,6 +290,9 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 |---|---|---|---|
 | AIProviderConfiguration v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
 | AIProviderRegistry v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
+| AIProviderRegistrySnapshot v1 | AI/Agent Lead | Contract Maintainer | Data Protection Lead, Security Reviewer |
+| AIProviderRegistrySnapshotCommand v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
+| AIProviderRegistrySnapshotReceipt v2 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | AISecretReference v1 | Data Protection Lead | Contract Maintainer | AI/Agent Lead, Security Reviewer |
 | AIBudgetReservationRequest v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |
 | AIBudgetReservation v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Security Reviewer |

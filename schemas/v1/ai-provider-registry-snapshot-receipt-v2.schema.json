@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/ai-provider-registry-snapshot-receipt-v2.schema.json",
+  "title": "PentAI AI Provider Registry Snapshot Receipt v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "snapshot_id", "snapshot_digest", "command_id", "command_digest", "registry_id", "registry_revision", "registry_digest", "providers_digest", "requester", "authentication_context", "state", "activation_enabled", "revocation_enabled", "production_enabled", "recorded_at", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "snapshot_id": {"type": "string", "format": "uuid"},
+    "snapshot_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "command_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "registry_id": {"type": "string", "format": "uuid"},
+    "registry_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "registry_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "providers_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "requester": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id", "session_id"],
+      "properties": {
+        "actor_type": {"const": "human"},
+        "actor_id": {"enum": ["local-desktop-session", "test-session"]},
+        "session_id": {"type": "string", "format": "uuid"}
+      }
+    },
+    "authentication_context": {"const": "local_core_authenticated_session"},
+    "state": {"const": "inactive"},
+    "activation_enabled": {"const": false},
+    "revocation_enabled": {"const": false},
+    "production_enabled": {"const": false},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}
