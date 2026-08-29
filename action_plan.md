@@ -891,7 +891,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Dedicated terminal consumption now revalidates that exact current attempt-three
     security lineage, persists one immutable receipt, and storage-gates only the task
     `failed` to `dead_letter` revision change while leaving plan state unchanged.
-    Queueing, operator review, and all broader runtime behavior remain required.
+    A separate immutable dead-letter registration now accepts only that exact current
+    terminal-consumption receipt and dead-letter task revision. It records bounded
+    metadata with immutable-history retention while delivery, claim, acknowledgement,
+    retry, deletion, cleanup, operator review, authority, and execution remain disabled.
+    Queue processing, operator workflows, and all broader runtime behavior remain
+    required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
