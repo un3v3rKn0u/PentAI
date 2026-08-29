@@ -290,13 +290,12 @@ queue, operator review, notification, retry, dispatch, authority, or effect. Uns
 security outcomes and stale cancellation, safety, worker, budget, fencing, or recovery
 state deny rather than being reclassified.
 
-**Phase 2 terminal-consumption prerequisite note:** The additive v1 command/receipt
-contracts and persistence guard bind only the exact current terminal-disposition v1
-decision and failed task revision. They create no producer and cannot change task or
-plan state. Migration 0074 makes `dead_letter` representable but unreachable, and the
-version-exact task-snapshot v2 reader requires exact terminal-consumption lineage before
-returning that state. It cannot create, translate, or advance state. Queueing, operator
-review, dispatch, authority, and effects remain disabled.
+**Phase 2 terminal-consumption note:** The v1 consumer binds only the exact current
+terminal-disposition decision and failed attempt-three task revision. It revalidates the
+complete failure-v3 security lineage and atomically stores one immutable receipt before
+storage permits only `failed → dead_letter`. Plan state is unchanged. Task snapshot v2
+requires that exact receipt before returning the new state. Queueing, operator review,
+dispatch, authority, and effects remain disabled.
 
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in

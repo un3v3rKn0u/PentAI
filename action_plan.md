@@ -888,8 +888,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     existing rows/revisions remain unchanged. Additive task snapshot v2 now reads one
     exact authoritative task and requires digest-verified terminal-consumption lineage
     before representing `dead_letter`, without widening plan-graph v1 or writing state.
-    The terminal consumer and exact transition predicate, dead-letter queueing, and all
-    broader runtime behavior remain required.
+    Dedicated terminal consumption now revalidates that exact current attempt-three
+    security lineage, persists one immutable receipt, and storage-gates only the task
+    `failed` to `dead_letter` revision change while leaving plan state unchanged.
+    Queueing, operator review, and all broader runtime behavior remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

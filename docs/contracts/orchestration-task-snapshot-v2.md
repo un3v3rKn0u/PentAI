@@ -25,13 +25,11 @@ Recovery cannot invent, translate, or advance a snapshot.
 
 ## Compatibility and limitations
 
-Plan-graph v1 remains unchanged for graph creation and existing reads. Older readers
-remain compatible while migration 0074 guards keep `dead_letter` unreachable. A future
-terminal consumer must use this version-exact read boundary rather than widening v1.
-Application rollback removes the optional reader without altering durable state; no
-migration is required.
+Plan-graph v1 remains unchanged for graph creation and legacy reads. After terminal
+consumption makes `dead_letter` reachable, v1 readers fail closed rather than silently
+misrepresenting it; consumers must use this version-exact boundary. Application rollback
+to a version without snapshot v2 is unsupported once a dead-letter row exists.
 
-Terminal consumption, `failed → dead_letter`, plan-state composition, queueing,
-operator review, notification, completion, dispatch, providers/plugins, UI, and runtime
-composition remain deferred. Every snapshot fixes `authority: none` and
-`execution_enabled: false` and cannot authorize any effect.
+Plan-state composition, queueing, operator review, notification, completion, dispatch,
+providers/plugins, UI, and runtime composition remain deferred. Every snapshot fixes
+`authority: none` and `execution_enabled: false` and cannot authorize any effect.

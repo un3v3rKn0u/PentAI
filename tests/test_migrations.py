@@ -91,6 +91,7 @@ class MigrationTests(unittest.TestCase):
                     "0072",
                     "0073",
                     "0074",
+                    "0075",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -1855,7 +1856,7 @@ class MigrationTests(unittest.TestCase):
                         'none',0)"""
                     )
 
-    def test_terminal_prerequisites_upgrade_from_0072_through_task_state(self) -> None:
+    def test_terminal_prerequisites_upgrade_from_0072_through_consumer(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             migrations = root / "migrations"
@@ -1873,13 +1874,14 @@ class MigrationTests(unittest.TestCase):
             for name in (
                 "0073_terminal_consumption_prerequisite.sql",
                 "0074_orchestration_tasks_table_rebuild.sql",
+                "0075_terminal_consumption.sql",
             ):
                 (migrations / name).write_text(
                     (repository_migrations / name).read_text(encoding="utf-8"),
                     encoding="utf-8",
                 )
             with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
-                self.assertEqual(migrate(database), ["0073", "0074"])
+                self.assertEqual(migrate(database), ["0073", "0074", "0075"])
                 self.assertEqual(migrate(database), [])
             with closing(sqlite3.connect(database)) as connection:
                 self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
@@ -1895,7 +1897,9 @@ class MigrationTests(unittest.TestCase):
                         "SELECT name FROM sqlite_master WHERE type='trigger'"
                     )
                 }
-                self.assertIn("orchestration_terminal_consumptions_producer_disabled", triggers)
+                self.assertNotIn(
+                    "orchestration_terminal_consumptions_producer_disabled", triggers
+                )
                 self.assertIn("orchestration_tasks_dead_letter_insert_disabled", triggers)
                 with self.assertRaises(sqlite3.IntegrityError):
                     connection.execute(

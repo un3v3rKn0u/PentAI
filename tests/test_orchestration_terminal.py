@@ -10,7 +10,9 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from pentai_core.orchestration import DurablePlanGraphService, OrchestrationError
 from pentai_core.orchestration_terminal import (
+    OrchestrationTerminalConsumptionService,
     OrchestrationTerminalError,
     OrchestrationTerminalService,
 )
@@ -43,6 +45,145 @@ def setup(tmp_path: Path) -> tuple[OrchestrationTerminalService, dict[str, Any]]
         "execution_enabled": False,
     }
     return OrchestrationTerminalService(attempts.authorization), command
+
+
+def terminal_consumption_setup(
+    tmp_path: Path,
+) -> tuple[OrchestrationTerminalConsumptionService, dict[str, Any]]:
+    terminal, command = setup(tmp_path)
+    decision = terminal.decide(command, now=NOW + timedelta(seconds=49))
+    consumption = {
+        "schema_version": "1.0.0",
+        "command_id": str(uuid4()),
+        "assessment_id": decision["assessment_id"],
+        "plan_id": decision["plan_id"],
+        "expected_plan_revision": decision["plan_revision"],
+        "task_id": decision["task_id"],
+        "expected_task_revision": decision["task_revision"],
+        "terminal_decision_id": decision["decision_id"],
+        "terminal_decision_digest": "sha256:" + content_hash(decision),
+        "purpose": "consume_attempt_three_terminal_disposition",
+        "requested_at": (NOW + timedelta(seconds=50)).isoformat(),
+        "expires_at": (NOW + timedelta(minutes=2)).isoformat(),
+        "authority": "none",
+        "execution_enabled": False,
+    }
+    return OrchestrationTerminalConsumptionService(terminal.authorization), consumption
+
+
+def test_consumes_terminal_decision_into_coordination_only_dead_letter(tmp_path: Path) -> None:
+    service, command = terminal_consumption_setup(tmp_path)
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        before = connection.execute(
+            "SELECT p.state,p.revision,t.state,t.revision FROM orchestration_plans p "
+            "JOIN orchestration_tasks t ON t.plan_id=p.plan_id WHERE t.task_id=?",
+            (command["task_id"],),
+        ).fetchone()
+    receipt = service.consume(command, now=NOW + timedelta(seconds=50))
+    assert contract_issues(
+        receipt, "orchestration-terminal-consumption-receipt-v1.schema.json"
+    ) == ()
+    assert receipt["resulting_task_state"] == "dead_letter"
+    assert receipt["queue_enabled"] is False
+    assert receipt["operator_review_enabled"] is False
+    assert receipt["authority"] == "none" and receipt["execution_enabled"] is False
+    assert service.consume(command, now=NOW + timedelta(seconds=50)) == receipt
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        after = connection.execute(
+            "SELECT p.state,p.revision,t.state,t.revision FROM orchestration_plans p "
+            "JOIN orchestration_tasks t ON t.plan_id=p.plan_id WHERE t.task_id=?",
+            (command["task_id"],),
+        ).fetchone()
+        assert after[:2] == before[:2]
+        assert after[2:] == ("dead_letter", before[3] + 1)
+        assert connection.execute(
+            "SELECT COUNT(*) FROM orchestration_terminal_consumptions"
+        ).fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT COUNT(*) FROM outbox WHERE event_type="
+            "'orchestration.terminal_disposition_consumed'"
+        ).fetchone()[0] == 1
+    snapshot = DurablePlanGraphService(service.database_path).get_task_snapshot_v2(
+        command["plan_id"], command["task_id"], now=NOW + timedelta(seconds=50)
+    )
+    assert snapshot["task_state"] == "dead_letter"
+    assert snapshot["terminal_lineage"]["consumption_id"] == receipt["consumption_id"]
+    with pytest.raises(OrchestrationError) as legacy:
+        DurablePlanGraphService(service.database_path).get(command["plan_id"])
+    assert legacy.value.code == "ORCHESTRATION_STORED_STATE_INVALID"
+
+
+def test_terminal_consumption_malformed_changed_replay_and_concurrency_deny(
+    tmp_path: Path,
+) -> None:
+    cases = (
+        {"schema_version": "2.0.0"},
+        {"authority": "grant"},
+        {"terminal_decision_digest": "sha256:" + "0" * 64},
+        {"task_id": str(uuid4())},
+        {"queue": "synthetic"},
+    )
+    for index, changes in enumerate(cases):
+        service, command = terminal_consumption_setup(tmp_path / f"malformed-{index}")
+        command.update(changes)
+        with pytest.raises(OrchestrationTerminalError):
+            service.consume(command, now=NOW + timedelta(seconds=50))
+
+    service, command = terminal_consumption_setup(tmp_path / "replay")
+    service.consume(command, now=NOW + timedelta(seconds=50))
+    changed = copy.deepcopy(command)
+    changed["terminal_decision_digest"] = "sha256:" + "0" * 64
+    with pytest.raises(OrchestrationTerminalError) as conflict:
+        service.consume(changed, now=NOW + timedelta(seconds=50))
+    assert conflict.value.code == "ORCHESTRATION_TERMINAL_CONSUMPTION_IDENTITY_CONFLICT"
+
+    concurrent, candidate = terminal_consumption_setup(tmp_path / "concurrent")
+    contenders = (copy.deepcopy(candidate), copy.deepcopy(candidate))
+    contenders[1]["command_id"] = str(uuid4())
+
+    def consume(value: dict[str, Any]) -> str:
+        try:
+            return concurrent.consume(value, now=NOW + timedelta(seconds=50))["consumption_id"]
+        except OrchestrationTerminalError as error:
+            return error.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(consume, contenders))
+    assert sum(value.startswith("ORCHESTRATION_TERMINAL_CONSUMPTION_") for value in outcomes) == 1
+
+
+def test_terminal_consumption_current_security_fences_and_storage_bypass_deny(
+    tmp_path: Path,
+) -> None:
+    for name, sql in (
+        ("safety", "UPDATE safety_state SET global_status='paused',generation=generation+1"),
+        ("cancel", "UPDATE engagements SET status='revoked'"),
+        (
+            "worker",
+            "UPDATE worker_runtime_instances SET status='termination_requested',version=version+1",
+        ),
+        ("account", "UPDATE orchestration_budget_accounts SET version=version+1"),
+        (
+            "recovery",
+            "UPDATE orchestration_task_lease_fences SET "
+            "recovery_generation=recovery_generation+1,version=version+1",
+        ),
+    ):
+        service, command = terminal_consumption_setup(tmp_path / name)
+        with closing(sqlite3.connect(service.database_path)) as connection, connection:
+            connection.execute(sql)
+        with pytest.raises(OrchestrationTerminalError) as denied:
+            service.consume(command, now=NOW + timedelta(seconds=50))
+        assert denied.value.code == "ORCHESTRATION_TERMINAL_CONSUMPTION_SECURITY_DENIED"
+
+    service, command = terminal_consumption_setup(tmp_path / "storage")
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "UPDATE orchestration_tasks SET state='dead_letter',revision=revision+1 "
+                "WHERE task_id=?",
+                (command["task_id"],),
+            )
 
 
 def test_decides_inert_dead_letter_eligibility_without_transition(tmp_path: Path) -> None:
