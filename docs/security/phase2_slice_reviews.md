@@ -1,5 +1,44 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Attempt-three completion consumption v3
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review and does not
+satisfy dual control.
+
+**Scope and evidence:** Dedicated trusted-core completion consumption, migration 0078,
+exact lease-consumption/checkpoint/current-state storage binding, attempt-three generic-
+transition fencing, immutable receipt/audit/outbox linkage, contract and compatibility
+documentation, and synthetic positive, malformed, mixed-version, replay, concurrency,
+security-fence, migration, and storage-bypass tests.
+
+**Security boundaries:** Completion accepts only the exact current running attempt-three
+lineage and checkpoint head or complete absence. Policy, assessment, safety, worker,
+manifest, reservation/account, lease fence, and recovery state are revalidated in one
+immediate transaction. The receipt precedes and storage-gates only the bound success
+edge. No output, evidence, provider/plugin data, budget mutation, retry, dispatch,
+network, target, ActionIntent, PolicyDecision, ActionGrant, authority, or effect exists.
+
+**Compatibility and state composition:** Earlier-attempt general success remains
+available; a generic attempt-three success is denied in trusted core and storage.
+Existing graph rules deterministically recompute dependent readiness and set the plan
+completed only when every task succeeds. Application rollback disables new consumption
+while retaining immutable receipts and the stricter attempt-three storage fence.
+Destructive downgrade is unsupported.
+
+**Privacy and recovery:** Durable data is limited to bounded identifiers, hashes,
+integers, timestamps, and closed constants. Secrets, raw lease tokens, targets,
+assessment content, evidence, prompts, diagnostics, commands, paths, URLs, and arbitrary
+payloads are excluded. Recovery cannot invent, duplicate, consume, complete, dispatch,
+or resume a completion.
+
+**Findings, limitations, and residual risk:** No material finding remains. Provider-
+usage reconciliation, budget finalization, evidence/findings/reporting, worker dispatch,
+runtime composition, dead-letter processing, operator workflows, UI, Phase 2 exit
+demonstrations, and independent review remain deferred. The sole maintainer accepts the
+reduced governance assurance for this narrow non-executing slice.
+
 ## 2026-08-29 — Attempt-three completion v3 inert prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

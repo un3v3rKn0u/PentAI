@@ -899,10 +899,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     required.
     Repository evidence does not yet define transport, processing, cleanup, or operator-
     review policy for that registration, so no such semantics are inferred. A separate
-    completion-v3 prerequisite now defines closed attempt-three success command/receipt
-    contracts and an immutable deny-all ledger. It creates no receipt or state change;
-    dedicated consumption, exact storage gating, dependent readiness, plan completion,
-    provider-usage reconciliation, dispatch, and runtime composition remain required.
+    completion-v3 boundary now accepts only the exact current attempt-three running,
+    lease-consumption, and checkpoint-head-or-absence lineage. It atomically stores one
+    immutable metadata-only receipt, storage-gates the bound task success edge,
+    recomputes dependent readiness, and derives plan state. Earlier-attempt general
+    success remains compatible but cannot bypass the attempt-three predicate. Provider-
+    usage reconciliation, budget finalization, dispatch, and runtime composition remain
+    required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

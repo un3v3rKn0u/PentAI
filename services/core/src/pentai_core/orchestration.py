@@ -177,6 +177,15 @@ class DurablePlanGraphService:
                 raise OrchestrationError(
                     "ORCHESTRATION_TRANSITION_DENIED", "task transition is invalid"
                 )
+            if target == "succeeded" and connection.execute(
+                """SELECT 1 FROM orchestration_retry_attempts_v2
+                WHERE task_id=? AND attempt_number=3""",
+                (request["task_id"],),
+            ).fetchone() is not None:
+                raise OrchestrationError(
+                    "ORCHESTRATION_TRANSITION_DENIED",
+                    "attempt-three success requires dedicated completion consumption",
+                )
             timestamp = _timestamp(instant)
             connection.execute(
                 """UPDATE orchestration_tasks
