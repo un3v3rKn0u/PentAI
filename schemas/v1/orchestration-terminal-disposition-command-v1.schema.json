@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-terminal-disposition-command-v1.schema.json",
+  "title": "PentAI OrchestrationTerminalDispositionCommand v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command_id", "assessment_id", "plan_id", "expected_plan_revision", "task_id", "expected_task_revision", "failed_attempt_id", "failed_attempt_digest", "retry_policy_id", "retry_policy_digest", "attempt_number", "purpose", "requested_at", "expires_at", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "expected_plan_revision": {"type": "integer", "minimum": 8},
+    "task_id": {"type": "string", "format": "uuid"},
+    "expected_task_revision": {"type": "integer", "minimum": 8},
+    "failed_attempt_id": {"type": "string", "format": "uuid"},
+    "failed_attempt_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "retry_policy_id": {"type": "string", "format": "uuid"},
+    "retry_policy_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "attempt_number": {"const": 3},
+    "purpose": {"const": "decide_attempt_three_terminal_disposition"},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

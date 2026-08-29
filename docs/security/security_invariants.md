@@ -283,6 +283,13 @@ current failed lineage. It appends immutable metadata without changing task stat
 evaluating retryability, dead-lettering, or creating attempt four. The three-attempt
 ceiling is descriptive terminal metadata, never authority.
 
+**Phase 2 terminal-disposition note:** Only the exact current failed-attempt-v3 receipt
+at retry policy v2's three-attempt ceiling can produce an immutable
+`dead_letter_eligible` decision. The decision does not change task state or create a
+queue, operator review, notification, retry, dispatch, authority, or effect. Unsupported
+security outcomes and stale cancellation, safety, worker, budget, fencing, or recovery
+state deny rather than being reclassified.
+
 **Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
 and canonical-host token in the same immediate transaction as total-request and
 connection capacity. Refill uses persisted policy rates, burst capacity, and a
