@@ -7,9 +7,9 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from pentai_policy import canonical_json
+from pentai_policy import canonical_json, content_hash
 from pentai_policy.document import contract_issues, parse_time
 
 from pentai_core.database import transaction
@@ -273,6 +273,130 @@ class DurablePlanGraphService:
                 raise OrchestrationError("ORCHESTRATION_PLAN_NOT_FOUND", "plan does not exist")
             return self._load(connection, plan_id)
 
+    def get_task_snapshot_v2(
+        self, plan_id: str, task_id: str, *, now: datetime | None = None
+    ) -> dict[str, Any]:
+        """Read one version-exact, non-authoritative task snapshot without mutation."""
+        if not _uuid(plan_id) or not _uuid(task_id):
+            raise OrchestrationError(
+                "ORCHESTRATION_SNAPSHOT_MALFORMED", "snapshot identity is malformed"
+            )
+        observed_at = _timestamp(_instant(now))
+        with transaction(self.database_path) as connection:
+            row = connection.execute(
+                """SELECT p.assessment_id,p.revision AS plan_revision,p.state AS plan_state,
+                t.task_id,t.revision AS task_revision,t.task_type,t.state AS task_state
+                FROM orchestration_plans p JOIN orchestration_tasks t ON t.plan_id=p.plan_id
+                WHERE p.plan_id=? AND t.task_id=?""",
+                (plan_id, task_id),
+            ).fetchone()
+            if row is None:
+                raise OrchestrationError(
+                    "ORCHESTRATION_SNAPSHOT_NOT_FOUND", "snapshot task does not exist"
+                )
+            terminal_lineage: dict[str, Any] | None = None
+            if row["task_state"] == "dead_letter":
+                terminal_lineage = self._load_terminal_lineage(connection, row, plan_id)
+            snapshot = {
+                "schema_version": "2.0.0",
+                "assessment_id": row["assessment_id"],
+                "plan_id": plan_id,
+                "plan_revision": row["plan_revision"],
+                "plan_state": row["plan_state"],
+                "task_id": row["task_id"],
+                "task_revision": row["task_revision"],
+                "task_type": row["task_type"],
+                "task_state": row["task_state"],
+                "terminal_lineage": terminal_lineage,
+                "observed_at": observed_at,
+                "authority": "none",
+                "execution_enabled": False,
+            }
+            if contract_issues(snapshot, "orchestration-task-snapshot-v2.schema.json"):
+                raise OrchestrationError(
+                    "ORCHESTRATION_SNAPSHOT_STORED_STATE_INVALID",
+                    "stored snapshot state is invalid",
+                )
+            return snapshot
+
+    @staticmethod
+    def _load_terminal_lineage(
+        connection: sqlite3.Connection, task: sqlite3.Row, plan_id: str
+    ) -> dict[str, Any]:
+        rows = connection.execute(
+            "SELECT * FROM orchestration_terminal_consumptions WHERE plan_id=? AND task_id=?",
+            (plan_id, task["task_id"]),
+        ).fetchall()
+        if len(rows) != 1:
+            raise OrchestrationError(
+                "ORCHESTRATION_SNAPSHOT_TERMINAL_LINEAGE_MISSING",
+                "dead-letter terminal lineage is missing or ambiguous",
+            )
+        stored = rows[0]
+        decision_row = connection.execute(
+            "SELECT * FROM orchestration_terminal_dispositions WHERE decision_id=?",
+            (stored["terminal_decision_id"],),
+        ).fetchone()
+        try:
+            receipt = cast(dict[str, Any], json.loads(str(stored["receipt_json"])))
+            decision = (
+                cast(dict[str, Any], json.loads(str(decision_row["decision_json"])))
+                if decision_row is not None
+                else None
+            )
+        except (TypeError, ValueError) as error:
+            raise OrchestrationError(
+                "ORCHESTRATION_SNAPSHOT_TERMINAL_LINEAGE_INVALID",
+                "dead-letter terminal lineage is invalid",
+            ) from error
+        if (
+            contract_issues(receipt, "orchestration-terminal-consumption-receipt-v1.schema.json")
+            or decision_row is None
+            or decision is None
+            or contract_issues(
+                decision, "orchestration-terminal-disposition-decision-v1.schema.json"
+            )
+            or stored["receipt_hash"] != content_hash(receipt)
+            or receipt["receipt_digest"]
+            != "sha256:"
+            + content_hash(
+                {key: value for key, value in receipt.items() if key != "receipt_digest"}
+            )
+            or stored["assessment_id"] != task["assessment_id"]
+            or stored["plan_revision"] != task["plan_revision"]
+            or stored["resulting_task_revision"] != task["task_revision"]
+            or receipt["consumption_id"] != stored["consumption_id"]
+            or receipt["terminal_decision_id"] != stored["terminal_decision_id"]
+            or receipt["terminal_decision_digest"] != stored["terminal_decision_digest"]
+            or decision_row["decision_hash"] != content_hash(decision)
+            or stored["terminal_decision_digest"] != "sha256:" + decision_row["decision_hash"]
+            or decision["decision_digest"]
+            != "sha256:"
+            + content_hash(
+                {key: value for key, value in decision.items() if key != "decision_digest"}
+            )
+            or decision["decision_id"] != stored["terminal_decision_id"]
+            or decision["assessment_id"] != task["assessment_id"]
+            or decision["plan_id"] != plan_id
+            or decision["plan_revision"] != task["plan_revision"]
+            or decision["task_id"] != task["task_id"]
+            or decision["task_revision"] != stored["expected_task_revision"]
+            or decision["outcome"] != receipt["outcome"]
+            or decision["reason_code"] != receipt["reason_code"]
+        ):
+            raise OrchestrationError(
+                "ORCHESTRATION_SNAPSHOT_TERMINAL_LINEAGE_INVALID",
+                "dead-letter terminal lineage is invalid",
+            )
+        return {
+            "consumption_id": receipt["consumption_id"],
+            "consumption_digest": receipt["receipt_digest"],
+            "terminal_decision_id": receipt["terminal_decision_id"],
+            "terminal_decision_digest": receipt["terminal_decision_digest"],
+            "outcome": receipt["outcome"],
+            "reason_code": receipt["reason_code"],
+        }
+
     @staticmethod
     def _validate_edges(
         dependencies: list[dict[str, str]], task_ids: set[str]
@@ -434,6 +558,13 @@ class DurablePlanGraphService:
 
 def _digest(document: dict[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(canonical_json(document).encode()).hexdigest()
+
+
+def _uuid(value: object) -> bool:
+    try:
+        return isinstance(value, str) and str(UUID(value)) == value
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 
 def _instant(value: datetime | None) -> datetime:

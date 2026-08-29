@@ -32,6 +32,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   with content omitted and authority disabled.
 - `orchestration-plan-graph-v1.schema.json` — durable assessment-scoped task DAG with
   typed dependencies, deterministic readiness, revision fencing, and no authority.
+- `orchestration-task-snapshot-v2.schema.json` — read-only, version-exact current task
+  state with mandatory terminal-consumption lineage for `dead_letter` and no authority.
 - `orchestration-task-transition-v1.schema.json` — short-lived idempotent task-state
   command with exact assessment, plan, task, and revision bindings.
 - `orchestration-task-approval-request-v1.schema.json` — trusted-core-created,

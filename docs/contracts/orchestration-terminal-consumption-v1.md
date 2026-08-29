@@ -14,14 +14,14 @@ protocol. It also denies direct `dead_letter` inserts, while the unchanged versi
 continues to deny `failed → dead_letter`. The plan-graph v1 contract remains unchanged:
 it is the immutable creation/current-snapshot contract, and no reachable runtime row can
 yet contain the new state. Before a trusted consumer makes the state reachable, the
-runtime read boundary requires an additive versioned contract rather than silently
+runtime read boundary uses the additive task-snapshot v2 contract rather than silently
 widening v1. This prerequisite still cannot insert consumption rows, revise a task, or
 claim that the transition exists.
 
 The receipt contract fixes queue and operator-review behavior to false and fixes
-`authority: none` and `execution_enabled: false`. A future slice must define the
-additive runtime state contract and implement the atomic consumer, audit/outbox linkage,
-replay validation, and exact storage-enforced state change. Queue insertion,
+`authority: none` and `execution_enabled: false`. Task-snapshot v2 now provides the
+additive runtime read contract. A future slice must implement the atomic consumer,
+audit/outbox linkage, replay validation, and exact storage-enforced state change. Queue insertion,
 notification, dispatch, provider/plugin use, and every external effect remain out of
 scope.
 
