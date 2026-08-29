@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted for local development on 2026-08-29. This is a migration-safety prerequisite;
-it authorizes no particular schema reconstruction or runtime behavior.
+Accepted for local development on 2026-08-29. Migration 0074 is its first narrowly
+reviewed use; neither the protocol nor that migration authorizes runtime behavior.
 
 ## Context
 
@@ -33,8 +33,12 @@ references in its own reviewed migration and tests.
 
 ## Consequences
 
-Ordinary migrations retain their existing execution behavior. The protocol does not
-modify `orchestration_tasks`, add `dead_letter`, enable terminal consumption, or weaken
-transition guards. A future task-state migration can use the protocol only after its
-exact schema preservation and compatibility evidence is reviewed. Downgrade of a future
-reconstructed table remains migration-specific and may be unsupported.
+Ordinary migrations retain their existing execution behavior. Migration 0074 uses the
+protocol to reconstruct only `orchestration_tasks`, preserving its columns, rows,
+constraints, keys, indexes, triggers, and dependent foreign-key targets while adding
+only `dead_letter` to the closed state representation. A new insert guard and the
+unchanged version-fencing trigger keep that value unreachable: neither direct insert nor
+`failed → dead_letter` update is permitted. Terminal consumption and every queue,
+review, dispatch, and execution behavior remain deferred. Downgrade is unsupported once
+a future reviewed consumer can persist `dead_letter`, because an older constraint could
+not represent those rows losslessly.

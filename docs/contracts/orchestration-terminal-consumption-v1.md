@@ -8,22 +8,24 @@ matching current `failed` task revision and the decision's digest-verified
 
 The table has an explicit deny-all insert trigger: no caller, including one that can
 construct a contract-valid row, can turn the prerequisite into a consumption result.
-The existing `orchestration_tasks.state` SQLite constraint does not contain
-`dead_letter`. Safely widening it would require reconstruction of a table referenced by
-many immutable security-lineage tables. ADR 0006 now defines an explicit verified
-rebuild protocol, but no task-table reconstruction has yet inventoried and preserved the
-complete production schema. This slice therefore does not insert consumption rows,
-revise a task, or claim that the `failed → dead_letter` transition exists.
+Migration 0074 now adds `dead_letter` to the authoritative
+`orchestration_tasks.state` SQLite constraint through ADR 0006's verified reconstruction
+protocol. It also denies direct `dead_letter` inserts, while the unchanged version fence
+continues to deny `failed → dead_letter`. The plan-graph v1 contract remains unchanged:
+it is the immutable creation/current-snapshot contract, and no reachable runtime row can
+yet contain the new state. Before a trusted consumer makes the state reachable, the
+runtime read boundary requires an additive versioned contract rather than silently
+widening v1. This prerequisite still cannot insert consumption rows, revise a task, or
+claim that the transition exists.
 
 The receipt contract fixes queue and operator-review behavior to false and fixes
-`authority: none` and `execution_enabled: false`. A future slice must either establish a
-reviewed, data/trigger/foreign-key-preserving task-table migration using ADR 0006, then
-implement the atomic
-consumer, audit/outbox linkage, replay validation, and exact storage-enforced state
-change. Queue insertion, notification, dispatch, provider/plugin use, and every external
-effect remain out of scope.
+`authority: none` and `execution_enabled: false`. A future slice must define the
+additive runtime state contract and implement the atomic consumer, audit/outbox linkage,
+replay validation, and exact storage-enforced state change. Queue insertion,
+notification, dispatch, provider/plugin use, and every external effect remain out of
+scope.
 
 Compatibility is additive: existing plan/task v1 contracts, task rows, transitions, and
-historical retry/failure/terminal records are unchanged. Rollback before use removes
-only the empty additive table and contracts; migration downgrade after data exists is
-unsupported.
+historical retry/failure/terminal records are unchanged. Older readers remain compatible
+because guards keep `dead_letter` unreachable. Migration downgrade is unsupported after
+a later consumer creates such rows; application rollback before that point remains safe.

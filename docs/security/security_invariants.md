@@ -301,8 +301,11 @@ dispatch, authority, and effects remain disabled.
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in
 one immediate transaction. Integrity and foreign-key verification must pass before its
-version commits; failure rolls back and restores enforcement. This protocol creates no
-task state, transition, terminal-consumption record, queue, authority, or effect.
+version commits; failure rolls back and restores enforcement. Migration 0074 preserves
+the authoritative task table and all dependent schema while adding only the representable
+`dead_letter` value. Insert and version guards keep it unreachable, so the migration
+creates no task state, transition, terminal-consumption record, queue, authority, or
+effect.
 
 **Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
 and canonical-host token in the same immediate transaction as total-request and

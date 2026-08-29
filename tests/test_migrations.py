@@ -90,6 +90,7 @@ class MigrationTests(unittest.TestCase):
                     "0071",
                     "0072",
                     "0073",
+                    "0074",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -1688,6 +1689,221 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("orchestration_terminal_consumptions_immutable", triggers)
             self.assertIn("orchestration_terminal_consumptions_no_delete", triggers)
             self.assertNotIn("dead_letter", task_sql)
+
+    def test_orchestration_task_state_rebuild_preserves_authoritative_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0074_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            states = (
+                "blocked",
+                "awaiting_human",
+                "ready",
+                "running",
+                "cancelling",
+                "cancelled",
+                "succeeded",
+                "failed",
+            )
+            with closing(sqlite3.connect(database)) as connection, connection:
+                connection.execute(
+                    """INSERT INTO orchestration_plans(
+                    plan_id,assessment_id,idempotency_key,creation_digest,revision,state,
+                    created_at,updated_at,authority,execution_enabled)
+                    VALUES ('plan','assessment','synthetic-plan-key-0001',?,1,'active',
+                    '2026-08-29T00:00:00Z','2026-08-29T00:00:00Z','none',0)""",
+                    ("sha256:" + "0" * 64,),
+                )
+                for index, state in enumerate(states, start=1):
+                    connection.execute(
+                        """INSERT INTO orchestration_tasks(
+                        task_id,plan_id,assessment_id,task_type,objective,input_refs_json,
+                        requires_human_approval,state,revision,created_at,updated_at,
+                        authority,execution_enabled)
+                        VALUES (?,?,?,?,?,'[]',0,?,1,?,?, 'none',0)""",
+                        (
+                            f"task-{index}",
+                            "plan",
+                            "assessment",
+                            "validation",
+                            f"synthetic {state}",
+                            state,
+                            "2026-08-29T00:00:00Z",
+                            "2026-08-29T00:00:00Z",
+                        ),
+                    )
+                before_rows = connection.execute(
+                    "SELECT * FROM orchestration_tasks ORDER BY task_id"
+                ).fetchall()
+                before_columns = connection.execute(
+                    "PRAGMA table_info(orchestration_tasks)"
+                ).fetchall()
+                before_foreign_keys = connection.execute(
+                    "PRAGMA foreign_key_list(orchestration_tasks)"
+                ).fetchall()
+                before_indexes = connection.execute(
+                    "SELECT name,sql FROM sqlite_master WHERE type='index' "
+                    "AND tbl_name='orchestration_tasks' ORDER BY name"
+                ).fetchall()
+                before_triggers = {
+                    row[0]: " ".join(row[1].split())
+                    for row in connection.execute(
+                        "SELECT name,sql FROM sqlite_master WHERE type='trigger' "
+                        "AND tbl_name='orchestration_tasks' ORDER BY name"
+                    )
+                }
+                before_dependents = {
+                    table: tuple(connection.execute(f"PRAGMA foreign_key_list({table})"))
+                    for (table,) in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+                    )
+                }
+                before_external_triggers = {
+                    row[0]: " ".join(row[1].split())
+                    for row in connection.execute(
+                        "SELECT name,sql FROM sqlite_master WHERE type='trigger' "
+                        "AND tbl_name!='orchestration_tasks' AND sql LIKE '%orchestration_tasks%'"
+                    )
+                }
+
+            migration = repository_migrations / "0074_orchestration_tasks_table_rebuild.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0074"])
+                self.assertEqual(migrate(database), [])
+
+            with closing(sqlite3.connect(database)) as connection, connection:
+                connection.execute("PRAGMA foreign_keys=ON")
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT * FROM orchestration_tasks ORDER BY task_id"
+                    ).fetchall(),
+                    before_rows,
+                )
+                self.assertEqual(
+                    connection.execute("PRAGMA table_info(orchestration_tasks)").fetchall(),
+                    before_columns,
+                )
+                self.assertEqual(
+                    connection.execute("PRAGMA foreign_key_list(orchestration_tasks)").fetchall(),
+                    before_foreign_keys,
+                )
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT name,sql FROM sqlite_master WHERE type='index' "
+                        "AND tbl_name='orchestration_tasks' ORDER BY name"
+                    ).fetchall(),
+                    before_indexes,
+                )
+                after_triggers = {
+                    row[0]: " ".join(row[1].split())
+                    for row in connection.execute(
+                        "SELECT name,sql FROM sqlite_master WHERE type='trigger' "
+                        "AND tbl_name='orchestration_tasks' ORDER BY name"
+                    )
+                }
+                for name, sql in before_triggers.items():
+                    self.assertEqual(after_triggers[name], sql)
+                self.assertIn("orchestration_tasks_dead_letter_insert_disabled", after_triggers)
+                after_dependents = {
+                    table: tuple(connection.execute(f"PRAGMA foreign_key_list({table})"))
+                    for (table,) in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+                    )
+                }
+                self.assertEqual(after_dependents, before_dependents)
+                self.assertEqual(
+                    {
+                        row[0]: " ".join(row[1].split())
+                        for row in connection.execute(
+                            "SELECT name,sql FROM sqlite_master WHERE type='trigger' "
+                            "AND tbl_name!='orchestration_tasks' "
+                            "AND sql LIKE '%orchestration_tasks%'"
+                        )
+                    },
+                    before_external_triggers,
+                )
+                task_sql = connection.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' "
+                    "AND name='orchestration_tasks'"
+                ).fetchone()[0]
+                self.assertIn("'failed', 'dead_letter'", task_sql)
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+                with self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute(
+                        "UPDATE orchestration_tasks SET state='dead_letter',revision=2 "
+                        "WHERE task_id='task-8'"
+                    )
+                with self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute(
+                        """INSERT INTO orchestration_tasks VALUES(
+                        'dead','plan','assessment','validation','synthetic','[]',0,
+                        'dead_letter',1,'2026-08-29T00:00:00Z','2026-08-29T00:00:00Z',
+                        'none',0)"""
+                    )
+
+    def test_terminal_prerequisites_upgrade_from_0072_through_task_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0073_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            for name in (
+                "0073_terminal_consumption_prerequisite.sql",
+                "0074_orchestration_tasks_table_rebuild.sql",
+            ):
+                (migrations / name).write_text(
+                    (repository_migrations / name).read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0073", "0074"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+                task_sql = connection.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' "
+                    "AND name='orchestration_tasks'"
+                ).fetchone()[0]
+                self.assertIn("'dead_letter'", task_sql)
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+                self.assertIn("orchestration_terminal_consumptions_producer_disabled", triggers)
+                self.assertIn("orchestration_tasks_dead_letter_insert_disabled", triggers)
+                with self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute(
+                        """INSERT INTO orchestration_tasks VALUES(
+                        'invalid','plan','assessment','validation','synthetic','[]',0,
+                        'unknown',1,'2026-08-29T00:00:00Z','2026-08-29T00:00:00Z',
+                        'none',0)"""
+                    )
 
 
 if __name__ == "__main__":
