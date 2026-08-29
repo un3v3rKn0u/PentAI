@@ -1,5 +1,39 @@
 # Phase 2 slice security reviews
 
+## 2026-08-30 — Provider-registry canonical digest prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review and does not
+satisfy dual control.
+
+**Scope and evidence:** Pure registry normalization and digest derivation, existing
+registry validation and canonical JSON/SHA-256 primitives, synthetic order-equivalence,
+semantic-substitution, default-deny, and mutation-isolation tests, compatibility
+documentation, security invariants, and the complete diff.
+
+**Dependency and trust decision:** PR #238 supplied authenticated source identity but
+left canonical normalization undefined. Snapshot production cannot safely compare its
+command, normalized provider list, and complete registry until those digests have one
+trusted algorithm. This slice therefore sorts the closed ASCII provider, model, and
+classification identifiers only after existing validation succeeds and adds no
+persistence or producer behavior.
+
+**Security, privacy, compatibility, and recovery:** Malformed, stale, future-dated,
+overlong, duplicate, all-disabled, privacy-unsafe, and execution-enabled registries keep
+their existing stable denials. Equivalent ordering produces identical provenance;
+semantic changes alter the applicable digest. Inputs are deep-copied. No credentials,
+secret references, prompts, responses, evidence, diagnostics, arbitrary payloads,
+authority, network access, or durable state are introduced. Existing contracts,
+migrations, callers, and recovery behavior remain unchanged; rollback is code-only.
+
+**Findings, limitations, and residual risk:** No material finding remains for this pure
+prerequisite. Authenticated producer composition, monotonic revision and rollback/fork
+enforcement, source-signing governance, snapshot persistence, activation, revocation,
+configuration snapshots, meters, provider execution, measurement, accounting, dispatch,
+UI, Phase 2 demonstrations, and independent review remain deferred. The sole maintainer
+accepts the reduced governance assurance for this scope.
+
 ## 2026-08-29 — Provider-registry snapshot production authentication prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

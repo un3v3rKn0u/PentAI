@@ -20,10 +20,12 @@ or production privilege. The existing Ed25519 policy signer is not widened: ADR 
 limits it to policy and approval material, and current provider-registry documents are
 contract-valid but unsigned.
 
-The future producer must compile the registry with the existing deterministic validator,
-normalize provider, model, and input-classification arrays into documented lexical order,
-and derive canonical JSON SHA-256 digests in trusted core. This prerequisite stores no
-registry document and implements none of those producer semantics.
+The trusted core now provides the pure canonical prerequisite: it compiles the registry,
+sorts provider, model, and input-classification arrays into documented ASCII lexical
+order, and derives separate canonical JSON SHA-256 digests for the complete registry and
+normalized provider list. The helper deep-copies input and performs no persistence.
+Authenticated producer composition, monotonic revision enforcement, and atomic snapshot
+storage remain disabled.
 
 ## Privacy and default denial
 
@@ -47,8 +49,8 @@ empty table; destructive downgrade is unsupported.
 
 ## Deferred work
 
-Authenticated production service composition, canonical normalization implementation,
-monotonic revision and rollback enforcement, source signing or governance, snapshot
+Authenticated production service composition, monotonic revision and rollback
+enforcement, source signing or governance, snapshot
 activation and revocation, configuration-snapshot production, meter identity, adapter
 receipts, provider execution, measurement, reconciliation, finalization, dispatch, UI,
 and Phase 2 demonstrations remain deferred.

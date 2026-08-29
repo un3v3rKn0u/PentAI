@@ -11,6 +11,14 @@ Registry compilation performs no persistence, network request, model load, secre
 resolution, evidence access, agent action, approval, grant, or provider execution.
 `execution_enabled` must be exactly `false`.
 
+The additive normalization helper validates through this same compiler, deep-copies the
+document, sorts providers by ASCII `provider_id`, and sorts each provider's ASCII model
+identifiers and input classifications lexically. The complete normalized registry and
+its normalized provider array are hashed separately with the repository canonical JSON
+and SHA-256 primitives. Array ordering cannot fork provenance, while ceilings, validity,
+remote-provider policy, provider/model metadata, or any other semantic change alters the
+applicable digest.
+
 ## Default-deny behavior
 
 Missing fields, unknown fields, invalid identifiers, duplicate models, invalid budget
@@ -50,11 +58,12 @@ older consumers remain safely default-denying.
 Synthetic tests cover valid remote/local compilation and configuration composition,
 immutable snapshot behavior, malformed and missing data, time boundaries, duplicate
 providers and models, all-disabled state, forbidden classifications, disabled provider,
-unlisted model, budget schema boundaries, configuration overrun, and expired-policy
-reuse.
+unlisted model, budget schema boundaries, configuration overrun, expired-policy reuse,
+order-independent normalization, semantic digest substitution, and caller mutation
+isolation.
 
-Authenticated registry-snapshot production, human activation and revocation, rollback
-protection, signature/source verification, audit events, provider adapters, secret
-brokerage, runtime budget accounting, model contexts, and UI remain deferred. This slice
-does not complete the Phase 2 allowlist/budget action-plan item or enable provider
-execution.
+Authenticated registry-snapshot production, monotonic revision and rollback protection,
+human activation and revocation, signature/source governance, audit events, provider
+adapters, secret brokerage, runtime budget accounting, model contexts, and UI remain
+deferred. This slice does not complete the Phase 2 allowlist/budget action-plan item or
+enable provider execution.

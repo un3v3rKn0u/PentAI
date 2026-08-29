@@ -923,9 +923,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     An additive authenticated production-command v1, source-bound receipt v2, and
     migration 0082 now reserve the server-derived local desktop principal and
     per-process session required by a future trusted snapshot producer. The producer
-    remains deny-all; canonical normalization, monotonic revision enforcement, signing
-    governance, snapshot creation, activation, and all downstream provider behavior
-    remain disabled and required.
+    remains deny-all. Trusted-core normalization now validates before deep-copying,
+    lexically orders provider/model/classification arrays, and derives separate canonical
+    registry and provider-list SHA-256 digests without persistence. Monotonic revision
+    enforcement, signing governance, snapshot creation, activation, and all downstream
+    provider behavior remain disabled and required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
