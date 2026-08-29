@@ -35,11 +35,11 @@ provider-bound reference rule.
 
 ## Compatibility, migration, and rollback
 
-This is a new additive v1 contract. `AIProviderConfiguration v1` remains compatible;
-its trusted policy now carries registry provenance and expiry. No database migration is
-required because registry state is not persisted or activated in this slice. Rollback
-removes the registry schema/compiler/tests and returns the configuration validator to
-its previous trusted-policy injection boundary; no durable records require conversion.
+This is an additive v1 validation contract. `AIProviderConfiguration v1` remains
+compatible; its trusted policy carries registry provenance and expiry. The separate
+registry-snapshot v1 contracts and migration 0081 reserve an inert durable normalized
+copy without changing this compiler or activating a registry. Their producer remains
+storage-denied, so no runtime registry state exists yet.
 
 Required fields, changed identity/routing semantics, or removed values require a new
 major version. Optional additive metadata may use a compatible minor version only when
@@ -53,7 +53,8 @@ providers and models, all-disabled state, forbidden classifications, disabled pr
 unlisted model, budget schema boundaries, configuration overrun, and expired-policy
 reuse.
 
-Durable registry storage, human activation and revocation, rollback protection,
-signature/digest verification, audit events, provider adapters, secret brokerage,
-runtime budget accounting, model contexts, and UI remain deferred. This slice does not
-complete the Phase 2 allowlist/budget action-plan item or enable provider execution.
+Authenticated registry-snapshot production, human activation and revocation, rollback
+protection, signature/source verification, audit events, provider adapters, secret
+brokerage, runtime budget accounting, model contexts, and UI remain deferred. This slice
+does not complete the Phase 2 allowlist/budget action-plan item or enable provider
+execution.

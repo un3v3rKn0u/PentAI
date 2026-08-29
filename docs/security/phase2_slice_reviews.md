@@ -1,5 +1,39 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Provider-registry snapshot v1 inert prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review and does not
+satisfy dual control.
+
+**Scope and evidence:** Closed provider-registry snapshot and receipt contracts,
+migration 0081, deny-all producer enforcement, immutable update/delete guards, exact
+registry/provider/model digest provenance, compatibility documentation, and synthetic
+contract, migration, storage-denial, integrity, and foreign-key tests.
+
+**Dependency and trust decision:** Provider registry v1 is only a pure compiler. PR
+#236 reserved configuration-snapshot storage, but its future producer cannot safely
+bind a transient caller registry. This slice therefore reserves an inactive normalized
+registry snapshot and does not invent activation, revocation, signature authority,
+meter identity, adapter behavior, pricing, tokenizer, or accounting semantics.
+
+**Security, privacy, and compatibility:** No snapshot can be produced. Contracts and
+storage exclude credentials, secret references, prompts, contexts, provider responses,
+evidence, targets, diagnostics, pricing, tokenizer rules, commands, paths, URLs, and
+arbitrary payloads. Existing registry/configuration validators and all completion,
+reservation, configuration-snapshot, and measurement behavior remain unchanged.
+Application rollback leaves an empty additive table; destructive downgrade is
+unsupported.
+
+**Findings, limitations, and residual risk:** No material finding remains.
+Authenticated snapshot production, source/signature verification, activation,
+revocation, rollback protection, configuration-snapshot production, meter identity,
+adapter receipts, provider execution, measurement, reconciliation, finalization,
+dispatch, runtime composition, UI, demonstrations, and independent review remain
+deferred. The sole maintainer accepts the reduced governance assurance for this inert
+prerequisite.
+
 ## 2026-08-29 — Provider-configuration snapshot v1 inert prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

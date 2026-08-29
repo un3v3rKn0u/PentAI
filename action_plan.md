@@ -916,6 +916,10 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     meter identity can be trusted. The producer remains storage-denied; no registry
     activation, secret resolution, meter attestation, provider execution, measurement,
     pricing, reconciliation, or finalization exists.
+    Additive provider-registry snapshot v1 contracts and migration 0081 now reserve one
+    exact inactive normalized registry revision and provider/model digest. Production,
+    activation, revocation, rollback protection, configuration-snapshot production,
+    meter identity, execution, and accounting remain disabled and required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
