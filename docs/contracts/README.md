@@ -6,6 +6,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 
 - `ai-provider-configuration-v1.schema.json` — non-executing exact provider/model,
   secret-reference, privacy-routing, opt-in, expiry, and budget configuration.
+- `ai-provider-configuration-snapshot-v1.schema.json` — inert exact provider/model and
+  registry provenance reserved for a future authenticated runtime meter.
+- `ai-provider-configuration-snapshot-receipt-v1.schema.json` — immutable metadata-only
+  snapshot receipt with meter binding, authority, and execution disabled.
 - `ai-provider-registry-v1.schema.json` — trusted, revisioned provider/model allowlist,
   privacy-route, state, validity, and global budget-ceiling source.
 - `ai-secret-reference-v1.schema.json` — non-resolving opaque provider-secret metadata
