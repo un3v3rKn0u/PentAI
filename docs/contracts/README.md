@@ -114,6 +114,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   failure-link command bound to failure consumption v3.
 - `orchestration-task-attempt-receipt-v3.schema.json` — immutable failed attempt-three
   registration preserving the existing identity and closed retry ceiling.
+- `orchestration-terminal-disposition-command-v1.schema.json` — exact failed-attempt-v3
+  request for a non-transitioning terminal decision.
+- `orchestration-terminal-disposition-decision-v1.schema.json` — immutable exhausted-
+  ceiling dead-letter eligibility with queue, transition, review, and execution disabled.
 - `orchestration-retry-policy-v1.schema.json` — trusted-core closed retry semantics,
   integer attempt/backoff ceilings, exact policy binding, and no authority.
 - `orchestration-retry-policy-v2.schema.json` — additive trusted-core policy for

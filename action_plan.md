@@ -870,6 +870,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     the closed three-attempt ceiling without changing task state, evaluating another
     retry, dead-lettering, mutating budget, dispatching, or creating authority. Terminal
     dead-letter behavior, completion, dispatch, and runtime composition remain required.
+    A separate immutable terminal-disposition decision now accepts only that exact
+    failed-attempt-v3 receipt at the three-attempt ceiling and derives metadata-only
+    `dead_letter_eligible` status. It cannot transition the task, create or consume a
+    queue item, create operator-review work, notify, retry, dispatch, or grant authority.
+    Dead-letter transition/queueing and all broader runtime behavior remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

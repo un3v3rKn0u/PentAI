@@ -1,5 +1,40 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Attempt-three terminal-disposition decision v1
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review and does not
+satisfy dual control.
+
+**Scope and evidence:** Closed command/decision contracts, trusted-core lineage and
+current-state validation, additive migration 0072, immutable one-to-one storage,
+metadata-only audit/outbox linkage, compatibility documentation, and synthetic positive,
+malformed, mixed-version, replay, tampering, concurrency, cancellation, safety, worker,
+account, recovery, storage-bypass, fresh-upgrade, additive-upgrade, and idempotency tests.
+
+**Security boundaries and default deny:** Only the exact failed-attempt-v3 receipt and
+retry-policy-v2 ceiling of three can produce `dead_letter_eligible` with
+`retry_ceiling_exhausted`. Trusted core revalidates the complete failure, checkpoint,
+lease, worker, readiness, retry-consumption, policy, account, fencing, cancellation,
+safety, and recovery lineage. Missing, stale, mixed, cross-scope, tampered,
+changed-replay, or competing inputs deny. Task transition, queueing, operator review,
+notification, retry, dispatch, and execution flags remain false; authority remains none.
+
+**Compatibility, privacy, migration, and rollback:** Existing retry decisions and v1/v2
+failed-attempt behavior remain unchanged and cannot satisfy this boundary. Contracts and
+persistence exclude credentials, raw tokens, evidence, assessment content, prompts,
+diagnostics, queue payloads, operator messages, paths, URLs, provider/plugin output,
+targets, and arbitrary blobs. Migration 0072 is additive; rollback disables new
+decisions while retaining immutable history, and destructive reversal is unsupported.
+
+**Findings, limitations, and residual risk:** No material finding remains. Repository
+evidence defines exhausted-attempt dead-letter behavior but no operator-review mapping,
+so this slice does not invent one. Dead-letter transition and queueing, completion,
+dispatch, runtime composition, providers/plugins, UI, Phase 2 demonstrations, and
+independent review remain deferred. The non-independent governance risk is accepted only
+for this narrow non-executing slice.
+
 ## 2026-08-27 — Attempt-three failed-attempt registration v3
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The
