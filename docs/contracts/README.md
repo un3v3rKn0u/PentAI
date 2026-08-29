@@ -133,6 +133,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `orchestration-task-completion-receipt-v3.schema.json` — immutable coordination-only
   success receipt that storage-gates only the exact attempt-three success edge, with
   result payloads, authority, and execution excluded.
+- `orchestration-provider-usage-measurement-v1.schema.json` — closed integer-only shape
+  reserved for a future trusted runtime meter bound to the exact attempt-three completion.
+- `orchestration-provider-usage-receipt-v1.schema.json` — inert metadata-only receipt
+  shape with reconciliation and budget finalization explicitly disabled.
 - `orchestration-retry-policy-v1.schema.json` — trusted-core closed retry semantics,
   integer attempt/backoff ceilings, exact policy binding, and no authority.
 - `orchestration-retry-policy-v2.schema.json` — additive trusted-core policy for

@@ -313,6 +313,14 @@ success remains compatible but cannot satisfy or bypass the v3 predicate. Output
 evidence, diagnostics, provider/plugin data, retry, queue, dispatch, authority, and
 execution remain excluded.
 
+**Phase 2 provider-usage prerequisite note:** Provider-usage measurement v1 is an inert,
+closed integer-only contract and immutable table for the exact completion-v3 and
+reservation-v4 lineage. Its producer remains storage-denied until a separately reviewed
+trusted runtime meter exists. Completion, caller input, provider output, and recovery
+cannot manufacture usage. Reconciliation, debit, release, finalization, dispatch,
+authority, and external effects remain disabled; retry capacity is absent and cannot be
+refunded or reinterpreted.
+
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in
 one immediate transaction. Integrity and foreign-key verification must pass before its

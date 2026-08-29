@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-provider-usage-receipt-v1.schema.json",
+  "title": "PentAI AttemptThreeProviderUsageReceipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "measurement_id", "measurement_digest", "completion_id", "completion_digest", "assessment_id", "plan_id", "plan_revision", "task_id", "task_revision", "budget_reservation_id", "budget_account_id", "budget_account_version", "amounts", "recorded_at", "reconciliation_enabled", "budget_finalization_enabled", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "measurement_id": {"type": "string", "format": "uuid"},
+    "measurement_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "completion_id": {"type": "string", "format": "uuid"},
+    "completion_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "task_id": {"type": "string", "format": "uuid"},
+    "task_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "budget_reservation_id": {"type": "string", "format": "uuid"},
+    "budget_account_id": {"type": "string", "format": "uuid"},
+    "budget_account_version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "amounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "requests", "cost_microusd", "runtime_seconds"],
+      "properties": {
+        "input_tokens": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "output_tokens": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "requests": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "cost_microusd": {"type": "integer", "minimum": 0, "maximum": 1000000000},
+        "runtime_seconds": {"type": "integer", "minimum": 0, "maximum": 86400}
+      }
+    },
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "reconciliation_enabled": {"const": false},
+    "budget_finalization_enabled": {"const": false},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  },
+  "anyOf": [
+    {"properties": {"amounts": {"properties": {"input_tokens": {"minimum": 1}}}}},
+    {"properties": {"amounts": {"properties": {"output_tokens": {"minimum": 1}}}}},
+    {"properties": {"amounts": {"properties": {"requests": {"minimum": 1}}}}},
+    {"properties": {"amounts": {"properties": {"cost_microusd": {"minimum": 1}}}}},
+    {"properties": {"amounts": {"properties": {"runtime_seconds": {"minimum": 1}}}}}
+  ]
+}
