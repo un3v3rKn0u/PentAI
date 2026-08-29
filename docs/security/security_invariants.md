@@ -304,14 +304,14 @@ changing task or plan state. Delivery, claim, acknowledgement, retry, deletion, 
 operator review, dispatch, authority, and effects remain disabled. The older workflow
 task lifecycle is a separate subsystem and cannot satisfy this boundary.
 
-**Phase 2 attempt-three completion prerequisite note:** Closed completion-v3 command and
-receipt contracts bind the exact running attempt-three lease-consumption and checkpoint
-head or explicit absence lineage. Migration 0077 adds an immutable ledger with a
-deny-all producer trigger, so no completion receipt or state change can occur. Output,
+**Phase 2 attempt-three completion note:** Completion v3 binds the exact current running
+attempt-three lease-consumption and checkpoint head or explicit absence lineage. Trusted
+core revalidates policy, safety, worker, account, fencing, and recovery state in one
+transaction before an immutable receipt storage-gates only `running → succeeded`.
+Dependent readiness and plan state are deterministically derived. Earlier-attempt
+success remains compatible but cannot satisfy or bypass the v3 predicate. Output,
 evidence, diagnostics, provider/plugin data, retry, queue, dispatch, authority, and
-execution are excluded. The later trusted consumer must revalidate the full current
-security lineage and install an exact storage predicate before `running → succeeded`
-can count as attempt-three completion evidence.
+execution remain excluded.
 
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in

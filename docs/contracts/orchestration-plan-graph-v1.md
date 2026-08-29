@@ -29,7 +29,9 @@ Creation derives root tasks as `ready` or `awaiting_human` and dependent tasks a
 - `awaiting_human` or `blocked` to `cancelled`;
 - `awaiting_human` to `ready` only through an exact authenticated approval-consumption
   receipt and dedicated trusted-core operation;
-- `running` to `cancelling` or `succeeded` through the general transition service;
+- `running` to `cancelling`, or to `succeeded` through the general transition service
+  only when no attempt-three identity exists;
+- attempt-three `running` to `succeeded` only through exact completion consumption v3;
 - `running` to `failed` only through an exact typed failure-consumption receipt and
   dedicated trusted-core operation;
 - `cancelling` to `cancelled` or `failed`.
@@ -77,6 +79,11 @@ provider usage charging and end-to-end action budget enforcement remain deferred
 An additive task-approval boundary persists and consumes an exact authenticated signed
 v2 human decision through a storage-gated readiness transition. The receipt and state
 change grant no execution authority.
+Attempt-three completion v3 now binds the exact current lease-consumption and checkpoint
+head or absence lineage, stores one immutable metadata-only receipt, storage-gates only
+the bound success edge, recomputes dependent readiness, and derives plan state. Earlier
+attempt success remains compatible. Success state grants no execution, evidence,
+provider, dispatch, or downstream execution authority.
 An additive orchestration lease boundary can assign non-executing coordination
 ownership to an exact ready validation task using the v2 manifest/budget prerequisites
 and a trusted worker-registry identity. Dedicated lease consumption can move that task
