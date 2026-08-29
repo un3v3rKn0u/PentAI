@@ -64,8 +64,8 @@ payloads, model output, targets, and tool arguments are absent.
 Plan-graph v1 remains the immutable creation and legacy graph-read contract and does not
 include `dead_letter`. The additive task-snapshot v2 reader exposes one current durable
 task without widening v1. It requires exact immutable terminal-consumption lineage
-before it can serialize `dead_letter`; migration 0074 keeps that state unreachable until
-a later reviewed consumer exists.
+before it can serialize `dead_letter`. Once the dedicated consumer makes that state
+reachable, legacy graph reads deny rather than silently widening or misrepresenting v1.
 
 Plan authorship/authentication, Master Orchestrator decisions, checkpoints,
 general retry scheduling, and plan-transition audit/outbox events,

@@ -1,5 +1,36 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Attempt-three terminal-disposition consumption v1
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review.
+
+**Scope and evidence:** Dedicated terminal consumer, migration 0075 producer and exact
+task-version predicates, immutable receipt/audit/outbox handling, snapshot-v2
+composition, replay and concurrency behavior, migration upgrades, synthetic positive
+and default-deny tests, and complete authorization/privacy boundary review.
+
+**Security boundaries and default deny:** Only one exact current attempt-three terminal
+decision can create a receipt and advance its bound task from `failed` to `dead_letter`.
+The consumer reuses failure-v3 current-security validation across policy, cancellation,
+safety, worker, manifest, budget/account, checkpoint, fencing, and recovery state.
+General transitions, direct unbacked updates, changed replay, competing consumption,
+stale lineage, and mixed versions deny. Plan state/revision remain unchanged.
+
+**Compatibility, privacy, migration, and rollback:** V1/v2/v3 historical lineage and
+plan-graph v1 are unchanged. Legacy graph reads fail closed on reachable dead-letter
+state; task snapshot v2 is the compatible reader. Migration 0075 is additive but cannot
+be safely downgraded after consumption because migration 0074 predecessors cannot
+represent the row. Receipts and events contain bounded identifiers, hashes, closed
+enums, revisions, and timestamps only; no secrets, tokens, targets, evidence, prompts,
+diagnostics, queue/operator payloads, or provider/plugin output are accepted.
+
+**Findings, limitations, and residual risk:** Queue creation/processing, operator review,
+completion, dispatch, runtime composition, providers/plugins, UI, exit demonstrations,
+and independent review remain deferred. The non-independent governance risk is accepted
+only for this non-executing coordination transition.
+
 ## 2026-08-29 — Version-exact orchestration task snapshot v2
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

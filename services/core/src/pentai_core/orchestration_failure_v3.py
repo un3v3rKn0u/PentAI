@@ -211,7 +211,13 @@ class OrchestrationFailureV3Service:
             )
 
     def _validate_replay(
-        self, connection: sqlite3.Connection, receipt: dict[str, Any], instant: datetime
+        self,
+        connection: sqlite3.Connection,
+        receipt: dict[str, Any],
+        instant: datetime,
+        *,
+        expected_task_state: str = "failed",
+        expected_task_revision: int | None = None,
     ) -> None:
         try:
             policy = self.authorization.get_policy(
@@ -273,7 +279,13 @@ class OrchestrationFailureV3Service:
             or plan is None
             or (plan["state"], plan["revision"]) != ("active", receipt["resulting_plan_revision"])
             or task is None
-            or (task["state"], task["revision"]) != ("failed", receipt["resulting_task_revision"])
+            or (task["state"], task["revision"])
+            != (
+                expected_task_state,
+                expected_task_revision
+                if expected_task_revision is not None
+                else receipt["resulting_task_revision"],
+            )
             or worker is None
             or (worker["status"], worker["version"], worker["execution_enabled"])
             != ("running", receipt["worker_version"], 0)

@@ -205,7 +205,6 @@ def test_task_snapshot_v2_denies_tampered_mixed_version_terminal_lineage(
     with closing(sqlite3.connect(planner.database_path)) as connection, connection:
         connection.execute("PRAGMA foreign_keys=OFF")
         connection.execute("DROP TRIGGER orchestration_tasks_version_fenced")
-        connection.execute("DROP TRIGGER orchestration_terminal_consumptions_producer_disabled")
         connection.execute("DROP TRIGGER orchestration_terminal_consumptions_binding_valid")
         connection.execute(
             "UPDATE orchestration_tasks SET state='dead_letter',revision=2 WHERE task_id=?",
