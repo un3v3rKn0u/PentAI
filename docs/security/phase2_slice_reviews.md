@@ -1,5 +1,39 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Provider-registry snapshot production authentication prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review and does not
+satisfy dual control.
+
+**Scope and evidence:** Closed authenticated production-command v1 and source-bound
+receipt v2 contracts, additive migration 0082, deny-all producer enforcement, immutable
+update/delete guards, compatibility documentation, and synthetic contract, migration,
+storage-denial, integrity, and foreign-key tests.
+
+**Dependency and trust decision:** Registry snapshot v1 lacks authenticated command and
+source identity. The repository already derives a local desktop principal and
+per-process session from authenticated local-core transport, so this slice reserves that
+existing identity without creating new signing authority. ADR 0003's policy/approval
+signer is not widened, and registry documents remain unsigned. Canonical normalization,
+monotonic revision enforcement, and actual production remain separately reviewed work.
+
+**Security, privacy, and compatibility:** No production record can be inserted. The
+contracts and storage exclude registry documents, credentials, secret references,
+private keys, signatures, prompts, contexts, provider responses, evidence, targets,
+diagnostics, commands, paths, URLs, and arbitrary payloads. Registry and snapshot v1
+behavior remains unchanged; receipt v2 is additive and unusable as receipt v1.
+Application rollback leaves an empty additive table; destructive downgrade is
+unsupported.
+
+**Findings, limitations, and residual risk:** No material finding remains for this inert
+prerequisite. Authenticated producer composition, source/signing governance, canonical
+normalization, monotonicity and rollback enforcement, activation, revocation,
+configuration-snapshot production, meter identity, provider execution, measurement,
+accounting, dispatch, UI, demonstrations, and independent review remain deferred. The
+sole maintainer accepts the reduced governance assurance for this prerequisite.
+
 ## 2026-08-29 — Provider-registry snapshot v1 inert prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

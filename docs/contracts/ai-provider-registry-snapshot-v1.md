@@ -12,6 +12,11 @@ Migration 0081 adds an immutable metadata ledger whose producer remains deny-all
 snapshot or receipt can currently be created. Every record is fixed to `inactive`, with
 activation, revocation, authority, and execution disabled.
 
+The additive production-command v1 and receipt v2 prerequisite binds a future producer
+to a server-derived local desktop principal and authenticated per-process session.
+Migration 0082 remains producer-denied, so this added identity shape does not create a
+snapshot or change receipt v1 behavior.
+
 ## Dependency and trust model
 
 The existing registry compiler remains a pure validator. A future authenticated
@@ -46,7 +51,8 @@ leaves an unused empty table; destructive downgrade is unsupported.
 
 ## Deferred work
 
-Authenticated snapshot production, signature/source authentication, durable activation
+Authenticated snapshot production service composition, canonical normalization,
+signature/source governance, durable activation
 and revocation, rollback protection, configuration-snapshot production, meter identity,
 adapter receipts, provider execution, usage measurement, accounting, dispatch, UI, and
 Phase 2 demonstrations remain deferred.
