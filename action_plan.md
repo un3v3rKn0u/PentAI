@@ -897,6 +897,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     retry, deletion, cleanup, operator review, authority, and execution remain disabled.
     Queue processing, operator workflows, and all broader runtime behavior remain
     required.
+    Repository evidence does not yet define transport, processing, cleanup, or operator-
+    review policy for that registration, so no such semantics are inferred. A separate
+    completion-v3 prerequisite now defines closed attempt-three success command/receipt
+    contracts and an immutable deny-all ledger. It creates no receipt or state change;
+    dedicated consumption, exact storage gating, dependent readiness, plan completion,
+    provider-usage reconciliation, dispatch, and runtime composition remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

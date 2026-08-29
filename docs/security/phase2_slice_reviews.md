@@ -1,5 +1,42 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Attempt-three completion v3 inert prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author and security reviewer under the `GIT_WORKFLOW.md`
+exception. This is not independent review and does not satisfy dual control.
+
+**Scope and evidence:** Additive closed completion-v3 command/receipt contracts,
+migration 0077, deny-all producer enforcement, immutable update/delete guards,
+contract/migration tests, compatibility documentation, and repository-wide security
+invariant review. The boundary accepts no output or arbitrary payload and fixes
+authority to none and execution to false.
+
+**Dependency decision:** Phase 2 repeatedly identifies successful completion as an
+unimplemented sibling of typed failure consumption. The new dead-letter registration
+has no authoritative transport, processing, cleanup, or operator-review semantics, so
+this slice does not invent them. The selected completion prerequisite is narrower than
+a producer: it only reserves version-exact durable shapes for later review.
+
+**Threat review:** Mixed attempts or versions, attempt four, partial checkpoint tuples,
+caller-controlled success meaning, output/evidence injection, privilege expansion, and
+direct storage production deny. The producer-disabled trigger prevents runtime creation;
+immutable guards prevent later mutation or deletion. Existing task/plan state and the
+general transition service are unchanged and do not constitute completion-v3 evidence.
+
+**Compatibility, privacy, and rollback:** Existing graph, retry, failure, terminal, and
+dead-letter contracts and rows remain unchanged. Only bounded identifiers, hashes,
+integers, timestamps, and closed constants are representable. Application rollback
+leaves an empty inert table; destructive downgrade is unsupported. A cross-version
+attempt-table foreign key is intentionally deferred to the exact future transactional
+predicate because adding it caused SQLite parent-key compatibility failures in existing
+attempt-three lifecycle tests.
+
+**Findings, limitations, and residual risk:** No independent reviewer participated.
+Completion production/consumption, exact storage gating, dependent readiness, plan
+completion, budget/provider reconciliation, worker/runtime composition, queue
+processing, operator workflows, UI, and Phase 2 demonstrations remain deferred.
+
 ## 2026-08-29 — Attempt-three dead-letter registration v1
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

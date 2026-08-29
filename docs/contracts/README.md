@@ -128,6 +128,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   consumption-bound request for inert dead-letter registration metadata.
 - `orchestration-dead-letter-registration-receipt-v1.schema.json` — immutable,
   non-delivering dead-letter registration with queue processing and authority disabled.
+- `orchestration-task-completion-command-v3.schema.json` — version-exact attempt-three
+  successful-completion request shape reserved for a later trusted consumer.
+- `orchestration-task-completion-receipt-v3.schema.json` — immutable coordination-only
+  success receipt shape with result payloads, authority, and execution excluded.
 - `orchestration-retry-policy-v1.schema.json` — trusted-core closed retry semantics,
   integer attempt/backoff ceilings, exact policy binding, and no authority.
 - `orchestration-retry-policy-v2.schema.json` — additive trusted-core policy for
