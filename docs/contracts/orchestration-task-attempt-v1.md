@@ -42,3 +42,19 @@ original-attempt registration remains unchanged; mixed versions cannot satisfy v
 Application rollback disables v2 production while retaining immutable history, and
 migration reversal is unsupported. Further retry evaluation, scheduling, activation,
 task reopening, completion, dispatch, and runtime execution remain deferred.
+
+## Terminal failed-attempt v3
+
+The additive v3 command links the already-existing attempt-three identity to the exact
+current typed failure-consumption v3 receipt. Trusted core derives the closed failure
+class and complete activation, schedule, retry-consumption, manifest-v4, reservation-v4,
+approval, worker, lease-consumption-v3, checkpoint-v3, policy, fencing, and recovery
+lineage from durable records. The task is already failed; registration performs no plan
+or task transition.
+
+Migration 0071 stores a separate immutable one-to-one projection because attempt-three's
+creation receipt remains permanently `registered`. V1/v2 contracts and rows are unchanged
+and cannot satisfy v3. The receipt records the retry-policy-v2 ceiling of three but does
+not evaluate retryability, create attempt four, dead-letter work, mutate budget, dispatch,
+or grant authority. Rollback disables new v3 registration while retaining history;
+destructive migration reversal is unsupported.

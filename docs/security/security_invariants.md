@@ -277,6 +277,12 @@ bound `running` to `failed` transition. Closed failure classification remains
 non-authoritative; at the three-attempt ceiling it cannot create attempt four, retry,
 dead-letter, dispatch, network, provider/plugin, or target authority.
 
+**Phase 2 terminal failed-attempt note:** Failed-attempt registration v3 accepts only the
+digest-verified failure-v3 receipt and existing attempt-three identity for the same exact
+current failed lineage. It appends immutable metadata without changing task state,
+evaluating retryability, dead-lettering, or creating attempt four. The three-attempt
+ceiling is descriptive terminal metadata, never authority.
+
 **Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
 and canonical-host token in the same immediate transaction as total-request and
 connection capacity. Refill uses persisted policy rates, burst capacity, and a
