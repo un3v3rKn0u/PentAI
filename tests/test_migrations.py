@@ -95,6 +95,7 @@ class MigrationTests(unittest.TestCase):
                     "0076",
                     "0077",
                     "0078",
+                    "0079",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -169,6 +170,7 @@ class MigrationTests(unittest.TestCase):
                     "orchestration_retry_failed_attempts_v3",
                     "orchestration_terminal_dispositions",
                     "orchestration_task_completions_v3",
+                    "orchestration_provider_usage_measurements_v1",
                     "orchestration_retry_budget_consumptions",
                     "orchestration_retry_attempts",
                     "orchestration_retry_schedules",
@@ -1802,6 +1804,87 @@ class MigrationTests(unittest.TestCase):
             )
             self.assertIn("orchestration_task_completions_v3_immutable", triggers)
             self.assertIn("orchestration_task_completions_v3_no_delete", triggers)
+
+    def test_attempt_three_provider_usage_prerequisite_is_additive_and_inert(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0079_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = (
+                repository_migrations
+                / "0079_attempt_three_provider_usage_prerequisite.sql"
+            )
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0079"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM orchestration_provider_usage_measurements_v1"
+                    ).fetchone()[0],
+                    0,
+                )
+                with self.assertRaisesRegex(
+                    sqlite3.IntegrityError, "provider usage producer is disabled"
+                ):
+                    connection.execute(
+                        """INSERT INTO orchestration_provider_usage_measurements_v1(
+                        measurement_id,completion_id,completion_digest,assessment_id,
+                        plan_id,plan_revision,task_id,task_revision,retry_attempt_id,
+                        budget_reservation_id,budget_account_id,budget_account_version,
+                        measurement_json,measurement_digest,recorded_at,authority,
+                        execution_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'none',0)""",
+                        (
+                            "00000000-0000-4000-8000-000000000001",
+                            "00000000-0000-4000-8000-000000000002",
+                            "sha256:" + "a" * 64,
+                            "00000000-0000-4000-8000-000000000003",
+                            "00000000-0000-4000-8000-000000000004",
+                            8,
+                            "00000000-0000-4000-8000-000000000005",
+                            8,
+                            "00000000-0000-4000-8000-000000000006",
+                            "00000000-0000-4000-8000-000000000007",
+                            "00000000-0000-4000-8000-000000000008",
+                            4,
+                            "{}",
+                            "sha256:" + "b" * 64,
+                            "2026-08-29T20:00:01Z",
+                        ),
+                    )
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self.assertIn(
+                "orchestration_provider_usage_measurements_v1_binding_valid", triggers
+            )
+            self.assertIn(
+                "orchestration_provider_usage_measurements_v1_producer_disabled", triggers
+            )
+            self.assertIn(
+                "orchestration_provider_usage_measurements_v1_immutable", triggers
+            )
+            self.assertIn(
+                "orchestration_provider_usage_measurements_v1_no_delete", triggers
+            )
 
     def test_orchestration_task_state_rebuild_preserves_authoritative_schema(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -906,6 +906,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     success remains compatible but cannot bypass the attempt-three predicate. Provider-
     usage reconciliation, budget finalization, dispatch, and runtime composition remain
     required.
+    Additive provider-usage measurement v1 contracts and an immutable ledger now reserve
+    the exact completion-v3, reservation-v4, account, provider-configuration, worker,
+    checkpoint, fencing, and recovery shape for a later trusted runtime meter. The
+    producer remains storage-denied because no authoritative runtime usage source exists;
+    no measurement, reconciliation, debit, release, or budget finalization is possible.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

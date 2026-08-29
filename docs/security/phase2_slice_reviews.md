@@ -1,5 +1,35 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Attempt-three provider-usage v1 inert prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review and does not
+satisfy dual control.
+
+**Scope and evidence:** Closed integer-only usage measurement and receipt contracts,
+migration 0079, deny-all producer enforcement, immutable update/delete guards,
+completion/reservation/account lineage, compatibility documentation, and synthetic
+contract, migration, storage-denial, integrity, and foreign-key tests.
+
+**Dependency and trust decision:** The durable assessment budget account and attempt-
+three reservation are authoritative capacity sources, but the repository has no trusted
+provider adapter or runtime usage meter. Completion is coordination evidence only.
+Accordingly this slice reserves an inert shape and does not accept caller amounts,
+fabricate usage, reconcile/debit capacity, or finalize/release the reservation.
+
+**Security, privacy, and compatibility:** The contracts exclude retry units, provider
+responses, prompts, evidence, artifacts, findings, diagnostics, targets, credentials,
+tokens, commands, paths, URLs, caller prices, and arbitrary payloads. Earlier completion,
+reservation, and in-memory AI ledger behavior remains unchanged. Application rollback
+leaves an empty additive table; destructive downgrade is unsupported.
+
+**Findings, limitations, and residual risk:** No material finding remains. Trusted
+metering, production, reconciliation, debit/settlement, partial-use semantics, budget
+finalization, provider execution, dispatch, evidence/reporting, runtime composition, UI,
+Phase 2 demonstrations, and independent review remain deferred. The sole maintainer
+accepts the reduced governance assurance for this inert prerequisite.
+
 ## 2026-08-29 — Attempt-three completion consumption v3
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

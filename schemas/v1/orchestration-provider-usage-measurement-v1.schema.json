@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/orchestration-provider-usage-measurement-v1.schema.json",
+  "title": "PentAI AttemptThreeProviderUsageMeasurement v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "measurement_id", "completion_id", "completion_digest", "assessment_id", "plan_id", "plan_revision", "task_id", "task_revision", "retry_attempt_id", "attempt_number", "budget_reservation_id", "budget_request_digest", "budget_account_id", "budget_account_version", "configuration_id", "configuration_hash", "registry_id", "registry_revision", "worker_id", "worker_version", "lease_consumption_id", "checkpoint_id", "checkpoint_sequence", "checkpoint_digest", "fencing_token", "recovery_generation", "measurement_source", "amounts", "measured_at", "purpose", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "measurement_id": {"type": "string", "format": "uuid"},
+    "completion_id": {"type": "string", "format": "uuid"},
+    "completion_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "task_id": {"type": "string", "format": "uuid"},
+    "task_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "retry_attempt_id": {"type": "string", "format": "uuid"},
+    "attempt_number": {"const": 3},
+    "budget_reservation_id": {"type": "string", "format": "uuid"},
+    "budget_request_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "budget_account_id": {"type": "string", "format": "uuid"},
+    "budget_account_version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "configuration_id": {"type": "string", "format": "uuid"},
+    "configuration_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "registry_id": {"type": "string", "format": "uuid"},
+    "registry_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "worker_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "worker_version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "lease_consumption_id": {"type": "string", "format": "uuid"},
+    "checkpoint_id": {"type": ["string", "null"], "format": "uuid"},
+    "checkpoint_sequence": {"type": ["integer", "null"], "minimum": 1, "maximum": 10000},
+    "checkpoint_digest": {"type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$"},
+    "fencing_token": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "recovery_generation": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "measurement_source": {"const": "trusted_runtime_meter"},
+    "amounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "requests", "cost_microusd", "runtime_seconds"],
+      "properties": {
+        "input_tokens": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "output_tokens": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "requests": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "cost_microusd": {"type": "integer", "minimum": 0, "maximum": 1000000000},
+        "runtime_seconds": {"type": "integer", "minimum": 0, "maximum": 86400}
+      }
+    },
+    "measured_at": {"type": "string", "format": "date-time"},
+    "purpose": {"const": "record_attempt_three_provider_usage"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"checkpoint_id": {"type": "null"}}},
+      "then": {"properties": {"checkpoint_sequence": {"type": "null"}, "checkpoint_digest": {"type": "null"}}},
+      "else": {"properties": {"checkpoint_sequence": {"type": "integer"}, "checkpoint_digest": {"type": "string"}}}
+    },
+    {
+      "anyOf": [
+        {"properties": {"amounts": {"properties": {"input_tokens": {"minimum": 1}}}}},
+        {"properties": {"amounts": {"properties": {"output_tokens": {"minimum": 1}}}}},
+        {"properties": {"amounts": {"properties": {"requests": {"minimum": 1}}}}},
+        {"properties": {"amounts": {"properties": {"cost_microusd": {"minimum": 1}}}}},
+        {"properties": {"amounts": {"properties": {"runtime_seconds": {"minimum": 1}}}}}
+      ]
+    }
+  ]
+}
