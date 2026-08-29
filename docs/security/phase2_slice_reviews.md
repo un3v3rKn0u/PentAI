@@ -1,5 +1,39 @@
 # Phase 2 slice security reviews
 
+## 2026-08-29 — Terminal-consumption contracts and storage prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review.
+
+**Scope and evidence:** Closed terminal-consumption command/receipt contracts, additive
+migration 0073, immutable one-to-one decision-bound persistence, contract validation,
+migration upgrade/idempotency coverage, compatibility documentation, and storage-bypass
+tests. The complete diff, terminal lineage, default-deny guard, migration behavior, and
+deferred transition boundary were reviewed separately after implementation.
+
+**Security boundaries and default deny:** Persistence accepts only the exact current
+terminal-disposition v1 decision for the matching failed task revision, exhausted
+three-attempt ceiling, and disabled transition/queue/review flags. A deny-all insert
+trigger keeps the table inert until a reviewed consumer replaces it. Records fix
+authority to none and execution disabled. No service produces a record, no task or plan state is
+changed, and no queue, notification, dispatch, provider/plugin, network, or external
+effect path exists.
+
+**Compatibility, migration, and rollback:** Migration 0073 is additive and leaves the
+existing task table, all historical contracts/rows, foreign keys, indexes, and triggers
+unchanged. Application rollback leaves an unused additive table; destructive downgrade
+after data exists is unsupported. Contracts exclude secrets, tokens, evidence, prompts,
+diagnostics, target data, queue payloads, and operator messages.
+
+**Findings, limitations, and residual risk:** Full consumption remains blocked because
+SQLite cannot widen the current task-state CHECK without reconstructing a heavily
+referenced table, and the repository has no reviewed reconstruction protocol. The
+consumer, `failed → dead_letter` state change, audit/outbox linkage, queueing, operator
+review, completion, dispatch, runtime composition, UI, exit demonstrations, and
+independent review remain deferred. The non-independent governance risk is accepted
+only for this inert prerequisite.
+
 ## 2026-08-29 — Attempt-three terminal-disposition decision v1
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

@@ -118,6 +118,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   request for a non-transitioning terminal decision.
 - `orchestration-terminal-disposition-decision-v1.schema.json` — immutable exhausted-
   ceiling dead-letter eligibility with queue, transition, review, and execution disabled.
+- `orchestration-terminal-consumption-command-v1.schema.json` — version-exact request
+  shape reserved for consuming one current attempt-three terminal decision.
+- `orchestration-terminal-consumption-receipt-v1.schema.json` — immutable proposed
+  dead-letter coordination result with queue, review, authority, and execution disabled.
 - `orchestration-retry-policy-v1.schema.json` — trusted-core closed retry semantics,
   integer attempt/backoff ceilings, exact policy binding, and no authority.
 - `orchestration-retry-policy-v2.schema.json` — additive trusted-core policy for

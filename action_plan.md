@@ -874,7 +874,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     failed-attempt-v3 receipt at the three-attempt ceiling and derives metadata-only
     `dead_letter_eligible` status. It cannot transition the task, create or consume a
     queue item, create operator-review work, notify, retry, dispatch, or grant authority.
-    Dead-letter transition/queueing and all broader runtime behavior remain required.
+    Additive terminal-consumption command/receipt contracts and an immutable,
+    decision-bound persistence guard now establish the narrow prerequisite for the
+    later consumer. The existing task-state SQLite constraint still excludes
+    `dead_letter`; no task transition or consumption producer is implemented until a
+    reviewed table-reconstruction or authoritative versioned-state strategy preserves
+    all foreign keys, triggers, rows, and compatibility. Dead-letter transition/queueing
+    and all broader runtime behavior remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

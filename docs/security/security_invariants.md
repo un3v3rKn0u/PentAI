@@ -290,6 +290,14 @@ queue, operator review, notification, retry, dispatch, authority, or effect. Uns
 security outcomes and stale cancellation, safety, worker, budget, fencing, or recovery
 state deny rather than being reclassified.
 
+**Phase 2 terminal-consumption prerequisite note:** The additive v1 command/receipt
+contracts and persistence guard bind only the exact current terminal-disposition v1
+decision and failed task revision. They create no producer and cannot change task or
+plan state. The existing task-table constraint remains authoritative until a separately
+reviewed migration or versioned-state strategy can represent `dead_letter` without
+losing rows, foreign keys, triggers, or version fencing. Queueing, operator review,
+dispatch, authority, and effects remain disabled.
+
 **Phase 1 rate note:** Non-executing gateway preparation reserves one durable global
 and canonical-host token in the same immediate transaction as total-request and
 connection capacity. Refill uses persisted policy rates, burst capacity, and a
