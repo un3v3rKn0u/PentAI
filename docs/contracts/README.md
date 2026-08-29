@@ -12,6 +12,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   snapshot receipt with meter binding, authority, and execution disabled.
 - `ai-provider-registry-v1.schema.json` — trusted, revisioned provider/model allowlist,
   privacy-route, state, validity, and global budget-ceiling source.
+- `ai-provider-registry-snapshot-v1.schema.json` — inert digest-bound durable shape for
+  one exact normalized registry revision, with activation and revocation disabled.
+- `ai-provider-registry-snapshot-receipt-v1.schema.json` — immutable metadata-only
+  registry-snapshot receipt with authority and execution disabled.
 - `ai-secret-reference-v1.schema.json` — non-resolving opaque provider-secret metadata
   bound to one exact provider configuration, purpose, lifecycle, and validity window.
 - `ai-budget-reservation-request-v1.schema.json` — version-fenced, idempotent request

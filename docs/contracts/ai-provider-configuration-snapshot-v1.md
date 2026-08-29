@@ -41,7 +41,8 @@ Unknown fields, mixed provider/privacy behavior, raw secret references, invalid
 identifiers, non-integer or excessive ceilings, activation, meter binding, or authority
 deny at the contract boundary. Direct insertion, update, and deletion deny at storage.
 
-Durable registry activation, authenticated snapshot production, runtime-meter identity
-and attestation, adapter execution receipts, pricing and tokenizer policy, provider
-execution, usage production, reconciliation, reservation closure, dispatch, and runtime
-composition remain deferred and require independent default-deny boundaries.
+Authenticated registry-snapshot production and activation, authenticated configuration-
+snapshot production, runtime-meter identity and attestation, adapter execution receipts,
+pricing and tokenizer policy, provider execution, usage production, reconciliation,
+reservation closure, dispatch, and runtime composition remain deferred and require
+independent default-deny boundaries.

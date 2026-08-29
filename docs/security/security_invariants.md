@@ -329,6 +329,14 @@ resolve a secret, attest a meter, invoke a provider, manufacture usage, reconcil
 account, authorize execution, or perform an effect. Raw secret references, prompts,
 responses, evidence, diagnostics, pricing, and tokenizer semantics remain excluded.
 
+**Phase 2 provider-registry snapshot prerequisite note:** Registry snapshot v1 reserves
+one exact inactive normalized registry revision, provider/model set, privacy route,
+integer ceilings, and validity window. Migration 0081 denies every producer and all
+mutation or deletion. Snapshot presence cannot activate or revoke a registry, produce a
+configuration snapshot, attest a meter, invoke a provider, create usage, authorize an
+effect, or recover work. Credentials, secret references, prompts, responses, evidence,
+diagnostics, pricing, tokenizer rules, and arbitrary payloads remain excluded.
+
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in
 one immediate transaction. Integrity and foreign-key verification must pass before its
