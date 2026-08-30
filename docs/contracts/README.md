@@ -29,6 +29,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   activation request bound to one exact snapshot-production lineage.
 - `ai-provider-registry-activation-receipt-v1.schema.json` — reserved immutable active
   lifecycle record with downstream behavior, authority, and execution disabled.
+- `ai-runtime-meter-identity-v1.schema.json` — inert provider-configuration and
+  worker-runtime-bound identity declaring only closed supported measurement dimensions.
+- `ai-runtime-meter-identity-receipt-v1.schema.json` — immutable metadata-only meter
+  identity receipt with attestation, measurement, authority, and execution disabled.
 - `ai-secret-reference-v1.schema.json` — non-resolving opaque provider-secret metadata
   bound to one exact provider configuration, purpose, lifecycle, and validity window.
 - `ai-budget-reservation-request-v1.schema.json` — version-fenced, idempotent request

@@ -385,6 +385,16 @@ the authoritative task table and all dependent schema while adding only the repr
 creates no task state, transition, terminal-consumption record, queue, authority, or
 effect.
 
+**Phase 2 runtime-meter identity prerequisite note:** Runtime-meter identity v1 binds
+only inert implementation/version metadata to one exact provider-configuration snapshot
+and durable worker-runtime version, plus closed supported measurement-dimension names and
+a bounded validity window. Migration 0088 denies all production, mutation, and deletion.
+Identity presence cannot attest a meter, activate configuration binding, prove a provider
+request, create usage, reconcile or finalize budget, dispatch a worker, authorize provider
+or network access, or perform an effect. Credentials, secret references, prompts,
+responses, evidence, diagnostics, amounts, pricing, tokenizer semantics, and arbitrary
+payloads remain excluded.
+
 **Phase 2 terminal snapshot note:** Task snapshot v2 reads one exact task only from the
 authoritative task table and binds its plan/task revisions. Non-terminal states require
 no terminal lineage; `dead_letter` requires one contract-valid, hash-verified immutable

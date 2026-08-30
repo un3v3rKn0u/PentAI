@@ -969,6 +969,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Meter binding, registry revocation/supersession, secret resolution, provider
     execution, usage measurement, accounting, dispatch, authority, and effects remain
     disabled and required.
+    Additive runtime-meter identity v1 contracts and migration 0088 now reserve the
+    exact inactive configuration-snapshot, provider/model, worker/runtime version,
+    containment, implementation, supported-dimension, and validity provenance required
+    before a trusted meter can be authenticated. The producer remains storage-denied;
+    no attestation, configuration binding, provider execution, usage value, measurement,
+    reconciliation, budget finalization, dispatch, authority, or external effect exists.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
