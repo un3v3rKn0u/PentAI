@@ -959,6 +959,16 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     deny-all production ledger. No configuration snapshot can yet be created, and meter
     binding, secret resolution, provider execution, measurement, accounting, dispatch,
     authority, and external effects remain disabled.
+    Authenticated provider-configuration snapshot production now revalidates the exact
+    current registry activation and immutable registry-production lineage, compiles the
+    provider/model/privacy and integer-ceiling policy, validates remote secret-reference
+    metadata without persisting the opaque reference, and atomically records one
+    immutable inactive snapshot plus source-bound receipt. Changed or cross-session
+    replay, stale or corrupt lineage, configuration substitution, revoked references,
+    safety pause, competing production, direct insertion, mutation, and deletion deny.
+    Meter binding, registry revocation/supersession, secret resolution, provider
+    execution, usage measurement, accounting, dispatch, authority, and effects remain
+    disabled and required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

@@ -18,6 +18,10 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from pentai_core import __version__
+from pentai_core.ai_provider_configuration_snapshot import (
+    ProviderConfigurationSnapshotError,
+    ProviderConfigurationSnapshotService,
+)
 from pentai_core.ai_provider_registry_activation import (
     ProviderRegistryActivationError,
     ProviderRegistryActivationService,
@@ -360,6 +364,14 @@ class ProviderRegistryActivationRequest(StrictRequest):
     expires_at: str = Field(min_length=20, max_length=40)
 
 
+class ProviderConfigurationSnapshotRequest(StrictRequest):
+    command_id: str = Field(min_length=36, max_length=36)
+    requested_at: str = Field(min_length=20, max_length=40)
+    expires_at: str = Field(min_length=20, max_length=40)
+    configuration: dict[str, Any]
+    secret_reference: dict[str, Any] | None = None
+
+
 class ReportFileExportRequest(StrictRequest):
     report_kind: str
     format: str
@@ -487,6 +499,16 @@ def provider_registry_activation_call[T](operation: Callable[[], T]) -> T:
         ) from exc
 
 
+def provider_configuration_snapshot_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except ProviderConfigurationSnapshotError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
 def report_export_call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -589,6 +611,7 @@ def create_app(
     orchestration_approvals = OrchestrationApprovalService(authorization)
     provider_registry_snapshots = ProviderRegistrySnapshotService(authorization)
     provider_registry_activations = ProviderRegistryActivationService(authorization)
+    provider_configuration_snapshots = ProviderConfigurationSnapshotService(authorization)
     report_exports = ReportExportService(runtime.database_path)
     backups = BackupService(
         runtime.database_path,
@@ -1304,6 +1327,28 @@ def create_app(
         return provider_registry_activation_call(
             lambda: provider_registry_activations.activate(
                 snapshot_id,
+                command_id=requested.command_id,
+                requested_at=requested.requested_at,
+                expires_at=requested.expires_at,
+                authenticated_actor_id=actor.principal_id,
+                authenticated_session_id=actor.session_id,
+            )
+        )
+
+    @app.post(
+        "/api/v1/ai/provider-registry-activations/{activation_id}/configuration-snapshots"
+    )
+    def create_provider_configuration_snapshot(
+        activation_id: str,
+        requested: ProviderConfigurationSnapshotRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return provider_configuration_snapshot_call(
+            lambda: provider_configuration_snapshots.produce(
+                activation_id,
+                requested.configuration,
+                secret_reference=requested.secret_reference,
                 command_id=requested.command_id,
                 requested_at=requested.requested_at,
                 expires_at=requested.expires_at,

@@ -1,5 +1,44 @@
 # Phase 2 slice security reviews
 
+## 2026-08-30 — Authenticated provider-configuration snapshot production
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and security
+reviewer under the `GIT_WORKFLOW.md` exception. This review is not independent and does
+not satisfy dual control.
+
+**Scope and evidence:** Trusted-core configuration-snapshot producer, authenticated
+local API composition, migration 0087 exact current-lineage and paired-production
+storage predicates, immutable metadata-only audit/outbox linkage, synthetic remote and
+local success, replay, concurrency, provider/model, secret revocation, safety,
+direct-storage, API, migration, contract, static-analysis, and repository-wide tests,
+compatibility documentation, security invariants, threat-model update, and complete diff.
+
+**Dependency and trust decision:** PR #243 supplied the closed source-bound command and
+receipt contracts plus an inert deny-all production ledger. Current repository evidence
+already supplies authenticated registry production and activation, deterministic policy
+compilation, provider-configuration validation, and opaque secret-reference validation.
+The selected slice composes only those existing boundaries. The middleware principal
+and process session are authoritative; callers cannot select identity, digest, state,
+policy meaning, privilege, meter eligibility, or authority.
+
+**Security, privacy, compatibility, and recovery:** Production atomically revalidates
+the exact current activation, registry snapshot/receipt digests, provider/model route,
+privacy classifications, integer ceilings, validity, safety state, and remote secret
+metadata. Only a digest of an opaque secret reference is durable; credentials, prompts,
+provider content, evidence, targets, diagnostics, paths, URLs, and arbitrary payloads
+remain excluded. Migration 0087 changes only additive producer guards; rollback leaves
+immutable rows readable but disables production in older code, and destructive downgrade
+is unsupported. Startup recovery cannot invent or resume production.
+
+**Findings, limitations, and residual risk:** No material finding remains for this
+non-executing slice. Registry supersession/revocation, secret resolution, meter identity,
+provider adapters/execution, pricing/tokenizer semantics, usage measurement,
+reconciliation/finalization, dispatch, UI, Phase 2 demonstrations, and independent review
+remain deferred. The sole maintainer accepts the reduced governance assurance for this
+scope.
+
 ## 2026-08-30 — Provider-configuration snapshot production inert prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

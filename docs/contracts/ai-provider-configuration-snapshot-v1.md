@@ -9,18 +9,23 @@ zone, input classifications, integer ceilings, and validity window. Both shapes 
 inert: `state` is `inactive`, `meter_binding_enabled` is false, `authority` is `none`,
 and `execution_enabled` is false.
 
-Migration 0080 adds an immutable metadata ledger. Its producer is deliberately denied
-at storage, so no snapshot or receipt can currently be created. The slice does not
-activate a registry entry, attest a meter, invoke a provider, resolve a secret, measure
-usage, reconcile an account, or finalize a reservation.
+Migration 0080 adds the immutable metadata ledger. Migration 0087 replaces its deny-all
+producer with an exact trusted-core predicate: an authenticated local session may now
+record one inactive snapshot only from the exact current registry activation and
+immutable registry-production lineage. Production does not activate a registry entry,
+attest a meter, invoke a provider, resolve a secret, measure usage, reconcile an account,
+or finalize a reservation.
 
 The additive production command v1 and production receipt v2 now reserve the
 authenticated source and exact active-registry lineage required by a future producer.
 They bind one command identity, server-derived local principal and process session,
 registry activation and receipt digest, registry snapshot and production receipt
 digests, configuration identity/hash, provider/model identity, and only the digest of
-an opaque remote secret reference. Migration 0086 stores no rows because its producer
-remains deny-all. The original snapshot and receipt v1 contracts remain unchanged.
+an opaque remote secret reference. The trusted service derives every digest and durable
+field, revalidates the active registry, provider/model allowlist, privacy route, integer
+ceilings, validity, safety state, and remote secret-reference metadata, then atomically
+stores the production and snapshot records. The original snapshot and receipt v1
+contracts remain unchanged.
 
 ## Privacy, secrets, and accounting
 
@@ -37,20 +42,24 @@ aggregation, provider retry, partial-request, cancellation, or failure semantics
 
 ## Compatibility, migration, and rollback
 
-The existing pure AI provider configuration and registry v1 contracts remain unchanged
-and do not become durable or active through this slice. Migrations 0080 and 0086 are
-additive and empty on upgrade; earlier provider, task, completion, reservation, and
-measurement contracts and rows are unchanged. Application rollback leaves inert empty
-tables. Destructive downgrade is unsupported.
+The existing pure AI provider configuration and registry v1 contracts remain unchanged.
+Migration 0087 is additive and changes only producer guards; earlier provider, task,
+completion, reservation, and measurement contracts and rows are unchanged. Application
+rollback leaves produced immutable metadata readable but an older application cannot
+produce new snapshots. Destructive downgrade and deletion of future rows are unsupported.
 
 ## Default denial and deferred work
 
-Unknown fields, mixed provider/privacy behavior, raw secret references, invalid
-identifiers, non-integer or excessive ceilings, activation, meter binding, or authority
-deny at the contract boundary. Direct insertion, update, and deletion deny at storage.
+Unknown fields, mixed provider/privacy behavior, invalid identifiers, non-integer or
+excessive ceilings, stale or corrupt lineage, changed or cross-session replay, safety
+pause, meter binding, or authority deny. The opaque secret reference exists only in the
+authenticated request long enough to validate its metadata; durable records contain
+only its digest. Direct insertion without the exact production lineage, update, and
+deletion deny at storage. Startup recovery never invents or resumes production.
 
-Authenticated registry-snapshot production and activation are now prerequisites in the
-durable lineage. Authenticated configuration-snapshot production, runtime-meter identity
-and attestation, adapter execution receipts, pricing and tokenizer policy, provider
-execution, usage production, reconciliation, reservation closure, dispatch, and runtime
-composition remain deferred and require independent default-deny boundaries.
+Authenticated registry-snapshot production, activation, and configuration-snapshot
+production now form the durable provenance lineage. Registry supersession/revocation,
+runtime-meter identity and attestation, adapter execution receipts, secret resolution,
+pricing and tokenizer policy, provider execution, usage production, reconciliation,
+reservation closure, dispatch, and runtime composition remain deferred and require
+independent default-deny boundaries.
