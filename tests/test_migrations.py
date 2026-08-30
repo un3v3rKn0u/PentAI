@@ -101,6 +101,7 @@ class MigrationTests(unittest.TestCase):
                     "0082",
                     "0083",
                     "0084",
+                    "0085",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -2253,6 +2254,43 @@ class MigrationTests(unittest.TestCase):
                 self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
             self.assertIn("ai_provider_registry_activations_v1_binding_valid", triggers)
             self.assertIn("ai_provider_registry_activations_v1_producer_disabled", triggers)
+            self.assertIn("ai_provider_registry_activations_v1_immutable", triggers)
+            self.assertIn("ai_provider_registry_activations_v1_no_delete", triggers)
+
+    def test_provider_registry_activation_migration_is_additive(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0085_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = repository_migrations / "0085_provider_registry_activation.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0085"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self.assertNotIn("ai_provider_registry_activations_v1_producer_disabled", triggers)
+            self.assertIn("ai_provider_registry_activations_v1_current_binding", triggers)
+            self.assertIn("ai_provider_registry_activations_v1_binding_valid", triggers)
             self.assertIn("ai_provider_registry_activations_v1_immutable", triggers)
             self.assertIn("ai_provider_registry_activations_v1_no_delete", triggers)
 

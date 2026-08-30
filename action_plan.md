@@ -943,6 +943,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     storage-denied, so no registry becomes active; configuration production,
     revocation, supersession, provider execution, measurement, accounting, authority,
     and effects remain disabled and required.
+    Authenticated registry activation now accepts only the exact latest current
+    snapshot-production lineage, derives all digests and source identity in trusted
+    core, and atomically records one immutable active coordination receipt. Competing
+    unexpired activation, changed or cross-session replay, expiry, safety pause,
+    superseded revision, corrupted lineage, and direct insertion deny. Activation does
+    not enable configuration production, revocation, providers, meters, accounting,
+    dispatch, authority, or execution. Supersession, revocation, and downstream runtime
+    composition remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
