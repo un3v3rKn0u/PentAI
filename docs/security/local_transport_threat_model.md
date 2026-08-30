@@ -28,6 +28,7 @@ audit data, and the ability to keep execution disabled when bootstrap is invalid
 | Caller submits a forged actor ID | False human attribution | Actor authority removed from request models and bound to the authenticated server-side session | Add future OS-user confirmation for stronger human identity |
 | Caller forges or delegates an orchestration approval identity | Approval impersonation, proxy approval, cross-session reuse, or false provenance | Closed approval API bodies omit identity fields; middleware-derived principal and fresh per-process session UUID are persisted in request/decision v2 and must match on decision/replay | Current transport represents one desktop actor; multi-user and OS-user identity remain future work |
 | Caller forges registry snapshot provenance | Provider/model provenance substitution or rollback | Registry snapshot bodies omit actor, session, digest, state, and authority claims; trusted core derives canonical digests, binds the middleware principal/session, enforces monotonic revision, and stores only inactive immutable provenance | Registry signing governance, activation, and revocation remain future work |
+| Caller forges provider-configuration snapshot provenance | Provider/model, privacy, budget, secret-reference, or activation-lineage substitution | Closed request bodies omit actor, session, digests, state, privilege, and authority; trusted core revalidates the current registry activation and configuration, derives all durable metadata, stores only the opaque reference digest, and storage-gates the exact inactive snapshot | Registry revocation, meter attestation, secret resolution, provider execution, and accounting remain future work |
 | Token leaks through logs, errors, audits, URLs, or persistence | Session takeover | No access log, uniform errors, header transport, in-memory bootstrap, no audit/database storage; packaged output is checked | Platform review of crash reporting and diagnostics |
 | Process occupies or races the selected port | Core substitution or denial of service | Dynamic loopback selection plus credential-authenticated readiness; failed bind/readiness is fatal; collision smoke passed on Windows, macOS, and Ubuntu | Crash/orphan and additional platform hardening remain future work |
 | Rogue process returns fake readiness | Desktop connects to substituted core | Readiness requires the unpredictable launch credential; packaged sidecar SHA-256 is verified before spawn | Production platform signing |
@@ -51,6 +52,9 @@ audit data, and the ability to keep execution disabled when bootstrap is invalid
    or authentication-context claims; the server-derived principal is the only identity.
 9. Provider-registry snapshot request bodies cannot supply actor, session, canonical
    digest, snapshot state, activation, revocation, privilege, or authority claims.
+10. Provider-configuration snapshot request bodies cannot supply actor, session,
+    canonical digests, snapshot state, meter eligibility, privilege, or authority;
+    opaque secret references never enter audit, outbox, or durable snapshot records.
 
 ## Review gate
 

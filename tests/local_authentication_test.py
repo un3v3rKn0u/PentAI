@@ -329,6 +329,10 @@ def orchestration_approval_client(
         ("POST", "/api/v1/orchestration/task-approval-requests/unknown/consume"),
         ("POST", "/api/v1/ai/provider-registry-snapshots"),
         ("POST", "/api/v1/ai/provider-registry-snapshots/unknown/activate"),
+        (
+            "POST",
+            "/api/v1/ai/provider-registry-activations/unknown/configuration-snapshots",
+        ),
     ],
 )
 def test_every_api_route_rejects_missing_credentials(
@@ -415,6 +419,45 @@ def test_registry_snapshot_uses_server_derived_authenticated_identity(tmp_path: 
     assert activation.json()["configuration_snapshot_enabled"] is False
     assert activation.json()["authority"] == "none"
     assert activation.json()["execution_enabled"] is False
+
+    configuration = app_request(
+        app,
+        "POST",
+        "/api/v1/ai/provider-registry-activations/"
+        f"{activation.json()['activation_id']}/configuration-snapshots",
+        authorization=f"Bearer {settings.launch_credential}",
+        json_body={
+            "command_id": str(uuid4()),
+            "requested_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=5)).isoformat(),
+            "configuration": {
+                "schema_version": "1.0.0",
+                "configuration_id": str(uuid4()),
+                "provider_type": "local_runtime",
+                "provider_id": "local-synthetic",
+                "model_id": "synthetic-model-q4",
+                "secret_ref": None,
+                "privacy_classification": "local_device",
+                "allowed_input_classifications": ["public"],
+                "budgets": {
+                    "max_input_tokens": 1000,
+                    "max_output_tokens": 500,
+                    "max_requests": 2,
+                    "max_cost_microusd": 0,
+                    "max_runtime_seconds": 30,
+                },
+                "remote_provider_opt_in": False,
+                "configured_at": (now - timedelta(seconds=1)).isoformat(),
+                "expires_at": (now + timedelta(hours=12)).isoformat(),
+                "execution_enabled": False,
+            },
+        },
+    )
+    assert configuration.status_code == 200
+    assert configuration.json()["requester"]["actor_id"] == "local-desktop-session"
+    assert configuration.json()["state"] == "inactive"
+    assert configuration.json()["authority"] == "none"
+    assert configuration.json()["execution_enabled"] is False
 
     activation_injected = app_request(
         app,

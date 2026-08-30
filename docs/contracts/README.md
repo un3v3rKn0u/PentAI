@@ -11,7 +11,8 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `ai-provider-configuration-snapshot-receipt-v1.schema.json` — immutable metadata-only
   snapshot receipt with meter binding, authority, and execution disabled.
 - `ai-provider-configuration-snapshot-command-v1.schema.json` — inert authenticated
-  production command bound to one exact current registry activation and configuration.
+  production command consumed only by the trusted inactive-snapshot producer and bound
+  to one exact current registry activation and configuration.
 - `ai-provider-configuration-snapshot-receipt-v2.schema.json` — source-bound immutable
   production receipt that cannot activate a meter or replace snapshot receipt v1.
 - `ai-provider-registry-v1.schema.json` — trusted, revisioned provider/model allowlist,
