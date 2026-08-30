@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/ai-provider-configuration-snapshot-receipt-v2.schema.json",
+  "title": "PentAI AI Provider Configuration Snapshot Receipt v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "snapshot_id", "snapshot_digest", "command_id", "command_digest", "configuration_id", "configuration_hash", "activation_id", "activation_receipt_digest", "registry_snapshot_id", "registry_snapshot_digest", "registry_snapshot_receipt_digest", "registry_id", "registry_revision", "registry_digest", "providers_digest", "provider_type", "provider_id", "model_id", "secret_reference_digest", "requester", "authentication_context", "state", "meter_binding_enabled", "production_enabled", "recorded_at", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "snapshot_id": {"type": "string", "format": "uuid"},
+    "snapshot_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "command_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "configuration_id": {"type": "string", "format": "uuid"},
+    "configuration_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "activation_id": {"type": "string", "format": "uuid"},
+    "activation_receipt_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "registry_snapshot_id": {"type": "string", "format": "uuid"},
+    "registry_snapshot_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "registry_snapshot_receipt_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "registry_id": {"type": "string", "format": "uuid"},
+    "registry_revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "registry_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "providers_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "provider_type": {"enum": ["approved_remote", "local_runtime"]},
+    "provider_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,63}$"},
+    "model_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
+    "secret_reference_digest": {
+      "oneOf": [
+        {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        {"type": "null"}
+      ]
+    },
+    "requester": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id", "session_id"],
+      "properties": {
+        "actor_type": {"const": "human"},
+        "actor_id": {"enum": ["local-desktop-session", "test-session"]},
+        "session_id": {"type": "string", "format": "uuid"}
+      }
+    },
+    "authentication_context": {"const": "local_core_authenticated_session"},
+    "state": {"const": "inactive"},
+    "meter_binding_enabled": {"const": false},
+    "production_enabled": {"const": false},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"provider_type": {"const": "approved_remote"}}},
+      "then": {"properties": {"secret_reference_digest": {"type": "string"}}},
+      "else": {"properties": {"secret_reference_digest": {"const": null}}}
+    }
+  ]
+}

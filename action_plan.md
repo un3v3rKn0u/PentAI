@@ -951,6 +951,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     not enable configuration production, revocation, providers, meters, accounting,
     dispatch, authority, or execution. Supersession, revocation, and downstream runtime
     composition remain required.
+    Additive provider-configuration snapshot production command v1 and source-bound
+    receipt v2 contracts now reserve the exact current registry activation, immutable
+    registry snapshot/production digests, configuration hash, provider/model identity,
+    server-derived local principal/session, and remote secret-reference digest or local
+    absence required by a future trusted producer. Migration 0086 adds an immutable
+    deny-all production ledger. No configuration snapshot can yet be created, and meter
+    binding, secret resolution, provider execution, measurement, accounting, dispatch,
+    authority, and external effects remain disabled.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
