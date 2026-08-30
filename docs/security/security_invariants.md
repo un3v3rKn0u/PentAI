@@ -394,6 +394,12 @@ request, create usage, reconcile or finalize budget, dispatch a worker, authoriz
 or network access, or perform an effect. Credentials, secret references, prompts,
 responses, evidence, diagnostics, amounts, pricing, tokenizer semantics, and arbitrary
 payloads remain excluded.
+The additive production command v1 and source-bound receipt v2 reserve the authenticated
+local principal/session, exact configuration/provider/model and worker/runtime lineage,
+closed dimensions, and validity required by a later trusted producer. Migration 0089
+denies all production, mutation, and deletion. The prerequisite cannot create or attest
+an identity, enable measurement, invoke a provider, resolve a secret, dispatch work,
+change accounting, authorize an effect, or recover production.
 
 **Phase 2 terminal snapshot note:** Task snapshot v2 reads one exact task only from the
 authoritative task table and binds its plan/task revisions. Non-terminal states require

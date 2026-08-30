@@ -14,6 +14,13 @@ remain disabled; authority is `none`; and execution is disabled. Migration 0088 
 immutable ledger whose producer is denied at storage. No identity or receipt can yet be
 created, and the provider-usage producer from migration 0079 remains deny-all.
 
+The additive production command v1 and receipt v2 reserve the authenticated source and
+exact configuration/worker lineage required by a later trusted producer. They bind the
+server-derived local principal and process session, implementation identity, closed
+dimensions, identity validity, configuration snapshot, provider/model, worker/runtime,
+containment, and image provenance. Migration 0089 stores no identities: its immutable
+production ledger remains deny-all and cannot attest or activate a meter.
+
 ## Trust, privacy, and accounting
 
 Identity metadata is not proof that a provider request occurred, that a meter is
@@ -35,6 +42,10 @@ Migration 0088 creates one empty table and four default-deny triggers. Fresh mig
 upgrade from 0087, and rerun are idempotent through the migration ledger. Application
 rollback leaves an empty table ignored by older code. Destructive downgrade is
 unsupported.
+
+Migration 0089 is also additive and empty. Older applications ignore the new command,
+receipt, and table. Reverting application code leaves no producer to resume or invent
+records; destructive downgrade after future production records exist is unsupported.
 
 ## Default denial and deferred work
 

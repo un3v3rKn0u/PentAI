@@ -975,6 +975,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     before a trusted meter can be authenticated. The producer remains storage-denied;
     no attestation, configuration binding, provider execution, usage value, measurement,
     reconciliation, budget finalization, dispatch, authority, or external effect exists.
+    Additive runtime-meter production command v1 and source-bound receipt v2 contracts
+    now reserve the server-derived local principal/session, exact configuration snapshot,
+    provider/model, worker/runtime, containment, implementation, closed dimensions, and
+    validity required by a future trusted identity producer. Migration 0089 adds an
+    immutable deny-all production ledger. No identity can be produced or attested, and
+    provider execution, measurement, accounting, dispatch, authority, and effects remain
+    disabled and required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
