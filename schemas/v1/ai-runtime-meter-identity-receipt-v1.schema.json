@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/ai-runtime-meter-identity-receipt-v1.schema.json",
+  "title": "PentAI AI Runtime Meter Identity Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "meter_id", "meter_identity_digest", "configuration_snapshot_id", "configuration_snapshot_digest", "worker_id", "worker_version", "implementation_id", "implementation_version", "recorded_at", "state", "attestation_enabled", "measurement_enabled", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "meter_id": {"type": "string", "format": "uuid"},
+    "meter_identity_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "configuration_snapshot_id": {"type": "string", "format": "uuid"},
+    "configuration_snapshot_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "worker_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "worker_version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "implementation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"},
+    "implementation_version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "state": {"const": "inactive"},
+    "attestation_enabled": {"const": false},
+    "measurement_enabled": {"const": false},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

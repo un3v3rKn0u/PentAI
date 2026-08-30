@@ -1,5 +1,41 @@
 # Phase 2 slice security reviews
 
+## 2026-08-30 — Runtime-meter identity v1 inert prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and security
+reviewer under the `GIT_WORKFLOW.md` exception. This review is not independent and does
+not satisfy dual control.
+
+**Scope and evidence:** Closed runtime-meter identity and receipt v1 contracts, additive
+migration 0088, deny-all producer and immutable update/delete guards, exact configuration-
+snapshot and worker-runtime provenance fields, closed supported-dimension names,
+synthetic positive/default-deny contract tests, fresh/additive/idempotent migration tests,
+compatibility documentation, security invariants, and complete diff.
+
+**Dependency and trust decision:** PR #244 made exact inactive provider-configuration
+snapshots durable through an authenticated trusted-core producer. Provider-usage v1
+requires a `trusted_runtime_meter`, but no durable meter identity exists. This slice
+reserves only the identity shape and persistence boundary; production and attestation
+remain denied because repository evidence does not yet define their authenticated
+command, lifecycle, or provider-behavior semantics.
+
+**Security, privacy, compatibility, and recovery:** The contracts bind implementation,
+configuration snapshot, provider/model, worker/runtime version, containment, image,
+closed dimensions, and validity while fixing state inactive and all capability flags
+false. They exclude credentials, secret references, prompts, provider data, evidence,
+targets, diagnostics, usage values, pricing, and arbitrary payloads. Migration 0088 is
+additive and empty; rollback leaves an ignored empty table, destructive downgrade is
+unsupported, and recovery has no producer from which to invent state.
+
+**Findings, limitations, and residual risk:** No material finding remains for this inert
+slice. Authenticated identity production, meter attestation, configuration binding,
+provider execution receipts, pricing/tokenizer/cache/streaming/retry semantics, usage
+production, reconciliation/finalization, dispatch, UI, Phase 2 demonstrations, and
+independent review remain deferred. The sole maintainer accepts the reduced governance
+assurance for this scope.
+
 ## 2026-08-30 — Authenticated provider-configuration snapshot production
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

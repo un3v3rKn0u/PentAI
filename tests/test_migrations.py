@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -104,6 +105,7 @@ class MigrationTests(unittest.TestCase):
                     "0085",
                     "0086",
                     "0087",
+                    "0088",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -183,6 +185,7 @@ class MigrationTests(unittest.TestCase):
                     "ai_provider_registry_snapshots_v1",
                     "ai_provider_registry_snapshot_productions_v1",
                     "ai_provider_configuration_snapshot_productions_v1",
+                    "ai_runtime_meter_identities_v1",
                     "orchestration_retry_budget_consumptions",
                     "orchestration_retry_attempts",
                     "orchestration_retry_schedules",
@@ -2635,6 +2638,138 @@ class MigrationTests(unittest.TestCase):
                         'dead_letter',1,'2026-08-29T00:00:00Z','2026-08-29T00:00:00Z',
                         'none',0)"""
                     )
+
+    def test_runtime_meter_identity_prerequisite_is_additive_and_inert(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0088_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = repository_migrations / "0088_runtime_meter_identity_prerequisite.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0088"])
+                self.assertEqual(migrate(database), [])
+
+            meter_id = "00000000-0000-4000-8000-000000000001"
+            configuration_snapshot_id = "00000000-0000-4000-8000-000000000002"
+            configuration_id = "00000000-0000-4000-8000-000000000003"
+            registry_id = "00000000-0000-4000-8000-000000000004"
+            containment_id = "00000000-0000-4000-8000-000000000005"
+            identity = {
+                "schema_version": "1.0.0",
+                "meter_id": meter_id,
+                "implementation_id": "synthetic-meter",
+                "implementation_version": 1,
+                "configuration_snapshot_id": configuration_snapshot_id,
+                "configuration_snapshot_digest": "sha256:" + "a" * 64,
+                "configuration_id": configuration_id,
+                "configuration_hash": "b" * 64,
+                "registry_id": registry_id,
+                "registry_revision": 1,
+                "provider_type": "local_runtime",
+                "provider_id": "local-synthetic",
+                "model_id": "synthetic-local-q4",
+                "worker_id": "synthetic-worker",
+                "worker_version": 1,
+                "runtime_instance_id": "synthetic-runtime",
+                "containment_attestation_id": containment_id,
+                "image_digest": "sha256:" + "c" * 64,
+                "supported_dimensions": ["runtime_seconds"],
+                "valid_from": "2026-08-30T17:30:00Z",
+                "expires_at": "2026-08-30T17:35:00Z",
+                "state": "inactive",
+                "measurement_enabled": False,
+                "authority": "none",
+                "execution_enabled": False,
+            }
+            receipt = {
+                "schema_version": "1.0.0",
+                "meter_id": meter_id,
+                "meter_identity_digest": "sha256:" + "d" * 64,
+                "configuration_snapshot_id": configuration_snapshot_id,
+                "configuration_snapshot_digest": "sha256:" + "a" * 64,
+                "worker_id": "synthetic-worker",
+                "worker_version": 1,
+                "implementation_id": "synthetic-meter",
+                "implementation_version": 1,
+                "recorded_at": "2026-08-30T17:30:01Z",
+                "state": "inactive",
+                "attestation_enabled": False,
+                "measurement_enabled": False,
+                "authority": "none",
+                "execution_enabled": False,
+            }
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+                with self.assertRaisesRegex(
+                    sqlite3.IntegrityError, "runtime meter identity production is disabled"
+                ):
+                    connection.execute(
+                        """INSERT INTO ai_runtime_meter_identities_v1(
+                        meter_id,meter_identity_digest,configuration_snapshot_id,
+                        configuration_snapshot_digest,configuration_id,configuration_hash,
+                        registry_id,registry_revision,provider_type,provider_id,model_id,
+                        worker_id,worker_version,runtime_instance_id,containment_attestation_id,
+                        image_digest,implementation_id,implementation_version,identity_json,
+                        receipt_json,receipt_digest,recorded_at,expires_at,state,
+                        attestation_enabled,measurement_enabled,authority,execution_enabled)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                        'inactive',0,0,'none',0)""",
+                        (
+                            meter_id,
+                            receipt["meter_identity_digest"],
+                            configuration_snapshot_id,
+                            identity["configuration_snapshot_digest"],
+                            configuration_id,
+                            identity["configuration_hash"],
+                            registry_id,
+                            1,
+                            "local_runtime",
+                            "local-synthetic",
+                            "synthetic-local-q4",
+                            "synthetic-worker",
+                            1,
+                            "synthetic-runtime",
+                            containment_id,
+                            identity["image_digest"],
+                            "synthetic-meter",
+                            1,
+                            json.dumps(identity, separators=(",", ":"), sort_keys=True),
+                            json.dumps(receipt, separators=(",", ":"), sort_keys=True),
+                            "sha256:" + "e" * 64,
+                            receipt["recorded_at"],
+                            identity["expires_at"],
+                        ),
+                    )
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM ai_runtime_meter_identities_v1"
+                    ).fetchone(),
+                    (0,),
+                )
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+            self.assertIn("ai_runtime_meter_identities_v1_binding_valid", triggers)
+            self.assertIn("ai_runtime_meter_identities_v1_producer_disabled", triggers)
+            self.assertIn("ai_runtime_meter_identities_v1_immutable", triggers)
+            self.assertIn("ai_runtime_meter_identities_v1_no_delete", triggers)
 
     def test_terminal_prerequisites_upgrade_from_0072_through_registration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
