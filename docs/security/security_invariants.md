@@ -360,6 +360,13 @@ privacy-unsafe routes, missing lineage, and mutation deny. Snapshot presence rem
 provenance only and cannot activate a provider, resolve a secret, attest a meter, invoke
 a provider, create usage, dispatch work, or authorize an external effect.
 
+**Phase 2 provider-registry activation prerequisite note:** Activation command and
+receipt v1 reserve one exact authenticated snapshot-production lineage and future
+active lifecycle identity. Migration 0084 denies every producer and all mutation or
+deletion, so no activation currently exists. Snapshot presence or an activation-shaped
+document cannot enable configuration production, revocation, meters, providers,
+dispatch, accounting, authority, recovery, or an external effect.
+
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in
 one immediate transaction. Integrity and foreign-key verification must pass before its
