@@ -928,6 +928,15 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     registry and provider-list SHA-256 digests without persistence. Monotonic revision
     enforcement, signing governance, snapshot creation, activation, and all downstream
     provider behavior remain disabled and required.
+    Authenticated registry-snapshot production now derives the local principal and
+    per-process session from middleware, validates and normalizes one current registry,
+    enforces monotonic per-registry revisions, and atomically stores one immutable
+    source-bound production receipt plus its exact inactive snapshot. Changed or
+    cross-session replay, rollback, forks, stale validity, privacy-unsafe input, safety
+    pause, and direct snapshot insertion deny. Snapshot presence grants no activation,
+    revocation, configuration, meter, provider, dispatch, accounting, or execution
+    authority. Registry lifecycle and all downstream provider runtime work remain
+    required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

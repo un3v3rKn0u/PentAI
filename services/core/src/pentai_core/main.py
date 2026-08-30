@@ -18,6 +18,10 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from pentai_core import __version__
+from pentai_core.ai_provider_registry_snapshot import (
+    ProviderRegistrySnapshotError,
+    ProviderRegistrySnapshotService,
+)
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.backup import BackupError, BackupService
 from pentai_core.config import Settings, allowed_origins
@@ -339,6 +343,13 @@ class OrchestrationApprovalConsumptionRequest(StrictRequest):
     expected_task_revision: int = Field(ge=1)
 
 
+class ProviderRegistrySnapshotRequest(StrictRequest):
+    command_id: str = Field(min_length=36, max_length=36)
+    requested_at: str = Field(min_length=20, max_length=40)
+    expires_at: str = Field(min_length=20, max_length=40)
+    registry: dict[str, Any]
+
+
 class ReportFileExportRequest(StrictRequest):
     report_kind: str
     format: str
@@ -446,6 +457,16 @@ def orchestration_approval_call[T](operation: Callable[[], T]) -> T:
         ) from exc
 
 
+def provider_registry_snapshot_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except ProviderRegistrySnapshotError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
 def report_export_call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -546,6 +567,7 @@ def create_app(
     no_findings_reports = NoFindingsReportService(runtime.database_path)
     report_approvals = ReportApprovalService(runtime.database_path)
     orchestration_approvals = OrchestrationApprovalService(authorization)
+    provider_registry_snapshots = ProviderRegistrySnapshotService(authorization)
     report_exports = ReportExportService(runtime.database_path)
     backups = BackupService(
         runtime.database_path,
@@ -590,6 +612,7 @@ def create_app(
     app.state.controlled_resolver_provider = controlled_resolver_provider
     app.state.network_profile_setup_service = profile_setup
     app.state.assessment_workflows = workflows
+    app.state.provider_registry_snapshots = provider_registry_snapshots
     app.state.evidence = evidence
     app.state.findings = findings
     app.state.reports = reports
@@ -1228,6 +1251,22 @@ def create_app(
                 decision_digest=requested.decision_digest,
                 expected_plan_revision=requested.expected_plan_revision,
                 expected_task_revision=requested.expected_task_revision,
+                authenticated_actor_id=actor.principal_id,
+                authenticated_session_id=actor.session_id,
+            )
+        )
+
+    @app.post("/api/v1/ai/provider-registry-snapshots")
+    def create_provider_registry_snapshot(
+        requested: ProviderRegistrySnapshotRequest, request: Request
+    ) -> dict[str, Any]:
+        actor = principal(request)
+        return provider_registry_snapshot_call(
+            lambda: provider_registry_snapshots.produce(
+                requested.registry,
+                command_id=requested.command_id,
+                requested_at=requested.requested_at,
+                expires_at=requested.expires_at,
                 authenticated_actor_id=actor.principal_id,
                 authenticated_session_id=actor.session_id,
             )

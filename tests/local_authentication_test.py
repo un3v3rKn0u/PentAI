@@ -12,9 +12,10 @@ import sys
 import time
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
@@ -326,6 +327,7 @@ def orchestration_approval_client(
         ),
         ("POST", "/api/v1/orchestration/task-approval-requests/unknown/decision"),
         ("POST", "/api/v1/orchestration/task-approval-requests/unknown/consume"),
+        ("POST", "/api/v1/ai/provider-registry-snapshots"),
     ],
 )
 def test_every_api_route_rejects_missing_credentials(
@@ -340,6 +342,76 @@ def test_every_api_route_rejects_missing_credentials(
             "message": "Authentication required",
         }
     }
+
+
+def test_registry_snapshot_uses_server_derived_authenticated_identity(tmp_path: Path) -> None:
+    settings = runtime_settings(tmp_path / "registry-api.db")
+    app = create_app(settings)
+    now = datetime.now(UTC).replace(microsecond=0)
+    registry_id = str(uuid4())
+    safety = app_request(
+        app,
+        "POST",
+        "/api/v1/safety-state",
+        authorization=f"Bearer {settings.launch_credential}",
+        json_body={"status": "active", "reason": "synthetic registry setup"},
+    )
+    assert safety.status_code == 200
+    response = app_request(
+        app,
+        "POST",
+        "/api/v1/ai/provider-registry-snapshots",
+        authorization=f"Bearer {settings.launch_credential}",
+        json_body={
+            "command_id": str(uuid4()),
+            "requested_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=5)).isoformat(),
+            "registry": {
+                "schema_version": "1.0.0",
+                "registry_id": registry_id,
+                "revision": 1,
+                "providers": [
+                    {
+                        "provider_id": "local-synthetic",
+                        "provider_type": "local_runtime",
+                        "models": ["synthetic-model-q4"],
+                        "allowed_input_classifications": ["public"],
+                        "state": "enabled",
+                    }
+                ],
+                "budget_ceilings": {
+                    "max_input_tokens": 1000,
+                    "max_output_tokens": 500,
+                    "max_requests": 2,
+                    "max_cost_microusd": 0,
+                    "max_runtime_seconds": 30,
+                },
+                "remote_providers_enabled": False,
+                "configured_at": (now - timedelta(minutes=1)).isoformat(),
+                "expires_at": (now + timedelta(days=1)).isoformat(),
+                "execution_enabled": False,
+            },
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["requester"]["actor_id"] == "local-desktop-session"
+    assert response.json()["authority"] == "none"
+    assert response.json()["execution_enabled"] is False
+
+    injected = app_request(
+        app,
+        "POST",
+        "/api/v1/ai/provider-registry-snapshots",
+        authorization=f"Bearer {settings.launch_credential}",
+        json_body={
+            "command_id": str(uuid4()),
+            "requested_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=5)).isoformat(),
+            "registry": {},
+            "actor_id": "caller-selected",
+        },
+    )
+    assert injected.status_code == 422
 
 
 def test_authenticated_network_profile_discovery_is_review_only(tmp_path: Path) -> None:
