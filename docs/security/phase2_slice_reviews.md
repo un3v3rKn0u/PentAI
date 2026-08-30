@@ -1,5 +1,39 @@
 # Phase 2 slice security reviews
 
+## 2026-08-30 — Authenticated provider-registry activation v1
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review and does not
+satisfy dual control.
+
+**Scope and evidence:** Authenticated local API composition, trusted-core activation
+service, migration 0085 exact storage predicate, immutable audit/outbox linkage,
+synthetic success, replay, concurrency, latest-revision, safety, source, API,
+direct-storage, migration, contract, and repository-wide validation, documentation,
+security invariants, and the complete diff.
+
+**Dependency and trust decision:** PR #241 supplied closed activation contracts and an
+inert ledger. PR #240 supplies exact authenticated immutable snapshot production.
+Together they permit the narrow consumer to derive every lineage field from storage.
+The conservative lifecycle rule allows no competing unexpired activation; replacement,
+supersession, and revocation semantics remain deferred rather than inferred.
+
+**Security, privacy, compatibility, and recovery:** Middleware derives principal and
+session. Trusted core revalidates snapshot and production receipt hashes, registry
+expiry, latest revision, safety, and global activation availability in one immediate
+transaction. The record remains metadata-only, non-authoritative, immutable, and
+non-executing. It excludes credentials, secret references, prompts, provider output,
+evidence, targets, diagnostics, and arbitrary payloads. Migration 0085 preserves rows
+and replaces only the producer-denial trigger; application rollback preserves records
+but cannot create new ones.
+
+**Findings, limitations, and residual risk:** No material finding remains for this
+slice. Explicit revocation, replacement before expiry, expiry recovery,
+configuration-snapshot production, meters, provider execution, measurement/accounting,
+dispatch, UI, demonstrations, and independent review remain deferred. The sole
+maintainer accepts the reduced governance assurance for this scope.
+
 ## 2026-08-30 — Provider-registry activation v1 inert prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

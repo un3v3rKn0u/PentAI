@@ -328,6 +328,7 @@ def orchestration_approval_client(
         ("POST", "/api/v1/orchestration/task-approval-requests/unknown/decision"),
         ("POST", "/api/v1/orchestration/task-approval-requests/unknown/consume"),
         ("POST", "/api/v1/ai/provider-registry-snapshots"),
+        ("POST", "/api/v1/ai/provider-registry-snapshots/unknown/activate"),
     ],
 )
 def test_every_api_route_rejects_missing_credentials(
@@ -397,6 +398,37 @@ def test_registry_snapshot_uses_server_derived_authenticated_identity(tmp_path: 
     assert response.json()["requester"]["actor_id"] == "local-desktop-session"
     assert response.json()["authority"] == "none"
     assert response.json()["execution_enabled"] is False
+
+    activation = app_request(
+        app,
+        "POST",
+        f"/api/v1/ai/provider-registry-snapshots/{response.json()['snapshot_id']}/activate",
+        authorization=f"Bearer {settings.launch_credential}",
+        json_body={
+            "command_id": str(uuid4()),
+            "requested_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=5)).isoformat(),
+        },
+    )
+    assert activation.status_code == 200
+    assert activation.json()["requester"]["actor_id"] == "local-desktop-session"
+    assert activation.json()["configuration_snapshot_enabled"] is False
+    assert activation.json()["authority"] == "none"
+    assert activation.json()["execution_enabled"] is False
+
+    activation_injected = app_request(
+        app,
+        "POST",
+        f"/api/v1/ai/provider-registry-snapshots/{response.json()['snapshot_id']}/activate",
+        authorization=f"Bearer {settings.launch_credential}",
+        json_body={
+            "command_id": str(uuid4()),
+            "requested_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=5)).isoformat(),
+            "actor_id": "caller-selected",
+        },
+    )
+    assert activation_injected.status_code == 422
 
     injected = app_request(
         app,
