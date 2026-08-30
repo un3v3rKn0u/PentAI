@@ -1,5 +1,40 @@
 # Phase 2 slice security reviews
 
+## 2026-08-30 — Provider-configuration snapshot production inert prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, and security reviewer under the
+`GIT_WORKFLOW.md` exception. This review is not independent and does not satisfy dual
+control.
+
+**Scope and evidence:** Closed provider-configuration snapshot production command v1
+and receipt v2 contracts, additive migration 0086, deny-all producer and immutable
+update/delete guards, exact registry activation and snapshot-production lineage,
+remote secret-reference digest or local absence, synthetic positive/default-deny and
+migration tests, compatibility documentation, security invariants, and the complete
+diff.
+
+**Dependency and trust decision:** PR #242 made one exact latest registry snapshot
+current without enabling downstream behavior. The pre-existing configuration snapshot
+v1 contracts do not authenticate a producer, bind command replay identity, or name the
+activation receipt that authorizes provenance selection. Enabling their producer would
+therefore leave security-critical lineage implicit. This slice reserves that lineage
+and source authentication only; production remains storage-denied.
+
+**Security, privacy, compatibility, and recovery:** The contracts exclude caller-
+selected activation state, privilege, authority, raw secret references, credentials,
+prompts, provider content, evidence, targets, diagnostics, and arbitrary payloads. V1
+configuration and snapshot contracts remain unchanged. Migration 0086 is additive and
+empty, direct insertion and mutation deny, rollback leaves an unused inert table, and
+startup recovery has no producer to invent or resume work.
+
+**Findings, limitations, and residual risk:** No material finding remains for this
+inert slice. Authenticated configuration production, registry supersession/revocation,
+secret resolution, meters, provider execution, measurement/accounting, dispatch, UI,
+Phase 2 demonstrations, and independent review remain deferred. The sole maintainer
+accepts the reduced governance assurance for this scope.
+
 ## 2026-08-30 — Authenticated provider-registry activation v1
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

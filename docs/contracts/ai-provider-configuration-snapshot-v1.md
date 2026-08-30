@@ -14,6 +14,14 @@ at storage, so no snapshot or receipt can currently be created. The slice does n
 activate a registry entry, attest a meter, invoke a provider, resolve a secret, measure
 usage, reconcile an account, or finalize a reservation.
 
+The additive production command v1 and production receipt v2 now reserve the
+authenticated source and exact active-registry lineage required by a future producer.
+They bind one command identity, server-derived local principal and process session,
+registry activation and receipt digest, registry snapshot and production receipt
+digests, configuration identity/hash, provider/model identity, and only the digest of
+an opaque remote secret reference. Migration 0086 stores no rows because its producer
+remains deny-all. The original snapshot and receipt v1 contracts remain unchanged.
+
 ## Privacy, secrets, and accounting
 
 Remote snapshots retain only a digest of the opaque provider-bound secret reference;
@@ -30,10 +38,10 @@ aggregation, provider retry, partial-request, cancellation, or failure semantics
 ## Compatibility, migration, and rollback
 
 The existing pure AI provider configuration and registry v1 contracts remain unchanged
-and do not become durable or active through this slice. Migration 0080 is additive and
-empty on upgrade; earlier provider, task, completion, reservation, and measurement
-contracts and rows are unchanged. Application rollback leaves an inert empty table.
-Destructive downgrade is unsupported.
+and do not become durable or active through this slice. Migrations 0080 and 0086 are
+additive and empty on upgrade; earlier provider, task, completion, reservation, and
+measurement contracts and rows are unchanged. Application rollback leaves inert empty
+tables. Destructive downgrade is unsupported.
 
 ## Default denial and deferred work
 
@@ -41,8 +49,8 @@ Unknown fields, mixed provider/privacy behavior, raw secret references, invalid
 identifiers, non-integer or excessive ceilings, activation, meter binding, or authority
 deny at the contract boundary. Direct insertion, update, and deletion deny at storage.
 
-Authenticated registry-snapshot production and activation, authenticated configuration-
-snapshot production, runtime-meter identity and attestation, adapter execution receipts,
-pricing and tokenizer policy, provider execution, usage production, reconciliation,
-reservation closure, dispatch, and runtime composition remain deferred and require
-independent default-deny boundaries.
+Authenticated registry-snapshot production and activation are now prerequisites in the
+durable lineage. Authenticated configuration-snapshot production, runtime-meter identity
+and attestation, adapter execution receipts, pricing and tokenizer policy, provider
+execution, usage production, reconciliation, reservation closure, dispatch, and runtime
+composition remain deferred and require independent default-deny boundaries.

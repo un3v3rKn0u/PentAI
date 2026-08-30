@@ -328,6 +328,11 @@ all production and all mutation or deletion. The snapshot cannot activate a regi
 resolve a secret, attest a meter, invoke a provider, manufacture usage, reconcile an
 account, authorize execution, or perform an effect. Raw secret references, prompts,
 responses, evidence, diagnostics, pricing, and tokenizer semantics remain excluded.
+The additive production command v1 and receipt v2 bind one future producer to the
+server-derived local principal/session, exact current registry activation and immutable
+registry-production digests, configuration hash, and remote secret-reference digest or
+local absence. Migration 0086 remains deny-all and immutable, so these contracts cannot
+produce a snapshot, bind a meter, resolve a secret, or create authority.
 
 **Phase 2 provider-registry snapshot prerequisite note:** Registry snapshot v1 reserves
 one exact inactive normalized registry revision, provider/model set, privacy route,
