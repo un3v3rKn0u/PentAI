@@ -339,14 +339,26 @@ diagnostics, pricing, tokenizer rules, and arbitrary payloads remain excluded.
 
 **Phase 2 provider-registry production authentication prerequisite note:** The additive
 command v1 and receipt v2 shapes bind a future snapshot producer to the server-derived
-local desktop principal and per-process authenticated session. Migration 0082 denies all
-production and mutation, so neither shape can create, activate, revoke, or supersede a
-snapshot. The policy/approval signer is not widened to registry material. Registry
-documents, signatures, credentials, secret references, provider content, diagnostics,
+local desktop principal and per-process authenticated session. Migration 0083 now
+permits only the exact trusted producer while mutation remains denied. Neither shape can
+activate, revoke, or supersede a snapshot. The policy/approval signer is not widened to
+registry material. Registry documents, signatures, credentials, secret references,
+provider content, diagnostics,
 and arbitrary payloads remain excluded. Pure trusted-core normalization now validates
 before deriving order-independent canonical registry and provider-list hashes and cannot
-persist or activate state. Monotonic revision enforcement, source governance, producer
-composition, and runtime composition remain required.
+persist or activate state by itself. Signing governance, registry lifecycle, and runtime
+composition remain required.
+
+**Phase 2 authenticated provider-registry production note:** The local-core middleware
+derives the human principal and per-process session; callers cannot submit either
+identity, snapshot state, digest, activation, revocation, privilege, or authority.
+Trusted core validates and normalizes one current registry, enforces monotonic
+per-registry revisions in an immediate transaction, writes one immutable source-bound
+production receipt, and storage-gates its exact inactive snapshot. Equal/lower competing
+revisions, changed or cross-session replay, global safety pause, stale validity,
+privacy-unsafe routes, missing lineage, and mutation deny. Snapshot presence remains
+provenance only and cannot activate a provider, resolve a secret, attest a meter, invoke
+a provider, create usage, dispatch work, or authorize an external effect.
 
 **Phase 2 SQLite reconstruction note:** A table rebuild must be explicitly named and
 marked, may not control foreign-key enforcement or `writable_schema`, and executes in

@@ -1,5 +1,41 @@
 # Phase 2 slice security reviews
 
+## 2026-08-30 — Authenticated provider-registry snapshot production
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review and does not
+satisfy dual control.
+
+**Scope and evidence:** Authenticated local API composition, deterministic trusted-core
+snapshot production, migration 0083 cross-ledger storage predicates, monotonic revision
+and replay fencing, immutable audit/outbox linkage, synthetic positive, malformed,
+privacy, stale, concurrency, safety, migration, authentication, and direct-storage tests,
+compatibility documentation, and the complete diff.
+
+**Dependency and trust decision:** PR #238 reserved server-derived source identity and
+the inert production ledger; PR #239 supplied the canonical registry/provider digests.
+Those merged prerequisites allow one current registry to be recorded without inventing
+activation or signing governance. The endpoint accepts no actor, session, digest,
+snapshot state, privilege, or authority claim. Middleware supplies identity and trusted
+core derives all persisted security-critical values.
+
+**Security, privacy, compatibility, and recovery:** One immediate transaction inserts
+the source-bound production record and matching inactive snapshot under deferred foreign
+key and exact storage predicates. Equal/lower competing revisions, changed or
+cross-session replay, stale or unsafe registries, global safety pause, and orphan or
+direct snapshot writes deny. Records and audit/outbox linkage contain bounded metadata
+only and remain `authority: none` and `execution_enabled: false`. No credential, secret
+reference, prompt, response, evidence, diagnostic, provider call, network access, or
+effect is created. Existing contracts remain version-compatible; rollback leaves
+immutable inactive records that older code cannot produce or activate.
+
+**Findings, limitations, and residual risk:** No material finding remains for this
+slice. Registry signing governance, activation, revocation, supersession, configuration
+snapshots, meter identity, adapters, provider execution, usage/accounting, dispatch,
+agents/plugins/UI, Phase 2 demonstrations, and independent review remain deferred. The
+sole maintainer accepts the reduced governance assurance for this scope.
+
 ## 2026-08-30 — Provider-registry canonical digest prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

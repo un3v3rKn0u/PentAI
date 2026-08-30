@@ -17,10 +17,9 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `ai-provider-registry-snapshot-receipt-v1.schema.json` — immutable metadata-only
   registry-snapshot receipt with authority and execution disabled.
 - `ai-provider-registry-snapshot-command-v1.schema.json` — authenticated local-core
-  command identity reserved for future registry-snapshot production; production remains
-  disabled.
-- `ai-provider-registry-snapshot-receipt-v2.schema.json` — additive source-bound inert
-  receipt shape that cannot satisfy or replace snapshot receipt v1.
+  command identity consumed only by the inactive registry-snapshot producer.
+- `ai-provider-registry-snapshot-receipt-v2.schema.json` — source-bound immutable
+  production receipt that cannot activate a registry or replace snapshot receipt v1.
 - `ai-secret-reference-v1.schema.json` — non-resolving opaque provider-secret metadata
   bound to one exact provider configuration, purpose, lifecycle, and validity window.
 - `ai-budget-reservation-request-v1.schema.json` — version-fenced, idempotent request

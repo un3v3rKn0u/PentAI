@@ -7,10 +7,9 @@ identity needed by a future provider-registry snapshot producer. They bind one e
 snapshot, registry revision, canonical registry digest, normalized provider-list digest,
 server-derived local desktop principal, and per-process authenticated session.
 
-Migration 0082 adds an immutable production ledger whose producer remains deny-all.
-The command and receipt are intentionally fixed to `production_enabled: false`,
-`authority: none`, and `execution_enabled: false`; no command can currently be consumed
-and no receipt can currently be created.
+Migration 0082 adds the immutable production ledger. Migration 0083 enables its sole
+authenticated trusted-core producer while the command and receipt remain fixed to
+`production_enabled: false`, `authority: none`, and `execution_enabled: false`.
 
 ## Authentication and trust model
 
@@ -20,12 +19,19 @@ or production privilege. The existing Ed25519 policy signer is not widened: ADR 
 limits it to policy and approval material, and current provider-registry documents are
 contract-valid but unsigned.
 
-The trusted core now provides the pure canonical prerequisite: it compiles the registry,
+The trusted core compiles the registry,
 sorts provider, model, and input-classification arrays into documented ASCII lexical
 order, and derives separate canonical JSON SHA-256 digests for the complete registry and
-normalized provider list. The helper deep-copies input and performs no persistence.
-Authenticated producer composition, monotonic revision enforcement, and atomic snapshot
-storage remain disabled.
+normalized provider list. The authenticated local endpoint supplies only the registry,
+command identity, and bounded validity; requester identity and session come exclusively
+from middleware. One immediate transaction enforces monotonic revision, stores the
+source-bound production receipt, then stores the matching inactive snapshot under
+deferred foreign-key verification.
+
+Byte-equivalent replay requires the same command, authenticated session, current
+registry validity, and intact immutable hashes. Changed replay, competing equal or lower
+revisions, forks, rollback, global safety pause, stale validity, and corrupted history
+deny with stable codes.
 
 ## Privacy and default denial
 
@@ -35,22 +41,23 @@ exclude registry documents, credentials, secret references, private keys, signat
 prompts, contexts, provider responses, evidence, targets, diagnostics, commands, paths,
 URLs, and arbitrary payloads.
 
-Direct insertion, update, and deletion remain storage-denied. Snapshot production,
-activation, revocation, configuration-snapshot production, meter registration, provider
-execution, usage measurement, accounting, authority, and external effects remain
-disabled.
+Direct snapshot insertion without its exact production record remains storage-denied;
+orphan production cannot commit because of the foreign key. Update and deletion remain
+denied. Activation, revocation, configuration-snapshot production, meter registration,
+provider execution, usage measurement, accounting, authority, and external effects
+remain disabled.
 
 ## Compatibility, migration, and rollback
 
 Provider registry v1 and provider-registry snapshot/receipt v1 remain unchanged. Receipt
 v2 is additive and cannot be substituted for receipt v1 or used to create a snapshot.
-Migration 0082 is additive and empty on upgrade. Application rollback leaves an unused
-empty table; destructive downgrade is unsupported.
+Migration 0083 preserves existing rows and constraints while replacing only deny-all
+producer triggers with exact predicates. Application rollback leaves immutable inactive
+records that older code cannot produce or activate; destructive downgrade is unsupported.
 
 ## Deferred work
 
-Authenticated production service composition, monotonic revision and rollback
-enforcement, source signing or governance, snapshot
+Source signing or governance beyond the existing authenticated local source, snapshot
 activation and revocation, configuration-snapshot production, meter identity, adapter
 receipts, provider execution, measurement, reconciliation, finalization, dispatch, UI,
 and Phase 2 demonstrations remain deferred.
