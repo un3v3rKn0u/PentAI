@@ -1,5 +1,37 @@
 # Phase 2 slice security reviews
 
+## 2026-08-30 — Provider-registry activation v1 inert prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Security Lead, and security reviewer
+under the `GIT_WORKFLOW.md` exception. This is not independent review and does not
+satisfy dual control.
+
+**Scope and evidence:** Closed activation command/receipt v1 contracts, additive
+migration 0084, deny-all producer and immutable update/delete guards, exact snapshot-
+production lineage, contract and migration negative tests, compatibility documentation,
+security invariants, and the complete diff.
+
+**Dependency and trust decision:** PR #240 authenticated and persisted inactive registry
+snapshots, but repository evidence requires an exact current activated registry before
+configuration-snapshot production. Lifecycle production, concurrency, supersession,
+revocation, and recovery composition are not yet defined strongly enough to activate
+one. This slice therefore reserves only the versioned identity and inert persistence
+boundary.
+
+**Security, privacy, compatibility, and recovery:** The contracts bind snapshot and
+production-receipt digests, registry revision and canonical digests, authenticated local
+principal/session, purpose, and validity while excluding secrets, provider content,
+diagnostics, and arbitrary payloads. Direct insertion, update, and deletion deny. The
+additive empty migration leaves all earlier contracts and rows unchanged; rollback
+leaves an unused table and destructive downgrade is unsupported.
+
+**Findings, limitations, and residual risk:** No material finding remains for this
+inert slice. Activation production, one-current-active enforcement, supersession,
+revocation, expiry recovery, configuration snapshots, meters, provider execution,
+measurement/accounting, dispatch, UI, demonstrations, and independent review remain
+deferred. The sole maintainer accepts the reduced governance assurance for this scope.
+
 ## 2026-08-30 — Authenticated provider-registry snapshot production
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

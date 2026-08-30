@@ -100,6 +100,7 @@ class MigrationTests(unittest.TestCase):
                     "0081",
                     "0082",
                     "0083",
+                    "0084",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -2179,6 +2180,81 @@ class MigrationTests(unittest.TestCase):
             self.assertIn(
                 "ai_provider_registry_snapshot_productions_v1_immutable", triggers
             )
+
+    def test_provider_registry_activation_prerequisite_is_additive_and_inert(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0084_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = repository_migrations / "0084_provider_registry_activation_prerequisite.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0084"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM ai_provider_registry_activations_v1"
+                    ).fetchone()[0],
+                    0,
+                )
+                with self.assertRaisesRegex(
+                    sqlite3.IntegrityError,
+                    "provider registry activation producer is disabled",
+                ):
+                    connection.execute(
+                        """INSERT INTO ai_provider_registry_activations_v1(
+                        activation_id,receipt_digest,command_id,command_digest,
+                        snapshot_id,snapshot_digest,snapshot_receipt_digest,registry_id,
+                        registry_revision,registry_digest,providers_digest,actor_id,
+                        session_id,command_json,receipt_json,activated_at,expires_at,state,
+                        configuration_snapshot_enabled,revocation_enabled,authority,
+                        execution_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                        'active',0,0,'none',0)""",
+                        (
+                            "00000000-0000-4000-8000-000000000001",
+                            "sha256:" + "a" * 64,
+                            "00000000-0000-4000-8000-000000000002",
+                            "sha256:" + "b" * 64,
+                            "00000000-0000-4000-8000-000000000003",
+                            "sha256:" + "c" * 64,
+                            "sha256:" + "d" * 64,
+                            "00000000-0000-4000-8000-000000000004",
+                            1,
+                            "sha256:" + "e" * 64,
+                            "sha256:" + "f" * 64,
+                            "test-session",
+                            "00000000-0000-4000-8000-000000000005",
+                            "{}",
+                            "{}",
+                            "2026-08-30T10:00:01Z",
+                            "2026-09-13T10:00:00Z",
+                        ),
+                    )
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self.assertIn("ai_provider_registry_activations_v1_binding_valid", triggers)
+            self.assertIn("ai_provider_registry_activations_v1_producer_disabled", triggers)
+            self.assertIn("ai_provider_registry_activations_v1_immutable", triggers)
+            self.assertIn("ai_provider_registry_activations_v1_no_delete", triggers)
 
     def test_orchestration_task_state_rebuild_preserves_authoritative_schema(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

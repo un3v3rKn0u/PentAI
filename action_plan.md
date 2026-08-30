@@ -937,6 +937,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     revocation, configuration, meter, provider, dispatch, accounting, or execution
     authority. Registry lifecycle and all downstream provider runtime work remain
     required.
+    Additive provider-registry activation command/receipt v1 contracts and migration
+    0084 now reserve the exact authenticated snapshot-production lineage and immutable
+    lifecycle record required by a later trusted activation consumer. The producer is
+    storage-denied, so no registry becomes active; configuration production,
+    revocation, supersession, provider execution, measurement, accounting, authority,
+    and effects remain disabled and required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
