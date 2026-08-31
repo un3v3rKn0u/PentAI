@@ -400,6 +400,11 @@ closed dimensions, and validity required by a later trusted producer. Migration 
 denies all production, mutation, and deletion. The prerequisite cannot create or attest
 an identity, enable measurement, invoke a provider, resolve a secret, dispatch work,
 change accounting, authorize an effect, or recover production.
+Runtime-meter implementation capability v1 reserves only inactive implementation/version,
+closed provider-type, and supported-dimension names. Migration 0090 denies production,
+mutation, and deletion. Capability metadata cannot bind or attest an identity, establish
+meter accuracy or liveness, invoke a provider, create usage, change accounting, dispatch
+work, grant authority, or perform or recover an external effect.
 
 **Phase 2 terminal snapshot note:** Task snapshot v2 reads one exact task only from the
 authoritative task table and binds its plan/task revisions. Non-terminal states require

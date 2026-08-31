@@ -982,6 +982,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     immutable deny-all production ledger. No identity can be produced or attested, and
     provider execution, measurement, accounting, dispatch, authority, and effects remain
     disabled and required.
+    Additive runtime-meter implementation capability and receipt v1 contracts plus
+    migration 0090 now reserve an inert closed provider-type and measurement-dimension
+    source for a later trusted identity producer. Production remains storage-denied;
+    identity binding, attestation, provider execution, measurement, accounting,
+    dispatch, authority, and effects remain disabled and required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
