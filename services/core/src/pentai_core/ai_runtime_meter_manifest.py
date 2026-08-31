@@ -5,11 +5,12 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any
 
 from pentai_policy import canonical_json, content_hash
-from pentai_policy.document import contract_issues
+from pentai_policy.document import contract_issues, parse_time
 
 
 class RuntimeMeterImplementationManifestError(ValueError):
@@ -163,4 +164,94 @@ def resolve_built_in_runtime_meter_implementation_manifest(
         implementation_id=implementation_id,
         implementation_version=implementation_version,
         implementation_artifact_digest=implementation_artifact_digest,
+    )
+
+
+def _verify_runtime_meter_implementation_command(
+    document: dict[str, Any],
+    *,
+    authenticated_actor_id: str,
+    authenticated_session_id: str,
+    now: datetime,
+    registry: _CompiledRuntimeMeterImplementationManifestRegistry,
+) -> CompiledRuntimeMeterImplementationManifest:
+    if contract_issues(document, "ai-runtime-meter-implementation-command-v2.schema.json"):
+        raise RuntimeMeterImplementationManifestError(
+            "AI_RUNTIME_METER_IMPLEMENTATION_COMMAND_MALFORMED",
+            "runtime meter implementation command is malformed",
+        )
+    requester = document["requester"]
+    if (
+        requester["actor_id"] != authenticated_actor_id
+        or requester["session_id"] != authenticated_session_id
+    ):
+        raise RuntimeMeterImplementationManifestError(
+            "AI_RUNTIME_METER_IMPLEMENTATION_SOURCE_MISMATCH",
+            "runtime meter implementation source does not match authentication",
+        )
+    if now.tzinfo is None:
+        raise RuntimeMeterImplementationManifestError(
+            "AI_RUNTIME_METER_IMPLEMENTATION_CLOCK_INVALID",
+            "runtime meter implementation clock is invalid",
+        )
+    instant = now.astimezone(UTC)
+    try:
+        requested_at = parse_time(document["requested_at"])
+        expires_at = parse_time(document["expires_at"])
+        capability_valid_from = parse_time(document["capability_valid_from"])
+        capability_expires_at = parse_time(document["capability_expires_at"])
+    except (TypeError, ValueError) as error:
+        raise RuntimeMeterImplementationManifestError(
+            "AI_RUNTIME_METER_IMPLEMENTATION_COMMAND_MALFORMED",
+            "runtime meter implementation command time is malformed",
+        ) from error
+    if requested_at > instant or expires_at <= instant or expires_at <= requested_at:
+        raise RuntimeMeterImplementationManifestError(
+            "AI_RUNTIME_METER_IMPLEMENTATION_COMMAND_STALE",
+            "runtime meter implementation command is stale",
+        )
+    if (
+        capability_valid_from > instant
+        or capability_expires_at <= instant
+        or capability_expires_at <= capability_valid_from
+    ):
+        raise RuntimeMeterImplementationManifestError(
+            "AI_RUNTIME_METER_IMPLEMENTATION_CAPABILITY_WINDOW_INVALID",
+            "runtime meter implementation capability window is invalid",
+        )
+
+    manifest = registry.resolve(
+        implementation_id=document["implementation_id"],
+        implementation_version=document["implementation_version"],
+        implementation_artifact_digest=document["implementation_artifact_digest"],
+    )
+    if (
+        document["manifest_id"] != manifest.manifest_id
+        or document["manifest_revision"] != manifest.manifest_revision
+        or document["manifest_digest"] != manifest.manifest_digest
+        or document["manifest_registry_digest"] != registry.registry_digest
+        or frozenset(document["provider_types"]) != manifest.provider_types
+        or frozenset(document["supported_dimensions"]) != manifest.supported_dimensions
+    ):
+        raise RuntimeMeterImplementationManifestError(
+            "AI_RUNTIME_METER_IMPLEMENTATION_MANIFEST_BINDING_MISMATCH",
+            "runtime meter implementation manifest binding does not match",
+        )
+    return manifest
+
+
+def verify_built_in_runtime_meter_implementation_command(
+    document: dict[str, Any],
+    *,
+    authenticated_actor_id: str,
+    authenticated_session_id: str,
+    now: datetime,
+) -> CompiledRuntimeMeterImplementationManifest:
+    """Verify a v2 command against only the package-owned manifest registry."""
+    return _verify_runtime_meter_implementation_command(
+        document,
+        authenticated_actor_id=authenticated_actor_id,
+        authenticated_session_id=authenticated_session_id,
+        now=now,
+        registry=_BUILT_IN_RUNTIME_METER_MANIFEST_REGISTRY,
     )

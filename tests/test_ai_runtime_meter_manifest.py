@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import copy
 import unittest
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
 from pentai_core.ai_runtime_meter_manifest import (
     RuntimeMeterImplementationManifestError,
     _compile_built_in_runtime_meter_manifest_registry,
+    _verify_runtime_meter_implementation_command,
     compile_runtime_meter_implementation_manifest,
     resolve_built_in_runtime_meter_implementation_manifest,
+    verify_built_in_runtime_meter_implementation_command,
 )
 
 
@@ -29,6 +32,40 @@ def manifest() -> dict[str, Any]:
         "identity_binding_enabled": False,
         "attestation_enabled": False,
         "measurement_enabled": False,
+        "authority": "none",
+        "execution_enabled": False,
+    }
+
+
+def command(document: dict[str, Any], now: datetime) -> dict[str, Any]:
+    compiled = compile_runtime_meter_implementation_manifest(document)
+    registry = _compile_built_in_runtime_meter_manifest_registry((document,))
+    session_id = str(uuid4())
+    return {
+        "schema_version": "2.0.0",
+        "command_id": str(uuid4()),
+        "capability_id": str(uuid4()),
+        "manifest_id": compiled.manifest_id,
+        "manifest_revision": compiled.manifest_revision,
+        "manifest_digest": compiled.manifest_digest,
+        "manifest_registry_digest": registry.registry_digest,
+        "implementation_id": compiled.implementation_id,
+        "implementation_version": compiled.implementation_version,
+        "implementation_artifact_digest": compiled.implementation_artifact_digest,
+        "provider_types": sorted(compiled.provider_types),
+        "supported_dimensions": sorted(compiled.supported_dimensions),
+        "capability_valid_from": (now - timedelta(seconds=1)).isoformat(),
+        "capability_expires_at": (now + timedelta(minutes=5)).isoformat(),
+        "requester": {
+            "actor_type": "human",
+            "actor_id": "test-session",
+            "session_id": session_id,
+        },
+        "authentication_context": "local_core_authenticated_session",
+        "purpose": "record_manifest_verified_runtime_meter_implementation",
+        "requested_at": (now - timedelta(seconds=1)).isoformat(),
+        "expires_at": (now + timedelta(seconds=30)).isoformat(),
+        "production_enabled": False,
         "authority": "none",
         "execution_enabled": False,
     }
@@ -221,4 +258,143 @@ class RuntimeMeterImplementationManifestTests(unittest.TestCase):
                 self.assertEqual(
                     raised.exception.code,
                     "AI_RUNTIME_METER_IMPLEMENTATION_MANIFEST_AMBIGUOUS",
+                )
+
+    def test_internal_command_verifier_accepts_exact_authenticated_manifest(self) -> None:
+        instant = datetime(2026, 8, 31, 19, 0, tzinfo=UTC)
+        document = manifest()
+        registry = _compile_built_in_runtime_meter_manifest_registry((document,))
+        production_command = command(document, instant)
+
+        verified = _verify_runtime_meter_implementation_command(
+            production_command,
+            authenticated_actor_id="test-session",
+            authenticated_session_id=production_command["requester"]["session_id"],
+            now=instant,
+            registry=registry,
+        )
+
+        self.assertEqual(verified.manifest_id, document["manifest_id"])
+
+    def test_public_command_verifier_denies_while_registry_is_empty(self) -> None:
+        instant = datetime(2026, 8, 31, 19, 0, tzinfo=UTC)
+        production_command = command(manifest(), instant)
+
+        with self.assertRaises(RuntimeMeterImplementationManifestError) as raised:
+            verify_built_in_runtime_meter_implementation_command(
+                production_command,
+                authenticated_actor_id="test-session",
+                authenticated_session_id=production_command["requester"]["session_id"],
+                now=instant,
+            )
+
+        self.assertEqual(
+            raised.exception.code,
+            "AI_RUNTIME_METER_IMPLEMENTATION_MANIFEST_UNAVAILABLE",
+        )
+
+    def test_command_verifier_denies_authentication_and_clock_mismatch(self) -> None:
+        instant = datetime(2026, 8, 31, 19, 0, tzinfo=UTC)
+        document = manifest()
+        registry = _compile_built_in_runtime_meter_manifest_registry((document,))
+        production_command = command(document, instant)
+
+        cases = (
+            (
+                {"authenticated_actor_id": "local-desktop-session"},
+                "AI_RUNTIME_METER_IMPLEMENTATION_SOURCE_MISMATCH",
+            ),
+            (
+                {"authenticated_session_id": str(uuid4())},
+                "AI_RUNTIME_METER_IMPLEMENTATION_SOURCE_MISMATCH",
+            ),
+            (
+                {"now": instant.replace(tzinfo=None)},
+                "AI_RUNTIME_METER_IMPLEMENTATION_CLOCK_INVALID",
+            ),
+        )
+        for overrides, expected_code in cases:
+            arguments = {
+                "authenticated_actor_id": "test-session",
+                "authenticated_session_id": production_command["requester"]["session_id"],
+                "now": instant,
+                "registry": registry,
+                **overrides,
+            }
+            with self.subTest(expected_code=expected_code):
+                with self.assertRaises(RuntimeMeterImplementationManifestError) as raised:
+                    _verify_runtime_meter_implementation_command(
+                        production_command, **arguments
+                    )
+                self.assertEqual(raised.exception.code, expected_code)
+
+    def test_command_verifier_denies_stale_and_invalid_capability_windows(self) -> None:
+        instant = datetime(2026, 8, 31, 19, 0, tzinfo=UTC)
+        document = manifest()
+        registry = _compile_built_in_runtime_meter_manifest_registry((document,))
+        baseline = command(document, instant)
+
+        for field, value, expected_code in (
+            (
+                "requested_at",
+                (instant + timedelta(seconds=1)).isoformat(),
+                "AI_RUNTIME_METER_IMPLEMENTATION_COMMAND_STALE",
+            ),
+            (
+                "expires_at",
+                instant.isoformat(),
+                "AI_RUNTIME_METER_IMPLEMENTATION_COMMAND_STALE",
+            ),
+            (
+                "capability_valid_from",
+                (instant + timedelta(seconds=1)).isoformat(),
+                "AI_RUNTIME_METER_IMPLEMENTATION_CAPABILITY_WINDOW_INVALID",
+            ),
+            (
+                "capability_expires_at",
+                instant.isoformat(),
+                "AI_RUNTIME_METER_IMPLEMENTATION_CAPABILITY_WINDOW_INVALID",
+            ),
+        ):
+            production_command = copy.deepcopy(baseline)
+            production_command[field] = value
+            with self.subTest(field=field):
+                with self.assertRaises(RuntimeMeterImplementationManifestError) as raised:
+                    _verify_runtime_meter_implementation_command(
+                        production_command,
+                        authenticated_actor_id="test-session",
+                        authenticated_session_id=production_command["requester"]["session_id"],
+                        now=instant,
+                        registry=registry,
+                    )
+                self.assertEqual(raised.exception.code, expected_code)
+
+    def test_command_verifier_denies_manifest_binding_substitution(self) -> None:
+        instant = datetime(2026, 8, 31, 19, 0, tzinfo=UTC)
+        document = manifest()
+        registry = _compile_built_in_runtime_meter_manifest_registry((document,))
+        baseline = command(document, instant)
+
+        for field, value in (
+            ("manifest_id", str(uuid4())),
+            ("manifest_revision", 2),
+            ("manifest_digest", "sha256:" + "b" * 64),
+            ("manifest_registry_digest", "sha256:" + "c" * 64),
+            ("provider_types", ["local_runtime"]),
+            ("supported_dimensions", ["requests"]),
+        ):
+            production_command = copy.deepcopy(baseline)
+            production_command[field] = value
+            with self.subTest(field=field):
+                with self.assertRaises(RuntimeMeterImplementationManifestError) as raised:
+                    _verify_runtime_meter_implementation_command(
+                        production_command,
+                        authenticated_actor_id="test-session",
+                        authenticated_session_id=production_command["requester"]["session_id"],
+                        now=instant,
+                        registry=registry,
+                    )
+                self.assertEqual(
+                    raised.exception.code,
+                    "AI_RUNTIME_METER_IMPLEMENTATION_MANIFEST_BINDING_MISMATCH",
                 )

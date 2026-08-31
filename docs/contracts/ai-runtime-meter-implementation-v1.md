@@ -37,6 +37,13 @@ producer, not caller attestations. The producer must derive and compare them aga
 current code-owned registry. Because the registry contains no reviewed manifest
 instance, both production ledgers remain deny-all and no v3 receipt can be created.
 
+The trusted-core command verifier now validates command v2 before any future producer
+may use it. It binds the command requester to the server-derived authenticated actor and
+session, requires a timezone-aware current command and capability window, resolves only
+the exact implementation/version/artifact through the code-owned registry, and compares
+all manifest and registry lineage plus capability sets. The public registry remains
+empty, so the verifier cannot currently return a production manifest.
+
 ## Trust, privacy, and accounting
 
 Provider types and measurement dimensions are closed names only. The contracts do not
@@ -68,12 +75,13 @@ provider types or dimensions, active state, identity binding, attestation, measu
 authority, execution, and arbitrary payloads deny at contract validation. Direct insert,
 update, and deletion deny at storage. Recovery cannot invent or activate a capability.
 
-Both the capability and production-ledger producer guards remain deny-all. A later
-trusted producer must authenticate the local source and derive the canonical capability
-from an authoritative built-in implementation manifest or equivalent reviewed source;
-the authenticated requester alone cannot establish implementation truth.
+Both the capability and production-ledger producer guards remain deny-all. The verifier
+performs no insert and creates no receipt. A later trusted producer must authenticate the
+local source and derive the canonical capability from an authoritative built-in
+implementation manifest; the authenticated requester alone cannot establish
+implementation truth.
 
 A reviewed code-owned manifest instance, v2/v3 capability production and persistence
-gating, meter identity production, attestation, provider execution receipts, provider
-invocation, measurement, reconciliation, budget finalization, dispatch, and runtime
-composition remain deferred for independent review.
+gating, audit/outbox integration, meter identity production, attestation, provider
+execution receipts, provider invocation, measurement, reconciliation, budget
+finalization, dispatch, and runtime composition remain deferred for independent review.

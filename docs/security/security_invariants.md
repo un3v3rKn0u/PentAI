@@ -427,6 +427,12 @@ values are not caller authority: a future trusted producer must derive them from
 current code-owned registry and deny any mismatch. The empty registry therefore keeps
 production impossible, both storage guards remain deny-all, and no capability, identity,
 attestation, measurement, authority, execution, persistence, or recovery path is added.
+The trusted-core v2 command verifier also binds the requester to authenticated local
+actor/session values, validates current timezone-aware command and capability windows,
+resolves only through the code-owned registry, and rejects any manifest, registry,
+artifact, provider-type, or dimension mismatch. It performs no persistence or receipt
+creation. Because the registry remains empty, its public success path is unreachable and
+both producer guards remain deny-all.
 
 **Phase 2 terminal snapshot note:** Task snapshot v2 reads one exact task only from the
 authoritative task table and binds its plan/task revisions. Non-terminal states require
