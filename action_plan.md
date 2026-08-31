@@ -1000,6 +1000,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     claims can be rejected against a code-owned source. No manifest instance, registry,
     persistence, producer, identity binding, attestation, execution, measurement,
     accounting, dispatch, authority, or effect exists; those remain required.
+    The trusted-core built-in implementation-manifest registry now owns an immutable,
+    deliberately empty manifest collection, rejects duplicate identities during
+    construction, derives an order-independent digest, and resolves only exact
+    implementation/version/artifact selectors. Caller input cannot add entries, and all
+    valid selectors deny unavailable until a real reviewed manifest is added. Capability
+    and identity production remain storage-denied; no runtime behavior or authority is
+    enabled.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

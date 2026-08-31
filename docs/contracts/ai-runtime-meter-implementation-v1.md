@@ -23,6 +23,13 @@ claims. The manifest binds one implementation/version and artifact digest to clo
 provider types and dimensions. Compilation validates and normalizes metadata only: no
 manifest instance or registry is supplied, persisted, activated, or runtime-composed.
 
+The trusted-core built-in registry is code-owned and deliberately empty. Its public
+lookup accepts only an exact implementation ID, positive version, and SHA-256 artifact
+digest as untrusted selectors. Malformed selectors deny distinctly; well-formed but
+unregistered or artifact-mismatched selectors deny uniformly as unavailable. Internal
+registry construction rejects duplicate implementation/version or manifest identities
+and derives an order-independent registry digest. Caller documents cannot add entries.
+
 ## Trust, privacy, and accounting
 
 Provider types and measurement dimensions are closed names only. The contracts do not
@@ -57,7 +64,7 @@ trusted producer must authenticate the local source and derive the canonical cap
 from an authoritative built-in implementation manifest or equivalent reviewed source;
 the authenticated requester alone cannot establish implementation truth.
 
-A reviewed code-owned manifest instance and registry, capability production, meter
-identity production, attestation, provider execution receipts, provider invocation,
-measurement, reconciliation, budget finalization, dispatch, and runtime composition
-remain deferred for independent review.
+A reviewed code-owned manifest instance, capability production, meter identity
+production, attestation, provider execution receipts, provider invocation, measurement,
+reconciliation, budget finalization, dispatch, and runtime composition remain deferred
+for independent review.
