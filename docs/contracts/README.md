@@ -33,6 +33,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   worker-runtime-bound identity declaring only closed supported measurement dimensions.
 - `ai-runtime-meter-identity-receipt-v1.schema.json` — immutable metadata-only meter
   identity receipt with attestation, measurement, authority, and execution disabled.
+- `ai-runtime-meter-identity-command-v1.schema.json` — inert authenticated production
+  command bound to one exact configuration snapshot and worker-runtime lineage.
+- `ai-runtime-meter-identity-receipt-v2.schema.json` — source-bound immutable production
+  receipt that cannot attest a meter or replace identity receipt v1.
 - `ai-secret-reference-v1.schema.json` — non-resolving opaque provider-secret metadata
   bound to one exact provider configuration, purpose, lifecycle, and validity window.
 - `ai-budget-reservation-request-v1.schema.json` — version-fenced, idempotent request
