@@ -1,5 +1,39 @@
 # Phase 2 slice security reviews
 
+## 2026-08-31 — Runtime-meter implementation production inert prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and security
+reviewer under the `GIT_WORKFLOW.md` exception. This review is not independent and does
+not satisfy dual control.
+
+**Scope and evidence:** Closed runtime-meter implementation production command v1 and
+source-bound receipt v2 contracts, additive migration 0091, deny-all producer and
+immutable update/delete guards, exact implementation/provider-type/dimension and local
+principal/session binding, synthetic positive/default-deny contract tests, fresh/
+additive/idempotent migration tests, compatibility documentation, invariants, Phase 2
+dependency audit, and complete diff.
+
+**Dependency and trust decision:** PR #247 established an inert capability shape, but no
+authoritative built-in manifest or runtime verifier establishes an implementation's
+actual supported provider types and dimensions. This slice reserves authenticated
+source and replay provenance only. Authentication does not establish implementation
+truth, so capability and identity production remain storage-denied.
+
+**Security, privacy, compatibility, and recovery:** Contracts store bounded identifiers,
+closed enums, versions, digests, source identity, and timestamps only. They exclude
+credentials, secret references, prompts, provider responses, evidence, targets, usage,
+pricing, tokenizers, and diagnostics. Migration 0091 is additive and empty; older
+applications ignore it, destructive downgrade after future rows exist is unsupported,
+and recovery has no producer from which to invent capability state.
+
+**Findings, limitations, and residual risk:** No material finding remains for this inert
+slice. Authoritative manifest verification, capability production, identity production,
+meter attestation, provider execution, measurement, accounting/finalization, dispatch,
+UI, Phase 2 demonstrations, and independent review remain deferred. The sole maintainer
+accepts the reduced governance assurance for this scope.
+
 ## 2026-08-31 — Runtime-meter implementation v1 inert prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

@@ -11,6 +11,12 @@ Migration 0090 adds an immutable ledger whose producer remains denied at storage
 capability or receipt can be created. Identity binding, attestation, measurement,
 authority, and execution remain disabled.
 
+The additive production command v1 and source-bound receipt v2 reserve the exact
+authenticated local principal/session, implementation/version, closed provider types,
+closed dimensions, and validity needed by a future trusted producer. Migration 0091
+adds a second immutable ledger whose producer also remains denied. These contracts do
+not establish that an implementation truthfully supports a provider type or dimension.
+
 ## Trust, privacy, and accounting
 
 Provider types and measurement dimensions are closed names only. The contracts do not
@@ -28,9 +34,10 @@ execution authority.
 
 The contracts and migration are additive. Existing registry, configuration, worker,
 meter identity, completion, reservation, and usage-measurement versions remain unchanged.
-Fresh migration, upgrade from 0089, and rerun are idempotent through the migration
-ledger. Older applications ignore the empty table. Destructive downgrade after future
-rows exist is unsupported.
+Fresh migration, upgrades through 0089, 0090, and 0091, and rerun are idempotent through
+the migration ledger. Older applications ignore the empty additive tables. Receipt v1
+remains the immutable capability record; receipt v2 is only source-bound production
+provenance. Destructive downgrade after future rows exist is unsupported.
 
 ## Default denial and deferred work
 
@@ -39,6 +46,12 @@ provider types or dimensions, active state, identity binding, attestation, measu
 authority, execution, and arbitrary payloads deny at contract validation. Direct insert,
 update, and deletion deny at storage. Recovery cannot invent or activate a capability.
 
-Authenticated capability production, meter identity production, attestation, provider
-execution receipts, provider invocation, measurement, reconciliation, budget
-finalization, dispatch, and runtime composition remain deferred for independent review.
+Both the capability and production-ledger producer guards remain deny-all. A later
+trusted producer must authenticate the local source and derive the canonical capability
+from an authoritative built-in implementation manifest or equivalent reviewed source;
+the authenticated requester alone cannot establish implementation truth.
+
+Capability production, authoritative manifest verification, meter identity production,
+attestation, provider execution receipts, provider invocation, measurement,
+reconciliation, budget finalization, dispatch, and runtime composition remain deferred
+for independent review.

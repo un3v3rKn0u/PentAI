@@ -108,6 +108,7 @@ class MigrationTests(unittest.TestCase):
                     "0088",
                     "0089",
                     "0090",
+                    "0091",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -190,6 +191,7 @@ class MigrationTests(unittest.TestCase):
                     "ai_runtime_meter_identities_v1",
                     "ai_runtime_meter_identity_productions_v1",
                     "ai_runtime_meter_implementations_v1",
+                    "ai_runtime_meter_implementation_productions_v1",
                     "orchestration_retry_budget_consumptions",
                     "orchestration_retry_attempts",
                     "orchestration_retry_schedules",
@@ -3021,6 +3023,138 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("ai_runtime_meter_implementations_v1_producer_disabled", triggers)
             self.assertIn("ai_runtime_meter_implementations_v1_immutable", triggers)
             self.assertIn("ai_runtime_meter_implementations_v1_no_delete", triggers)
+
+    def test_runtime_meter_implementation_production_prerequisite_is_additive_and_inert(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0091_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = (
+                repository_migrations
+                / "0091_runtime_meter_implementation_production_prerequisite.sql"
+            )
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0091"])
+                self.assertEqual(migrate(database), [])
+
+            capability_id = "00000000-0000-4000-8000-000000000022"
+            command_id = "00000000-0000-4000-8000-000000000023"
+            session_id = "00000000-0000-4000-8000-000000000024"
+            command = {
+                "schema_version": "1.0.0",
+                "command_id": command_id,
+                "capability_id": capability_id,
+                "implementation_id": "synthetic-meter",
+                "implementation_version": 1,
+                "provider_types": ["local_runtime"],
+                "supported_dimensions": ["runtime_seconds"],
+                "capability_valid_from": "2026-08-31T08:00:00Z",
+                "capability_expires_at": "2026-08-31T08:05:00Z",
+                "requester": {
+                    "actor_type": "human",
+                    "actor_id": "test-session",
+                    "session_id": session_id,
+                },
+                "authentication_context": "local_core_authenticated_session",
+                "purpose": "record_runtime_meter_implementation",
+                "requested_at": "2026-08-31T07:59:59Z",
+                "expires_at": "2026-08-31T08:00:30Z",
+                "production_enabled": False,
+                "authority": "none",
+                "execution_enabled": False,
+            }
+            receipt = {
+                key: value
+                for key, value in command.items()
+                if key not in {"schema_version", "purpose", "requested_at", "expires_at"}
+            }
+            receipt.update(
+                {
+                    "schema_version": "2.0.0",
+                    "capability_digest": "sha256:" + "a" * 64,
+                    "command_digest": "sha256:" + "b" * 64,
+                    "state": "inactive",
+                    "identity_binding_enabled": False,
+                    "attestation_enabled": False,
+                    "measurement_enabled": False,
+                    "recorded_at": "2026-08-31T08:00:01Z",
+                }
+            )
+            with closing(sqlite3.connect(database)) as connection:
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+                with self.assertRaisesRegex(
+                    sqlite3.IntegrityError,
+                    "runtime meter implementation production is disabled",
+                ):
+                    connection.execute(
+                        """INSERT INTO ai_runtime_meter_implementation_productions_v1(
+                        command_id,command_digest,capability_id,capability_digest,
+                        implementation_id,implementation_version,provider_types_json,
+                        supported_dimensions_json,capability_valid_from,
+                        capability_expires_at,actor_id,session_id,command_json,
+                        receipt_json,receipt_digest,recorded_at,production_enabled,
+                        authority,execution_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,
+                        ?,?,?,?,?, 'none',0)""",
+                        (
+                            command_id,
+                            receipt["command_digest"],
+                            capability_id,
+                            receipt["capability_digest"],
+                            "synthetic-meter",
+                            1,
+                            json.dumps(command["provider_types"]),
+                            json.dumps(command["supported_dimensions"]),
+                            command["capability_valid_from"],
+                            command["capability_expires_at"],
+                            "test-session",
+                            session_id,
+                            json.dumps(command, separators=(",", ":"), sort_keys=True),
+                            json.dumps(receipt, separators=(",", ":"), sort_keys=True),
+                            "sha256:" + "c" * 64,
+                            receipt["recorded_at"],
+                            0,
+                        ),
+                    )
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM ai_runtime_meter_implementation_productions_v1"
+                    ).fetchone(),
+                    (0,),
+                )
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+            self.assertIn(
+                "ai_runtime_meter_implementation_productions_v1_binding_valid", triggers
+            )
+            self.assertIn(
+                "ai_runtime_meter_implementation_productions_v1_producer_disabled", triggers
+            )
+            self.assertIn(
+                "ai_runtime_meter_implementation_productions_v1_immutable", triggers
+            )
+            self.assertIn(
+                "ai_runtime_meter_implementation_productions_v1_no_delete", triggers
+            )
 
     def test_terminal_prerequisites_upgrade_from_0072_through_registration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -987,6 +987,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     source for a later trusted identity producer. Production remains storage-denied;
     identity binding, attestation, provider execution, measurement, accounting,
     dispatch, authority, and effects remain disabled and required.
+    Additive runtime-meter implementation production command v1 and source-bound receipt
+    v2 contracts now reserve the authenticated local principal/session and exact closed
+    implementation capability claim needed by a later trusted producer. Migration 0091
+    adds an immutable deny-all production ledger. Authentication alone does not prove
+    implementation capability; authoritative manifest verification, capability and
+    identity production, attestation, execution, measurement, accounting, dispatch,
+    authority, and effects remain disabled and required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
