@@ -411,6 +411,11 @@ mutation, and deletion. Authentication does not prove implementation capability;
 later trusted producer must derive the claim from an authoritative reviewed source.
 Neither command nor receipt can create capability, identity, measurement, authority, or
 effect state, and recovery cannot invent production.
+Implementation-manifest v1 adds only a closed artifact-digest and capability shape plus
+deterministic trusted-core canonicalization. Caller input remains untrusted, and no
+manifest instance or registry exists. Compilation cannot produce a capability, bind an
+identity, attest a meter, create measurement or accounting state, grant authority, or
+enable execution. Both producer guards remain deny-all.
 
 **Phase 2 terminal snapshot note:** Task snapshot v2 reads one exact task only from the
 authoritative task table and binds its plan/task revisions. Non-terminal states require

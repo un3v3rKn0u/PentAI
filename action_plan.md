@@ -994,6 +994,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     implementation capability; authoritative manifest verification, capability and
     identity production, attestation, execution, measurement, accounting, dispatch,
     authority, and effects remain disabled and required.
+    Additive runtime-meter implementation-manifest v1 and deterministic trusted-core
+    compilation now define the closed implementation/version, artifact digest,
+    provider-type, and measurement-dimension shape required before caller capability
+    claims can be rejected against a code-owned source. No manifest instance, registry,
+    persistence, producer, identity binding, attestation, execution, measurement,
+    accounting, dispatch, authority, or effect exists; those remain required.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current

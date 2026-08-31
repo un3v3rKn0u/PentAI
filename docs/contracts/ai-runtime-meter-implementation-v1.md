@@ -17,6 +17,12 @@ closed dimensions, and validity needed by a future trusted producer. Migration 0
 adds a second immutable ledger whose producer also remains denied. These contracts do
 not establish that an implementation truthfully supports a provider type or dimension.
 
+The additive implementation-manifest v1 contract and deterministic compiler define the
+canonical code-owned metadata that a later trusted producer must use instead of caller
+claims. The manifest binds one implementation/version and artifact digest to closed
+provider types and dimensions. Compilation validates and normalizes metadata only: no
+manifest instance or registry is supplied, persisted, activated, or runtime-composed.
+
 ## Trust, privacy, and accounting
 
 Provider types and measurement dimensions are closed names only. The contracts do not
@@ -51,7 +57,7 @@ trusted producer must authenticate the local source and derive the canonical cap
 from an authoritative built-in implementation manifest or equivalent reviewed source;
 the authenticated requester alone cannot establish implementation truth.
 
-Capability production, authoritative manifest verification, meter identity production,
-attestation, provider execution receipts, provider invocation, measurement,
-reconciliation, budget finalization, dispatch, and runtime composition remain deferred
-for independent review.
+A reviewed code-owned manifest instance and registry, capability production, meter
+identity production, attestation, provider execution receipts, provider invocation,
+measurement, reconciliation, budget finalization, dispatch, and runtime composition
+remain deferred for independent review.
