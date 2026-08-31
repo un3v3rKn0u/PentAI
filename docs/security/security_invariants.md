@@ -405,6 +405,12 @@ closed provider-type, and supported-dimension names. Migration 0090 denies produ
 mutation, and deletion. Capability metadata cannot bind or attest an identity, establish
 meter accuracy or liveness, invoke a provider, create usage, change accounting, dispatch
 work, grant authority, or perform or recover an external effect.
+The additive capability-production command v1 and receipt v2 bind only an authenticated
+local principal/session to one exact closed claim. Migration 0091 denies production,
+mutation, and deletion. Authentication does not prove implementation capability; a
+later trusted producer must derive the claim from an authoritative reviewed source.
+Neither command nor receipt can create capability, identity, measurement, authority, or
+effect state, and recovery cannot invent production.
 
 **Phase 2 terminal snapshot note:** Task snapshot v2 reads one exact task only from the
 authoritative task table and binds its plan/task revisions. Non-terminal states require

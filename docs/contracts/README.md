@@ -41,6 +41,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   provider-type, and closed measurement-dimension capability metadata.
 - `ai-runtime-meter-implementation-receipt-v1.schema.json` — immutable metadata-only
   capability receipt with identity binding, attestation, measurement, and authority off.
+- `ai-runtime-meter-implementation-command-v1.schema.json` — inert authenticated
+  production command for one exact implementation capability claim.
+- `ai-runtime-meter-implementation-receipt-v2.schema.json` — source-bound immutable
+  production receipt that cannot bind an identity or replace capability receipt v1.
 - `ai-secret-reference-v1.schema.json` — non-resolving opaque provider-secret metadata
   bound to one exact provider configuration, purpose, lifecycle, and validity window.
 - `ai-budget-reservation-request-v1.schema.json` — version-fenced, idempotent request
