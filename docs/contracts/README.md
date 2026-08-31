@@ -45,6 +45,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   production command for one exact implementation capability claim.
 - `ai-runtime-meter-implementation-receipt-v2.schema.json` — source-bound immutable
   production receipt that cannot bind an identity or replace capability receipt v1.
+- `ai-runtime-meter-implementation-command-v2.schema.json` — inert production command
+  bound to one exact code-owned manifest, artifact, and manifest-registry digest.
+- `ai-runtime-meter-implementation-receipt-v3.schema.json` — manifest-bound immutable
+  production receipt that still cannot bind an identity, attest, or measure.
 - `ai-runtime-meter-implementation-manifest-v1.schema.json` — closed inactive
   implementation/artifact capability source for deterministic trusted-core compilation.
 - `ai-secret-reference-v1.schema.json` — non-resolving opaque provider-secret metadata

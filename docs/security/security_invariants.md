@@ -413,7 +413,7 @@ Neither command nor receipt can create capability, identity, measurement, author
 effect state, and recovery cannot invent production.
 Implementation-manifest v1 adds only a closed artifact-digest and capability shape plus
 deterministic trusted-core canonicalization. Caller input remains untrusted, and no
-manifest instance or registry exists. Compilation cannot produce a capability, bind an
+manifest instance exists. Compilation cannot produce a capability, bind an
 identity, attest a meter, create measurement or accounting state, grant authority, or
 enable execution. Both producer guards remain deny-all.
 The built-in implementation-manifest registry owns its manifest collection in trusted
@@ -421,6 +421,12 @@ code and begins empty. Public inputs are exact lookup selectors only and cannot 
 or alter manifests. Malformed, duplicate, ambiguous, unavailable, or artifact-mismatched
 identity denies. Empty-registry presence creates no capability, identity, measurement,
 authority, execution, persistence, or recovery behavior.
+Manifest-bound production command v2 and receipt v3 require exact manifest identity,
+revision, digest, implementation artifact digest, and built-in registry digest. These
+values are not caller authority: a future trusted producer must derive them from the
+current code-owned registry and deny any mismatch. The empty registry therefore keeps
+production impossible, both storage guards remain deny-all, and no capability, identity,
+attestation, measurement, authority, execution, persistence, or recovery path is added.
 
 **Phase 2 terminal snapshot note:** Task snapshot v2 reads one exact task only from the
 authoritative task table and binds its plan/task revisions. Non-terminal states require

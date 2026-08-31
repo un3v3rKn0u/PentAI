@@ -1007,6 +1007,13 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     valid selectors deny unavailable until a real reviewed manifest is added. Capability
     and identity production remain storage-denied; no runtime behavior or authority is
     enabled.
+    Additive manifest-bound production command v2 and receipt v3 contracts now carry the
+    exact manifest identity/revision/digest, implementation artifact digest, and built-in
+    registry digest that the earlier v1/v2 production contracts could not bind. These
+    values remain untrusted until derived and compared by a future trusted producer. The
+    registry is still empty and both producer guards remain deny-all, so no capability,
+    identity, attestation, measurement, accounting, runtime behavior, or authority is
+    enabled.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
