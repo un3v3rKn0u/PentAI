@@ -1,5 +1,38 @@
 # Phase 2 slice security reviews
 
+## 2026-08-31 — Empty code-owned runtime-meter manifest registry
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and security
+reviewer under the `GIT_WORKFLOW.md` exception. This review is not independent and does
+not satisfy dual control.
+
+**Scope and evidence:** Immutable code-owned empty registry, exact selector validation,
+artifact-bound lookup, duplicate manifest and implementation/version denial,
+order-independent registry digest, stable malformed/ambiguous/unavailable errors,
+synthetic tests, compatibility documentation, invariants, Phase 2 dependency audit, and
+complete diff. No schema, API, persistence, migration, or runtime producer is added.
+
+**Dependency and trust decision:** PR #251 defined canonical manifest compilation but
+supplied no trusted manifest source. Accepting compiled caller documents would preserve
+the original trust flaw. This slice makes the repository-owned collection the only
+public lookup source and intentionally leaves it empty because no real meter
+implementation or reviewed capability claim exists.
+
+**Security, privacy, compatibility, and recovery:** Public values are untrusted exact
+selectors, never registration documents. Missing entries and artifact mismatches share
+one unavailable result. The registry contains no credentials, secret references,
+prompts, provider responses, evidence, targets, usage, pricing, tokenizers, or
+diagnostics. It is immutable process code with no persistence, concurrency, replay,
+cancellation, fencing, or recovery state. Rollback removes an unused empty boundary.
+
+**Findings, limitations, and residual risk:** No material finding remains for this
+default-deny slice. A real reviewed code-owned manifest instance, capability and identity
+production, meter attestation, provider execution, measurement, accounting/finalization,
+dispatch, UI, Phase 2 demonstrations, and independent review remain deferred. The sole
+maintainer accepts the reduced governance assurance for this scope.
+
 ## 2026-08-31 — Runtime-meter implementation manifest v1 prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

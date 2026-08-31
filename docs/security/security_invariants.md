@@ -416,6 +416,11 @@ deterministic trusted-core canonicalization. Caller input remains untrusted, and
 manifest instance or registry exists. Compilation cannot produce a capability, bind an
 identity, attest a meter, create measurement or accounting state, grant authority, or
 enable execution. Both producer guards remain deny-all.
+The built-in implementation-manifest registry owns its manifest collection in trusted
+code and begins empty. Public inputs are exact lookup selectors only and cannot register
+or alter manifests. Malformed, duplicate, ambiguous, unavailable, or artifact-mismatched
+identity denies. Empty-registry presence creates no capability, identity, measurement,
+authority, execution, persistence, or recovery behavior.
 
 **Phase 2 terminal snapshot note:** Task snapshot v2 reads one exact task only from the
 authoritative task table and binds its plan/task revisions. Non-terminal states require

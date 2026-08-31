@@ -7,7 +7,9 @@ from uuid import uuid4
 
 from pentai_core.ai_runtime_meter_manifest import (
     RuntimeMeterImplementationManifestError,
+    _compile_built_in_runtime_meter_manifest_registry,
     compile_runtime_meter_implementation_manifest,
+    resolve_built_in_runtime_meter_implementation_manifest,
 )
 
 
@@ -133,3 +135,90 @@ class RuntimeMeterImplementationManifestTests(unittest.TestCase):
             malformed[field] = "synthetic but forbidden"
             with self.assertRaises(RuntimeMeterImplementationManifestError):
                 compile_runtime_meter_implementation_manifest(malformed)
+
+    def test_empty_built_in_registry_denies_valid_unavailable_selector(self) -> None:
+        with self.assertRaises(RuntimeMeterImplementationManifestError) as raised:
+            resolve_built_in_runtime_meter_implementation_manifest(
+                implementation_id="synthetic-meter",
+                implementation_version=1,
+                implementation_artifact_digest="sha256:" + "a" * 64,
+            )
+        self.assertEqual(
+            raised.exception.code,
+            "AI_RUNTIME_METER_IMPLEMENTATION_MANIFEST_UNAVAILABLE",
+        )
+
+    def test_built_in_registry_denies_malformed_selectors(self) -> None:
+        for implementation_id, implementation_version, artifact_digest in (
+            ("Caller Meter", 1, "sha256:" + "a" * 64),
+            ("synthetic-meter", 0, "sha256:" + "a" * 64),
+            ("synthetic-meter", True, "sha256:" + "a" * 64),
+            ("synthetic-meter", 1, "caller-artifact"),
+        ):
+            with self.subTest(
+                implementation_id=implementation_id,
+                implementation_version=implementation_version,
+                artifact_digest=artifact_digest,
+            ):
+                with self.assertRaises(RuntimeMeterImplementationManifestError) as raised:
+                    resolve_built_in_runtime_meter_implementation_manifest(
+                        implementation_id=implementation_id,
+                        implementation_version=implementation_version,
+                        implementation_artifact_digest=artifact_digest,
+                    )
+                self.assertEqual(
+                    raised.exception.code,
+                    "AI_RUNTIME_METER_IMPLEMENTATION_SELECTOR_MALFORMED",
+                )
+
+    def test_internal_registry_requires_exact_artifact_binding(self) -> None:
+        document = manifest()
+        registry = _compile_built_in_runtime_meter_manifest_registry((document,))
+
+        resolved = registry.resolve(
+            implementation_id=document["implementation_id"],
+            implementation_version=document["implementation_version"],
+            implementation_artifact_digest=document["implementation_artifact_digest"],
+        )
+        self.assertEqual(resolved.manifest_id, document["manifest_id"])
+        with self.assertRaises(TypeError):
+            registry.by_implementation[("caller-meter", 1)] = resolved  # type: ignore[index]
+        with self.assertRaises(RuntimeMeterImplementationManifestError) as raised:
+            registry.resolve(
+                implementation_id=document["implementation_id"],
+                implementation_version=document["implementation_version"],
+                implementation_artifact_digest="sha256:" + "b" * 64,
+            )
+        self.assertEqual(
+            raised.exception.code,
+            "AI_RUNTIME_METER_IMPLEMENTATION_MANIFEST_UNAVAILABLE",
+        )
+
+    def test_internal_registry_digest_is_order_independent(self) -> None:
+        first = manifest()
+        second = manifest()
+        second["implementation_id"] = "synthetic-meter-two"
+        second["implementation_version"] = 2
+
+        forward = _compile_built_in_runtime_meter_manifest_registry((first, second))
+        reverse = _compile_built_in_runtime_meter_manifest_registry((second, first))
+
+        self.assertEqual(forward.registry_digest, reverse.registry_digest)
+
+    def test_internal_registry_denies_duplicate_identity_or_manifest(self) -> None:
+        first = manifest()
+        duplicate_identity = manifest()
+        duplicate_identity["implementation_id"] = first["implementation_id"]
+        duplicate_identity["implementation_version"] = first["implementation_version"]
+        duplicate_manifest = manifest()
+        duplicate_manifest["manifest_id"] = first["manifest_id"]
+        duplicate_manifest["implementation_id"] = "synthetic-meter-two"
+
+        for conflicting in (duplicate_identity, duplicate_manifest):
+            with self.subTest(conflicting=conflicting):
+                with self.assertRaises(RuntimeMeterImplementationManifestError) as raised:
+                    _compile_built_in_runtime_meter_manifest_registry((first, conflicting))
+                self.assertEqual(
+                    raised.exception.code,
+                    "AI_RUNTIME_METER_IMPLEMENTATION_MANIFEST_AMBIGUOUS",
+                )
