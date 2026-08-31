@@ -30,6 +30,13 @@ unregistered or artifact-mismatched selectors deny uniformly as unavailable. Int
 registry construction rejects duplicate implementation/version or manifest identities
 and derives an order-independent registry digest. Caller documents cannot add entries.
 
+Command v2 and receipt v3 add the exact lineage missing from the earlier production
+contracts: manifest identity and revision, manifest digest, built-in registry digest,
+and implementation artifact digest. These fields are bindings for a later trusted-core
+producer, not caller attestations. The producer must derive and compare them against the
+current code-owned registry. Because the registry contains no reviewed manifest
+instance, both production ledgers remain deny-all and no v3 receipt can be created.
+
 ## Trust, privacy, and accounting
 
 Provider types and measurement dimensions are closed names only. The contracts do not
@@ -45,8 +52,10 @@ execution authority.
 
 ## Compatibility, migration, and rollback
 
-The contracts and migration are additive. Existing registry, configuration, worker,
-meter identity, completion, reservation, and usage-measurement versions remain unchanged.
+The v2/v3 contracts are additive and require no migration. Command v1, receipt v2, and
+the existing migrations remain unchanged; v2/v3 add manifest-exact compatibility
+without reinterpreting them. Existing registry, configuration, worker, meter identity,
+completion, reservation, and usage-measurement versions remain unchanged.
 Fresh migration, upgrades through 0089, 0090, and 0091, and rerun are idempotent through
 the migration ledger. Older applications ignore the empty additive tables. Receipt v1
 remains the immutable capability record; receipt v2 is only source-bound production
@@ -64,7 +73,7 @@ trusted producer must authenticate the local source and derive the canonical cap
 from an authoritative built-in implementation manifest or equivalent reviewed source;
 the authenticated requester alone cannot establish implementation truth.
 
-A reviewed code-owned manifest instance, capability production, meter identity
-production, attestation, provider execution receipts, provider invocation, measurement,
-reconciliation, budget finalization, dispatch, and runtime composition remain deferred
-for independent review.
+A reviewed code-owned manifest instance, v2/v3 capability production and persistence
+gating, meter identity production, attestation, provider execution receipts, provider
+invocation, measurement, reconciliation, budget finalization, dispatch, and runtime
+composition remain deferred for independent review.

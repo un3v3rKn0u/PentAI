@@ -1,5 +1,42 @@
 # Phase 2 slice security reviews
 
+## 2026-08-31 — Manifest-bound runtime-meter capability-production contracts
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and security
+reviewer under the `GIT_WORKFLOW.md` exception. This review is not independent and does
+not satisfy dual control.
+
+**Scope and evidence:** Additive production command v2 and receipt v3 contracts bind one
+exact manifest identity/revision/digest, implementation artifact digest, built-in
+registry digest, implementation capability, authenticated local principal/session, and
+bounded validity. Contract tests cover exact synthetic lineage, missing or malformed
+bindings, mixed versions, authority escalation, and forbidden payloads. Compatibility
+documentation, invariants, the Phase 2 dependency audit, and the complete diff were
+reviewed. No API, service, persistence, migration, producer, or runtime path is added.
+
+**Dependency and trust decision:** PR #252 made the code-owned registry the only trusted
+manifest lookup source, but production command v1 and receipt v2 cannot bind that source.
+The additive versions close that representational gap without reinterpreting old
+contracts. Manifest fields in a request are still untrusted; a future producer must
+derive them from the package-owned registry. That registry is empty, so production must
+remain disabled.
+
+**Security, privacy, compatibility, and recovery:** State and enablement fields remain
+closed and non-authoritative. Unknown, missing, malformed, mixed-version, or payload-
+bearing input denies. Contracts contain bounded identifiers, hashes, enums, versions,
+and timestamps only; credentials, secret references, prompts, provider responses,
+evidence, usage, pricing, tokenizer rules, diagnostics, and arbitrary payloads are
+excluded. Command v1 and receipt v2 remain unchanged. No durable state, concurrency,
+replay, cancellation, fencing, migration, downgrade, or recovery behavior is introduced.
+
+**Findings, limitations, and residual risk:** No material finding remains for this inert
+slice. A reviewed real manifest, producer activation and exact storage gating, meter
+identity production, attestation, provider execution, measurement, accounting,
+finalization, dispatch, UI, runtime composition, Phase 2 demonstrations, and independent
+review remain deferred. The sole maintainer accepts the reduced governance assurance.
+
 ## 2026-08-31 — Empty code-owned runtime-meter manifest registry
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The
