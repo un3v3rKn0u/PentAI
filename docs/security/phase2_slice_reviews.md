@@ -1,5 +1,43 @@
 # Phase 2 slice security reviews
 
+## 2026-08-31 — Manifest-bound runtime-meter production command verification
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and security
+reviewer under the `GIT_WORKFLOW.md` exception. This review is not independent and does
+not satisfy dual control.
+
+**Scope and evidence:** Non-persisting trusted-core verification of runtime-meter
+implementation command v2 against the authenticated local actor/session, trusted
+timezone-aware clock, and exact package-owned manifest registry. Synthetic tests cover
+exact internal lineage plus public empty-registry denial, authentication/session and
+clock mismatch, stale and invalid windows, and manifest/registry/capability substitution.
+The complete diff, contracts, invariants, compatibility, and Phase 2 ordering were
+reviewed. No API, migration, storage guard, producer, receipt, or runtime path changes.
+
+**Dependency and trust decision:** PR #253 made exact manifest lineage representable,
+but representability alone did not verify it. This slice adds the verifier required
+before a producer can be considered. Caller fields remain comparison values only; the
+package-owned registry is authoritative. It is empty, so the public verifier cannot
+succeed and production remains storage-denied.
+
+**Security, privacy, compatibility, and recovery:** Malformed contracts, mismatched
+authentication, invalid clocks, stale windows, unavailable artifacts, and any manifest,
+registry, provider-type, or dimension substitution deny with stable codes. The verifier
+returns only an existing compiled inert manifest and creates no receipt, capability,
+identity, audit event, state transition, authority, or effect. It handles no credentials,
+secret references, prompts, provider responses, evidence, usage, pricing, diagnostics,
+or arbitrary payloads. No persistence, migration, replay, concurrency, cancellation,
+fencing, downgrade, or recovery behavior changes.
+
+**Findings, limitations, and residual risk:** No material finding remains for this
+default-denying slice. A reviewed manifest instance, capability production and atomic
+storage gating, audit/outbox linkage, identity production, attestation, provider
+execution, measurement, accounting, finalization, dispatch, UI, runtime composition,
+Phase 2 demonstrations, and independent review remain deferred. The sole maintainer
+accepts the reduced governance assurance.
+
 ## 2026-08-31 — Manifest-bound runtime-meter capability-production contracts
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

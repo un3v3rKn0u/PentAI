@@ -1014,6 +1014,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     registry is still empty and both producer guards remain deny-all, so no capability,
     identity, attestation, measurement, accounting, runtime behavior, or authority is
     enabled.
+    A non-persisting trusted-core verifier now validates manifest-bound command v2
+    against the server-derived actor/session, trusted timezone-aware clock, and exact
+    code-owned registry manifest, artifact, registry digest, provider types, and
+    dimensions. The public success path remains unreachable because the registry is
+    empty. The verifier creates no receipt or durable state, and both producer guards
+    remain deny-all.
   - A durable non-executing task-budget v1 foundation now derives assessment ceilings
     from one validated provider configuration/registry revision and atomically reserves
     integer token, request, micro-USD, runtime, and retry capacity for one exact current
