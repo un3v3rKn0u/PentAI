@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/action-intent-v2.schema.json",
+  "title": "PentAI ActionIntent v2 — Local Model Generation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "intent_id", "assessment_id", "task_id", "policy_hash", "actor", "capability", "local_model", "input_sha256", "input_classification", "parameters_digest", "requested_limits", "created_at", "expires_at", "idempotency_key", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "intent_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "actor": {"type": "object", "additionalProperties": false, "required": ["actor_type", "actor_id"], "properties": {"actor_type": {"const": "agent"}, "actor_id": {"type": "string", "pattern": "^agent://validation/[a-z0-9][a-z0-9._-]{0,63}$"}}},
+    "capability": {"const": "ai.local.generate"},
+    "local_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configuration_snapshot_id", "configuration_snapshot_digest", "provider_id", "model_id"],
+      "properties": {
+        "configuration_snapshot_id": {"type": "string", "format": "uuid"},
+        "configuration_snapshot_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "provider_id": {"const": "llama.cpp"},
+        "model_id": {"const": "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF:Q4_K_M"}
+      }
+    },
+    "input_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "input_classification": {"enum": ["public", "internal", "confidential", "restricted_redacted"]},
+    "parameters_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "requested_limits": {"type": "object", "additionalProperties": false, "required": ["maximum_input_tokens", "maximum_output_tokens", "maximum_runtime_seconds"], "properties": {"maximum_input_tokens": {"type": "integer", "minimum": 1, "maximum": 1000000}, "maximum_output_tokens": {"type": "integer", "minimum": 1, "maximum": 1000000}, "maximum_runtime_seconds": {"type": "integer", "minimum": 1, "maximum": 300}}},
+    "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "idempotency_key": {"type": "string", "minLength": 16, "maxLength": 128},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

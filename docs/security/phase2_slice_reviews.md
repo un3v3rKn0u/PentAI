@@ -1,5 +1,46 @@
 # Phase 2 slice security reviews
 
+## 2026-09-01 — Pending local-model ActionIntent v2 boundary
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and security
+reviewer under the `GIT_WORKFLOW.md` exception. This review is not independent and does
+not satisfy dual control.
+
+**Scope and evidence:** Additive contracts, trusted-core service, and migration 0092
+select exactly `llama.cpp` with
+`Qwen/Qwen2.5-Coder-3B-Instruct-GGUF:Q4_K_M`, create one immutable capability manifest,
+and convert a closed metadata-only request into pending ActionIntent v2. Synthetic tests
+cover exact success and replay, concurrency, changed replay, malformed and payload-
+bearing requests, runtime/model substitution, stale scope, safety pause, limit widening,
+and direct mutation. Contract validation, migration integrity and idempotency, lint,
+typing, and repository tests are validation gates for this review.
+
+**Dependency and trust decision:** Existing ActionIntent v1 can authorize only closed
+HTTP methods and cannot truthfully represent local model generation. Implementing the
+adapter first would bypass the required intent-to-grant chain. Trusted core therefore
+owns the exact runtime/model/capability selection and derives configuration, registry,
+assessment, plan, task, policy, and limit bindings from durable state. Caller data is
+limited to a content digest and narrower integer limits and cannot assert implementation
+truth or authority.
+
+**Security, privacy, compatibility, and recovery:** The slice stores no prompt, context,
+response, secret, path, URL, command, evidence, diagnostic, or arbitrary payload. It
+creates no policy decision, approval, grant, provider request, process, network access,
+usage record, budget mutation, or effect. ActionIntent v1 is unchanged; v2 is additive
+and has no execution consumer. Immediate transactions, deterministic identities,
+immutable storage guards, exact digests, and current-state replay checks deny competing,
+changed, stale, cancelled, safety-paused, or cross-lineage use. Recovery creates and
+advances nothing. Rollback stops v2 production while preserving immutable history.
+
+**Findings, limitations, and residual risk:** No execution is enabled. Runtime and model
+artifact verification, policy evaluation, ActionGrant, supervised process composition,
+authenticated execution receipts, cancellation during execution, authoritative request
+and elapsed-runtime measurement, accounting, evidence/reporting, remote adapter work,
+Phase 2 demonstrations, and independent review remain deferred. The sole maintainer
+accepts the reduced governance assurance.
+
 ## 2026-08-31 — Manifest-bound runtime-meter production command verification
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

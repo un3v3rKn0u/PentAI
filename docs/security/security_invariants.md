@@ -716,6 +716,16 @@ automatic claimant.
 
 ## 12. Verification and Incident Procedure
 
+### Phase 2 local-model intent boundary
+
+The first local runtime/model selection is fixed in trusted core. Its ActionIntent v2
+is pending coordination metadata only: it carries hashes and bounded integer limits,
+never prompt content, and cannot be consumed by the network-only ActionIntent v1 path.
+Configuration or manifest availability grants no model, process, provider, network,
+worker, evidence, reporting, or execution authority. Direct mutation of its immutable
+lineage is storage-denied; replay revalidates current policy, task, cancellation, safety,
+configuration, and registry state.
+
 Before every release:
 
 1. Run all invariant-linked automated tests.

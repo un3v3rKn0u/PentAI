@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/agent-local-model-intent-request-v1.schema.json",
+  "title": "PentAI Agent Local Model Intent Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "assessment_id", "plan_id", "expected_plan_revision", "task_id", "expected_task_revision", "capability_manifest_id", "expected_manifest_revision", "agent", "purpose", "policy_bundle_id", "policy_hash", "input_sha256", "input_classification", "action_sha256", "action", "created_at", "expires_at", "delegation_requested", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "request_id": {"type": "string", "format": "uuid"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "expected_plan_revision": {"type": "integer", "minimum": 1},
+    "task_id": {"type": "string", "format": "uuid"},
+    "expected_task_revision": {"type": "integer", "minimum": 1},
+    "capability_manifest_id": {"type": "string", "format": "uuid"},
+    "expected_manifest_revision": {"const": 1},
+    "agent": {"type": "object", "additionalProperties": false, "required": ["agent_type", "agent_id"], "properties": {"agent_type": {"const": "validation"}, "agent_id": {"type": "string", "pattern": "^agent://validation/[a-z0-9][a-z0-9._-]{0,63}$"}}},
+    "purpose": {"const": "propose_supervised_local_model_generation"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "input_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "input_classification": {"enum": ["public", "internal", "confidential", "restricted_redacted"]},
+    "action_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "configuration_snapshot_id", "configuration_snapshot_digest", "provider_id", "model_id", "requested_limits"],
+      "properties": {
+        "capability": {"const": "ai.local.generate"},
+        "configuration_snapshot_id": {"type": "string", "format": "uuid"},
+        "configuration_snapshot_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "provider_id": {"const": "llama.cpp"},
+        "model_id": {"const": "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF:Q4_K_M"},
+        "requested_limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maximum_input_tokens", "maximum_output_tokens", "maximum_runtime_seconds"],
+          "properties": {
+            "maximum_input_tokens": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "maximum_output_tokens": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "maximum_runtime_seconds": {"type": "integer", "minimum": 1, "maximum": 300}
+          }
+        }
+      }
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "delegation_requested": {"const": false},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}

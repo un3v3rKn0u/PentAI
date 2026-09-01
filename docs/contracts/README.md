@@ -353,9 +353,12 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | OrchestrationRetryAttempt v1 | AI/Agent Lead | Contract Maintainer | Core Maintainer, Execution Safety Lead, Security Reviewer |
 | TaskCapabilityManifest v2 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |
 | AgentActionIntentRequest v1 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |
+| LocalModelCapabilityManifest v1 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |
+| AgentLocalModelIntentRequest v1 | AI/Agent Lead | Contract Maintainer | Execution Safety Lead, Security Reviewer |
 | Engagement Manifest v2 | Product Safety Lead | Contract Maintainer | Product Owner, Policy Maintainer, Security Reviewer |
 | Policy IR v1 | Policy Maintainer | Contract Maintainer | Core Maintainer, independent Security Reviewer |
 | ActionIntent v1 | Execution Safety Lead | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
+| ActionIntent v2 | Execution Safety Lead | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
 | PolicyDecision v1 | Policy Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | Approval v1.1 | Core Security Maintainer | Contract Maintainer | Product Safety Lead, independent Security Reviewer |
 | ActionGrant v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
