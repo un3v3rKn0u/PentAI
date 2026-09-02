@@ -737,6 +737,12 @@ current durable engagement and source lineage. V2 signatures use an independent 
 their rows are immutable, retained, and storage-enforced inactive. Approval, activation,
 evaluation, grant issuance, recovery activation, and execution remain unavailable.
 
+An authenticated human may record a signed Policy Activation Approval v2 for only the
+exact current Manifest v3 and inactive Policy IR v2 lineage. Trusted core derives all
+identity, version, and hash bindings; storage verifies them against durable rows. The
+record is fixed to `authority: none` and `execution_enabled: false`, is not consumed,
+and cannot activate policy, evaluate an intent, issue a grant, or execute a model.
+
 Before every release:
 
 1. Run all invariant-linked automated tests.

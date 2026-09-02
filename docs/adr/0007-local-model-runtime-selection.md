@@ -32,7 +32,9 @@ runtime seconds; token and monetary usage need separate authoritative semantics.
   recovery boundaries are independently reviewed and composed.
 - Engagement Manifest v3 and Policy IR v2 are the additive policy-representation
   versions for `ai.local.generate`. Trusted core may now persist and sign them under a
-  version-separated domain, but v2 policy remains immutable and inactive: approval,
-  activation, evaluation, and grants are still disabled.
+  version-separated domain, but v2 policy remains immutable and inactive: approval
+  consumption, activation, evaluation, and grants are still disabled. A human may
+  record a separate exact signed Approval v2 decision, but it is not consumed and
+  cannot activate policy.
 - The exact model choice is deliberately narrow. Supporting another model or runtime
   requires an additive reviewed version rather than caller-selected substitution.

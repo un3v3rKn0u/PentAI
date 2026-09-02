@@ -29,6 +29,12 @@ def policy_signature_payload(schema_version: str, policy_hash: str) -> bytes:
     return f"{domain}{policy_hash}".encode("ascii")
 
 
+def policy_activation_approval_v2_payload(document: dict[str, Any]) -> bytes:
+    """Return the domain-separated canonical payload for a Policy IR v2 approval."""
+    unsigned = {key: value for key, value in document.items() if key != "signature"}
+    return b"pentai-policy-activation-approval-v2:" + canonical_json(unsigned).encode()
+
+
 class PolicySigner:
     def __init__(self, seed: bytes) -> None:
         if len(seed) != 32:

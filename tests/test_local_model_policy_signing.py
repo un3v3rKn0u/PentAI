@@ -1,18 +1,25 @@
 from __future__ import annotations
 
 import copy
+import json
 import sqlite3
 import tempfile
 from contextlib import closing
 from datetime import timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from pentai_core.authorization import AuthorizationService, DomainError
 from pentai_core.migrate import migrate
-from pentai_core.policy_signing import PolicySigner, policy_signature_payload
+from pentai_core.policy_signing import (
+    PolicySigner,
+    policy_activation_approval_v2_payload,
+    policy_signature_payload,
+)
 from pentai_core.source_store import EncryptedSourceStore
 from pentai_policy import content_hash
+from pentai_policy.document import contract_issues
 from test_authorization_slice import timestamp
 from test_local_model_policy_representation import local_manifest
 
@@ -90,9 +97,31 @@ def test_policy_ir_v2_is_signed_persisted_and_replayed_inactive(authorization_st
     assert recovered["status"] == "inactive"
     assert recovered["policy"] == first["policy"]
 
-    with pytest.raises(DomainError, match="approval lifecycle") as approval:
-        service.approve_policy(first["id"], approver_id="synthetic-reviewer")
-    assert approval.value.code == "POLICY_VERSION_INACTIVE"
+    approval = service.approve_policy(first["id"], approver_id="synthetic-reviewer")
+    assert approval["schema_version"] == "2.0.0"
+    assert approval["authority"] == "none"
+    assert approval["execution_enabled"] is False
+    assert contract_issues(approval, "policy-activation-approval-v2.schema.json") == ()
+    assert service.policy_signer.verify(
+        policy_activation_approval_v2_payload(approval),
+        approval["signature"]["value"],
+        approval["signature"]["key_id"],
+    )
+    rejection = service.approve_policy(
+        first["id"],
+        approver_id="synthetic-reviewer",
+        decision="rejected",
+        reason="synthetic rejection",
+    )
+    assert rejection["decision"] == "rejected"
+    assert rejection["reason"] == "synthetic rejection"
+    with pytest.raises(DomainError) as malformed_expiry:
+        service.approve_policy(
+            first["id"],
+            approver_id="synthetic-reviewer",
+            expires_at="not-a-time",
+        )
+    assert malformed_expiry.value.code == "APPROVAL_EXPIRY_INVALID"
     with pytest.raises(DomainError, match="cannot be activated") as activation:
         service.activate_policy(first["id"], actor_id="synthetic-reviewer")
     assert activation.value.code == "POLICY_VERSION_INACTIVE"
@@ -102,6 +131,71 @@ def test_policy_ir_v2_is_signed_persisted_and_replayed_inactive(authorization_st
     changed_version = service.save_manifest(state["engagement"]["id"], changed)
     assert changed_version["id"] != version["id"]
     assert service.compile_policy(changed_version["id"])["content_hash"] != first["content_hash"]
+
+
+def test_policy_ir_v2_approval_denies_superseded_policy_and_paused_safety(
+    authorization_state,
+) -> None:
+    service, state, candidate, version = _stored_v3(authorization_state)
+    bundle = service.compile_policy(version["id"])
+    changed = copy.deepcopy(candidate)
+    changed["techniques"]["allowed_capabilities"] = ["network.http.get"]
+    service.save_manifest(state["engagement"]["id"], changed)
+    with pytest.raises(DomainError) as superseded:
+        service.approve_policy(bundle["id"], approver_id="synthetic-reviewer")
+    assert superseded.value.code == "POLICY_VERSION_INACTIVE"
+
+    _service, _state, _candidate, current = _stored_v3(authorization_state)
+    current_bundle = service.compile_policy(current["id"])
+    with closing(sqlite3.connect(service.database_path)) as connection, connection:
+        connection.execute(
+            "UPDATE safety_state SET global_status='paused', generation=generation+1"
+        )
+    with pytest.raises(DomainError) as paused:
+        service.approve_policy(current_bundle["id"], approver_id="synthetic-reviewer")
+    assert paused.value.code == "GLOBAL_SAFETY_PAUSED"
+
+
+def test_policy_ir_v2_approval_storage_binding_denies_cross_scope_mutation(
+    authorization_state,
+) -> None:
+    service, _state, _candidate, version = _stored_v3(authorization_state)
+    bundle = service.compile_policy(version["id"])
+    approval = service.approve_policy(bundle["id"], approver_id="synthetic-reviewer")
+    altered = copy.deepcopy(approval)
+    altered["approval_id"] = str(uuid4())
+    altered["policy_hash"] = "f" * 64
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        row = connection.execute(
+            "SELECT * FROM approvals WHERE id = ?", (approval["approval_id"],)
+        ).fetchone()
+        with pytest.raises(sqlite3.IntegrityError, match="binding is invalid"):
+            connection.execute(
+                """INSERT INTO approvals(
+                    id, approval_type, engagement_id, manifest_version_id, manifest_hash,
+                    policy_bundle_id, policy_hash, decision, approver_id, decided_at,
+                    expires_at, document_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    altered["approval_id"], row[1], row[2], row[3], row[4], row[5],
+                    row[6], row[7], row[8], row[9], row[10], json.dumps(altered),
+                ),
+            )
+        legacy_labeled = copy.deepcopy(approval)
+        legacy_labeled["approval_id"] = str(uuid4())
+        legacy_labeled["schema_version"] = "1.2.0"
+        with pytest.raises(sqlite3.IntegrityError, match="document is required"):
+            connection.execute(
+                """INSERT INTO approvals(
+                    id, approval_type, engagement_id, manifest_version_id, manifest_hash,
+                    policy_bundle_id, policy_hash, decision, approver_id, decided_at,
+                    expires_at, document_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    legacy_labeled["approval_id"], row[1], row[2], row[3], row[4], row[5],
+                    row[6], row[7], row[8], row[9], row[10], json.dumps(legacy_labeled),
+                ),
+            )
 
 
 def test_policy_ir_v2_requires_signer_and_immutable_manifest_lineage(

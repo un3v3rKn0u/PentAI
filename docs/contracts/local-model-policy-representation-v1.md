@@ -29,9 +29,16 @@ inactive. Byte-equivalent compilation reuses the same deterministic bundle; chan
 manifests produce distinct history. Application rollback must first verify that no v2
 rows exist, or retain the migration guards while older code ignores those rows.
 
+Policy Activation Approval v2 records an authenticated human approve or reject decision
+for one exact current Manifest v3 and inactive Policy IR v2 tuple. Its signature uses
+the `pentai-policy-activation-approval-v2` domain. Migration 0094 storage-checks its
+closed version, identity, hash, decision, actor, timestamp, and no-authority bindings
+against the durable policy and manifest rows. Approval is immutable chronology only;
+it neither activates policy nor authorizes evaluation, grants, or execution.
+
 ## Deferred work
 
-Policy approval and activation for the new versions, ActionIntent v2 evaluation,
+Policy activation and Approval v2 consumption, ActionIntent v2 evaluation,
 PolicyDecision and ActionGrant versions, runtime/model artifact verification,
 supervised adapter execution, authenticated execution receipts, usage measurement,
 accounting, and recovery demonstrations remain deferred.

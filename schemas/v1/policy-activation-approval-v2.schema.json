@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/policy-activation-approval-v2.schema.json",
+  "title": "PentAI Policy Activation Approval v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "approval_id", "approval_type", "assessment_id", "manifest_version_id", "manifest_schema_version", "manifest_hash", "policy_bundle_id", "policy_schema_version", "policy_hash", "decision", "approver", "decided_at", "expires_at", "authority", "execution_enabled", "signature"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "approval_id": {"type": "string", "format": "uuid"},
+    "approval_type": {"const": "policy_activation"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "manifest_version_id": {"type": "string", "format": "uuid"},
+    "manifest_schema_version": {"const": "3.0.0"},
+    "manifest_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "policy_schema_version": {"const": "2.0.0"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "decision": {"enum": ["approved", "rejected"]},
+    "approver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {"const": "human"},
+        "actor_id": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "reason": {"type": "string", "minLength": 1, "maxLength": 500},
+    "decided_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false},
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "key_id", "value"],
+      "properties": {
+        "algorithm": {"const": "Ed25519"},
+        "key_id": {"type": "string", "minLength": 1, "maxLength": 96},
+        "value": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    }
+  }
+}
