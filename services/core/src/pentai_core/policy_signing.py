@@ -16,6 +16,19 @@ def gateway_fixture_execution_claim_v2_payload(document: dict[str, Any]) -> byte
     return b"pentai-gateway-fixture-execution-claim-v2:" + canonical_json(unsigned).encode()
 
 
+def policy_signature_payload(schema_version: str, policy_hash: str) -> bytes:
+    """Return the closed, version-separated payload for a signed policy bundle."""
+    domains = {
+        "1.0.0": "pentai-policy-v1:",
+        "2.0.0": "pentai-policy-v2:",
+    }
+    try:
+        domain = domains[schema_version]
+    except KeyError as exc:
+        raise ValueError("unsupported policy signature version") from exc
+    return f"{domain}{policy_hash}".encode("ascii")
+
+
 class PolicySigner:
     def __init__(self, seed: bytes) -> None:
         if len(seed) != 32:

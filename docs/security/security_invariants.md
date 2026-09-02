@@ -732,6 +732,11 @@ They carry no runtime/model/artifact identity and create no decision, grant, or 
 authority. Unknown, contradictory, duplicate, malformed, or mixed-version capability
 policy denies before compilation.
 
+Trusted core may persist Manifest v3 and compile and sign Policy IR v2 only from the
+current durable engagement and source lineage. V2 signatures use an independent domain;
+their rows are immutable, retained, and storage-enforced inactive. Approval, activation,
+evaluation, grant issuance, recovery activation, and execution remain unavailable.
+
 Before every release:
 
 1. Run all invariant-linked automated tests.
