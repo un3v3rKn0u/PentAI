@@ -10,13 +10,14 @@ from pentai_policy.canonicalize import (
     canonicalize_url,
     canonicalize_wildcard_domain,
 )
-from pentai_policy.compiler import CompilationError, compile_manifest
+from pentai_policy.compiler import CompilationError, compile_manifest, compile_manifest_v2
 from pentai_policy.document import (
     ManifestValidation,
     ValidationIssue,
     canonical_json,
     content_hash,
     validate_and_canonicalize_manifest,
+    validate_and_canonicalize_manifest_v3,
 )
 from pentai_policy.evaluator import evaluate, testing_schedule_allows, testing_schedule_deadline
 
@@ -34,9 +35,11 @@ __all__ = [
     "ValidationIssue",
     "canonical_json",
     "compile_manifest",
+    "compile_manifest_v2",
     "content_hash",
     "evaluate",
     "testing_schedule_allows",
     "testing_schedule_deadline",
     "validate_and_canonicalize_manifest",
+    "validate_and_canonicalize_manifest_v3",
 ]

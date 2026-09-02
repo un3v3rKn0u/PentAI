@@ -112,6 +112,7 @@ _SUPPORTED_CAPABILITIES = {
     "network.http.head",
     "network.http.options",
 }
+_SUPPORTED_CAPABILITIES_V3 = _SUPPORTED_CAPABILITIES | {"ai.local.generate"}
 _CAPABILITY_METHOD = {
     "network.http.get": "GET",
     "network.http.head": "HEAD",
@@ -124,15 +125,18 @@ def _path_contains(parent: str, child: str) -> bool:
     return parent == "/" or child == parent or child.startswith(parent + "/")
 
 
-def validate_and_canonicalize_manifest(
+def _validate_and_canonicalize_manifest(
     candidate: dict[str, Any],
     *,
+    schema_name: str,
+    schema_version: str,
+    supported_capabilities: set[str],
     source_hashes: dict[str, str] | None = None,
     now: datetime | None = None,
 ) -> ManifestValidation:
     document = deepcopy(candidate)
     issues: list[ValidationIssue] = []
-    schema_issues = contract_issues(document, "engagement-manifest-v2.schema.json")
+    schema_issues = contract_issues(document, schema_name)
     if schema_issues:
         return ManifestValidation(document, schema_issues)
     required = {
@@ -154,9 +158,13 @@ def validate_and_canonicalize_manifest(
         issues.append(ValidationIssue("MANIFEST_FIELD_MISSING", f"/{field}", "required field"))
     if missing:
         return ManifestValidation(None, tuple(issues))
-    if document.get("schema_version") != "2.0.0":
+    if document.get("schema_version") != schema_version:
         issues.append(
-            ValidationIssue("UNSUPPORTED_SCHEMA", "/schema_version", "Manifest v2.0.0 is required")
+            ValidationIssue(
+                "UNSUPPORTED_SCHEMA",
+                "/schema_version",
+                f"Manifest v{schema_version} is required",
+            )
         )
 
     unresolved = document.get("unresolved_questions")
@@ -505,7 +513,7 @@ def validate_and_canonicalize_manifest(
                     "a capability may have only one effect",
                 )
             )
-        unsupported = sorted((allowed | denied | conditional) - _SUPPORTED_CAPABILITIES)
+        unsupported = sorted((allowed | denied | conditional) - supported_capabilities)
         if unsupported:
             issues.append(
                 ValidationIssue(
@@ -524,12 +532,13 @@ def validate_and_canonicalize_manifest(
             )
         methods = set(techniques.get("allowed_http_methods", []))
         for capability in allowed:
-            if _CAPABILITY_METHOD.get(capability) not in methods:
+            expected_method = _CAPABILITY_METHOD.get(capability)
+            if expected_method is not None and expected_method not in methods:
                 issues.append(
                     ValidationIssue(
                         "CONTRADICTORY_RULES",
                         "/techniques/allowed_http_methods",
-                        f"{capability} requires {_CAPABILITY_METHOD.get(capability)}",
+                        f"{capability} requires {expected_method}",
                     )
                 )
         for field_name in (
@@ -692,3 +701,35 @@ def validate_and_canonicalize_manifest(
     if issues:
         return ManifestValidation(document, tuple(issues))
     return ManifestValidation(document, ())
+
+
+def validate_and_canonicalize_manifest(
+    candidate: dict[str, Any],
+    *,
+    source_hashes: dict[str, str] | None = None,
+    now: datetime | None = None,
+) -> ManifestValidation:
+    return _validate_and_canonicalize_manifest(
+        candidate,
+        schema_name="engagement-manifest-v2.schema.json",
+        schema_version="2.0.0",
+        supported_capabilities=_SUPPORTED_CAPABILITIES,
+        source_hashes=source_hashes,
+        now=now,
+    )
+
+
+def validate_and_canonicalize_manifest_v3(
+    candidate: dict[str, Any],
+    *,
+    source_hashes: dict[str, str] | None = None,
+    now: datetime | None = None,
+) -> ManifestValidation:
+    return _validate_and_canonicalize_manifest(
+        candidate,
+        schema_name="engagement-manifest-v3.schema.json",
+        schema_version="3.0.0",
+        supported_capabilities=_SUPPORTED_CAPABILITIES_V3,
+        source_hashes=source_hashes,
+        now=now,
+    )
