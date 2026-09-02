@@ -726,6 +726,12 @@ worker, evidence, reporting, or execution authority. Direct mutation of its immu
 lineage is storage-denied; replay revalidates current policy, task, cancellation, safety,
 configuration, and registry state.
 
+Engagement Manifest v3 and Policy IR v2 may represent only the closed
+`ai.local.generate` authorization effect in addition to the existing HTTP capabilities.
+They carry no runtime/model/artifact identity and create no decision, grant, or execution
+authority. Unknown, contradictory, duplicate, malformed, or mixed-version capability
+policy denies before compilation.
+
 Before every release:
 
 1. Run all invariant-linked automated tests.

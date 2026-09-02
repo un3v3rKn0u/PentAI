@@ -5,7 +5,7 @@ from typing import Any
 from uuid import UUID, uuid5
 
 from pentai_policy.canonicalize import canonicalize_url
-from pentai_policy.document import content_hash
+from pentai_policy.document import content_hash, contract_issues
 
 COMPILER_VERSION = "1.2.0"
 _NAMESPACE = UUID("825e6af6-8030-43c2-8968-933d894b14b5")
@@ -19,7 +19,9 @@ def _stable_id(kind: str, value: object) -> str:
     return str(uuid5(_NAMESPACE, f"{kind}:{content_hash(value)}"))
 
 
-def compile_manifest(manifest: dict[str, Any], manifest_hash: str) -> dict[str, Any]:
+def _compile_manifest(
+    manifest: dict[str, Any], manifest_hash: str, *, policy_schema_version: str
+) -> dict[str, Any]:
     if manifest.get("unresolved_questions"):
         raise CompilationError("AUTHORIZATION_AMBIGUOUS")
     assets = manifest["scope"]["assets"]
@@ -124,7 +126,7 @@ def compile_manifest(manifest: dict[str, Any], manifest_hash: str) -> dict[str, 
     network = manifest["network"]
     engagement = manifest["engagement"]
     policy: dict[str, Any] = {
-        "schema_version": "1.0.0",
+        "schema_version": policy_schema_version,
         "policy_id": _stable_id("policy", {"manifest_hash": manifest_hash}),
         "engagement_id": engagement["id"],
         "manifest_hash": manifest_hash,
@@ -186,4 +188,43 @@ def compile_manifest(manifest: dict[str, Any], manifest_hash: str) -> dict[str, 
             ),
         }
     policy["content_hash"] = content_hash(policy)
+    return policy
+
+
+def compile_manifest(manifest: dict[str, Any], manifest_hash: str) -> dict[str, Any]:
+    return _compile_manifest(manifest, manifest_hash, policy_schema_version="1.0.0")
+
+
+def compile_manifest_v2(manifest: dict[str, Any], manifest_hash: str) -> dict[str, Any]:
+    if contract_issues(manifest, "engagement-manifest-v3.schema.json"):
+        raise CompilationError("MANIFEST_VERSION_UNSUPPORTED")
+    techniques = manifest["techniques"]
+    allowed = techniques["allowed_capabilities"]
+    denied = techniques["denied_capabilities"]
+    conditional = [item["capability"] for item in techniques["conditional_capabilities"]]
+    capabilities = allowed + denied + conditional
+    supported = {
+        "network.http.get",
+        "network.http.head",
+        "network.http.options",
+        "ai.local.generate",
+    }
+    if (
+        any(capability not in supported for capability in capabilities)
+        or len(capabilities) != len(set(capabilities))
+        or any(
+            capability.startswith("network.http.")
+            and {
+                "network.http.get": "GET",
+                "network.http.head": "HEAD",
+                "network.http.options": "OPTIONS",
+            }.get(capability)
+            not in techniques["allowed_http_methods"]
+            for capability in allowed
+        )
+    ):
+        raise CompilationError("CAPABILITY_POLICY_INVALID")
+    policy = _compile_manifest(manifest, manifest_hash, policy_schema_version="2.0.0")
+    if contract_issues(policy, "policy-ir-v2.schema.json"):
+        raise CompilationError("POLICY_CONTRACT_INVALID")
     return policy

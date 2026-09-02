@@ -1,5 +1,38 @@
 # Phase 2 slice security reviews
 
+## 2026-09-02 — Local-model policy representation
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and security
+reviewer under the `GIT_WORKFLOW.md` exception. This review is not independent and does
+not satisfy dual control.
+
+**Scope and evidence:** Additive Engagement Manifest v3 and Policy IR v2 schemas plus
+version-exact validation and deterministic compilation for the closed
+`ai.local.generate` capability. Synthetic tests cover allow, deny, conditional,
+canonical ordering, stable compilation, unknown and conflicting capabilities, mixed
+versions, runtime-field injection, and unchanged HTTP v2/v1 behavior.
+
+**Security and trust decision:** PR #255 made local-model ActionIntent v2 reachable, but
+existing signed policy cannot represent its capability. Provider configuration and a
+capability manifest are eligibility metadata, not authorization. This slice therefore
+uses reviewed engagement policy and source provenance as the only authorization-policy
+source while prohibiting runtime/model/artifact claims. Compilation creates neither a
+signature nor durable or executable state.
+
+**Compatibility, privacy, and recovery:** Existing manifest v2 and Policy IR v1 entry
+points and outputs remain unchanged. The new versions are additive and older consumers
+fail closed. No migration, persistence, authentication, replay, concurrency,
+cancellation, fencing, or recovery state changes. No prompt, response, secret, target,
+evidence, path, URL, command, diagnostic, or arbitrary payload is added.
+
+**Findings, limitations, and residual risk:** No material finding remains in this
+non-executing boundary. Signing and activation of the new policy versions, ActionIntent
+v2 evaluation, PolicyDecision, ActionGrant, artifact verification, adapter execution,
+receipts, measurement, accounting, runtime composition, demonstrations, and independent
+review remain deferred. The sole maintainer accepts the reduced governance assurance.
+
 ## 2026-09-01 — Pending local-model ActionIntent v2 boundary
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The
