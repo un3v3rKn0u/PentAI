@@ -110,6 +110,7 @@ class MigrationTests(unittest.TestCase):
                     "0090",
                     "0091",
                     "0092",
+                    "0093",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -3202,6 +3203,45 @@ class MigrationTests(unittest.TestCase):
                 self.assertIn("agent_local_model_intent_links_v1_binding_valid", triggers)
                 self.assertIn("agent_local_model_intent_links_v1_immutable", triggers)
                 self.assertIn("agent_local_model_intent_links_v1_no_delete", triggers)
+
+    def test_policy_ir_v2_inactive_signing_migration_is_additive(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0093_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = repository_migrations / "0093_policy_ir_v2_inactive_signing.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0093"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+            self.assertTrue(
+                {
+                    "policy_ir_v2_insert_inactive",
+                    "policy_ir_v2_immutable",
+                    "policy_ir_v2_no_delete",
+                }.issubset(triggers)
+            )
 
     def test_terminal_prerequisites_upgrade_from_0072_through_registration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

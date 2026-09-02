@@ -17,10 +17,12 @@ from pentai_policy import (
     canonical_json,
     canonicalize_url,
     compile_manifest,
+    compile_manifest_v2,
     content_hash,
     evaluate,
     testing_schedule_deadline,
     validate_and_canonicalize_manifest,
+    validate_and_canonicalize_manifest_v3,
 )
 from pentai_policy.document import contract_issues, parse_time
 
@@ -34,6 +36,7 @@ from pentai_core.policy_signing import (
     PolicySigner,
     PolicyVerifier,
     gateway_fixture_execution_claim_v2_payload,
+    policy_signature_payload,
 )
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
 from pentai_core.storage_safety import StorageSafetyError, StorageSafetyLatch
@@ -884,7 +887,19 @@ class AuthorizationService:
                 (engagement["program_id"],),
             ).fetchall()
             source_hashes = {row["id"]: row["content_hash"] for row in source_rows}
-            validation = validate_and_canonicalize_manifest(candidate, source_hashes=source_hashes)
+            manifest_version = candidate.get("schema_version")
+            if manifest_version == "2.0.0":
+                validation = validate_and_canonicalize_manifest(
+                    candidate, source_hashes=source_hashes
+                )
+            elif manifest_version == "3.0.0":
+                validation = validate_and_canonicalize_manifest_v3(
+                    candidate, source_hashes=source_hashes
+                )
+            else:
+                raise DomainError(
+                    "MANIFEST_VERSION_UNSUPPORTED", "manifest version is unsupported"
+                )
             canonical = validation.document or candidate
             digest = content_hash(canonical)
             previous = connection.execute(
@@ -906,11 +921,12 @@ class AuthorizationService:
                 INSERT INTO manifest_versions(
                     id, engagement_id, schema_version, document_json, content_hash,
                     supersedes_id, version_number, validation_status, validation_issues_json
-                ) VALUES (?, ?, '2.0.0', ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     manifest_id,
                     engagement_id,
+                    manifest_version,
                     canonical_json(canonical),
                     digest,
                     previous["id"] if previous else None,
@@ -1018,9 +1034,23 @@ class AuthorizationService:
                 "SELECT id, content_hash FROM source_documents WHERE program_id = ?",
                 (engagement["program_id"],),
             ).fetchall()
-            validation = validate_and_canonicalize_manifest(
-                manifest, source_hashes={item["id"]: item["content_hash"] for item in sources}
-            )
+            source_hashes = {item["id"]: item["content_hash"] for item in sources}
+            if row["schema_version"] == "2.0.0":
+                validation = validate_and_canonicalize_manifest(
+                    manifest, source_hashes=source_hashes
+                )
+                compiler = compile_manifest
+                policy_schema_version = "1.0.0"
+            elif row["schema_version"] == "3.0.0":
+                validation = validate_and_canonicalize_manifest_v3(
+                    manifest, source_hashes=source_hashes
+                )
+                compiler = compile_manifest_v2
+                policy_schema_version = "2.0.0"
+            else:
+                raise DomainError(
+                    "MANIFEST_VERSION_UNSUPPORTED", "manifest version is unsupported"
+                )
             if not validation.valid or content_hash(manifest) != row["content_hash"]:
                 codes = [issue.code for issue in validation.issues] or ["MANIFEST_HASH_MISMATCH"]
                 self._audit(
@@ -1047,7 +1077,7 @@ class AuthorizationService:
                     )
                     policy = None
                 else:
-                    policy = compile_manifest(manifest, row["content_hash"])
+                    policy = compiler(manifest, row["content_hash"])
                     unsigned_policy = {
                         key: value for key, value in policy.items() if key != "content_hash"
                     }
@@ -1058,7 +1088,7 @@ class AuthorizationService:
                         }
                     )
                     signature_value = self.policy_signer.sign(
-                        f"pentai-policy-v1:{policy['content_hash']}".encode("ascii")
+                        policy_signature_payload(policy_schema_version, policy["content_hash"])
                     )
                     policy["signature"] = {
                         "algorithm": "Ed25519",
@@ -1077,12 +1107,13 @@ class AuthorizationService:
                         INSERT INTO policy_bundles(
                             id, engagement_id, manifest_version_id, schema_version,
                             compiler_version, policy_json, content_hash, signature, signer_key_id
-                        ) VALUES (?, ?, ?, '1.0.0', ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             policy_id,
                             row["engagement_id"],
                             manifest_version_id,
+                            policy_schema_version,
                             policy["compiler"]["version"],
                             canonical_json(policy),
                             policy["content_hash"],
@@ -1134,6 +1165,11 @@ class AuthorizationService:
             ).fetchone()
             if policy is None:
                 raise DomainError("POLICY_NOT_FOUND", "policy does not exist")
+            if policy["schema_version"] != "1.0.0":
+                raise DomainError(
+                    "POLICY_VERSION_INACTIVE",
+                    "this policy version cannot enter the approval lifecycle",
+                )
             if self.policy_signer is None:
                 raise DomainError("POLICY_SIGNER_UNAVAILABLE", "policy signer is unavailable")
             approval_id = str(uuid4())
@@ -1213,6 +1249,10 @@ class AuthorizationService:
             ).fetchone()
             if policy is None:
                 raise DomainError("POLICY_NOT_FOUND", "policy does not exist")
+            if policy["schema_version"] != "1.0.0":
+                raise DomainError(
+                    "POLICY_VERSION_INACTIVE", "this policy version cannot be activated"
+                )
             if policy["revoked_at"] is not None:
                 raise DomainError("POLICY_REVOKED", "revoked policies cannot be activated")
             if policy["activated_at"] is not None:
@@ -1239,7 +1279,7 @@ class AuthorizationService:
                 or policy_signature.get("value") != policy["signature"]
                 or policy_signature.get("key_id") != policy["signer_key_id"]
                 or not self.policy_signer.verify(
-                    f"pentai-policy-v1:{policy['content_hash']}".encode("ascii"),
+                    policy_signature_payload("1.0.0", policy["content_hash"]),
                     str(policy["signature"]),
                     str(policy["signer_key_id"]),
                 )
@@ -1472,6 +1512,8 @@ class AuthorizationService:
                 status = "active"
             elif parse_time(document["validity"]["not_after"]) <= parse_time(instant):
                 status = "expired"
+            elif row["schema_version"] == "2.0.0":
+                status = "inactive"
             elif row["current_approvals"]:
                 status = "approved"
             else:
@@ -1528,8 +1570,10 @@ class AuthorizationService:
             or signature.get("algorithm") != "Ed25519"
             or signature.get("value") != row["signature"]
             or signature.get("key_id") != row["signer_key_id"]
+            or document.get("schema_version") != row["schema_version"]
+            or row["schema_version"] not in {"1.0.0", "2.0.0"}
             or not self.policy_signer.verify(
-                f"pentai-policy-v1:{row['content_hash']}".encode("ascii"),
+                policy_signature_payload(row["schema_version"], row["content_hash"]),
                 str(signature.get("value", "")),
                 str(signature.get("key_id", "")),
             )

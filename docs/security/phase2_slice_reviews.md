@@ -1,5 +1,34 @@
 # Phase 2 slice security reviews
 
+## 2026-09-02 — Inactive Policy IR v2 signing and persistence
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author and security reviewer under the `GIT_WORKFLOW.md`
+exception. This review does not satisfy independent review or dual control.
+
+**Scope and evidence:** Trusted authorization dispatch now persists exact validated
+Manifest v3 and compiles and signs Policy IR v2 under the separate
+`pentai-policy-v2` domain. Migration 0093 makes v2 bundles immutable, retained, and
+storage-enforced inactive. Synthetic tests cover deterministic replay, changed input,
+missing signer, signature-domain separation, manifest immutability, direct storage
+mutation/deletion, approval denial, activation denial, and unchanged v1 behavior.
+
+**Security and trust decision:** Engagement identity, validity, source hashes, canonical
+policy content, hashes, and signer identity are derived from durable trusted-core state.
+The caller cannot provide compiled policy, signature, runtime/model identity, activation,
+or authority. A signed v2 policy is provenance only and cannot issue a decision or grant.
+
+**Compatibility, recovery, and rollback:** Existing Manifest v2, Policy IR v1, HTTP
+approval/activation/evaluation, and recovery behavior are unchanged. Startup cannot
+activate v2 because both service and storage reject that transition. Application
+rollback requires proving no v2 rows exist or retaining migration 0093 while older code
+ignores them; destructive downgrade is not automatic.
+
+**Limitations and residual risk:** Policy IR v2 approval/activation, ActionIntent v2
+evaluation, PolicyDecision/ActionGrant, artifact verification, adapter execution,
+receipts, metering, accounting, demonstrations, and independent review remain deferred.
+The sole maintainer accepts the reduced governance assurance.
+
 ## 2026-09-02 — Local-model policy representation
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The
