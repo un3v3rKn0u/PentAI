@@ -681,6 +681,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
 ### 6.10 Actions: AI foundation
 
 - [ ] Implement provider adapters for one approved remote model and one local-model runtime.
+  - The first concrete local selection is now fixed to `llama.cpp` with
+    `Qwen/Qwen2.5-Coder-3B-Instruct-GGUF:Q4_K_M`. A closed capability manifest and
+    pending ActionIntent v2 bind exact current provider-configuration, active-registry,
+    assessment, plan, task, and policy lineage without prompt content or execution
+    authority. This removes the authorization-chain representation blocker, but no
+    model artifact is verified, no process is launched, and no policy decision, grant,
+    adapter receipt, usage measurement, or external effect exists. The adapter item
+    remains unchecked.
 - [ ] Add provider/model allowlists, secret references, privacy classes, and cost/token budgets.
   - A non-executing AI provider configuration v1 contract and pure deterministic
     validator now require exact provider/model allowlists, provider-bound secret

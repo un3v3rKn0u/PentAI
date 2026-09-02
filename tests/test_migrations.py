@@ -109,6 +109,7 @@ class MigrationTests(unittest.TestCase):
                     "0089",
                     "0090",
                     "0091",
+                    "0092",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -3155,6 +3156,52 @@ class MigrationTests(unittest.TestCase):
             self.assertIn(
                 "ai_runtime_meter_implementation_productions_v1_no_delete", triggers
             )
+
+    def test_local_model_action_intent_migration_is_additive_and_guarded(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0092_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = repository_migrations / "0092_local_model_action_intent.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0092"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+                self.assertIn("local_model_capability_manifests_v1", tables)
+                self.assertIn("agent_local_model_intent_links_v1", tables)
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    )
+                }
+                self.assertIn("local_model_capability_manifests_v1_binding_valid", triggers)
+                self.assertIn("local_model_capability_manifests_v1_immutable", triggers)
+                self.assertIn("local_model_capability_manifests_v1_no_delete", triggers)
+                self.assertIn("agent_local_model_intent_links_v1_binding_valid", triggers)
+                self.assertIn("agent_local_model_intent_links_v1_immutable", triggers)
+                self.assertIn("agent_local_model_intent_links_v1_no_delete", triggers)
 
     def test_terminal_prerequisites_upgrade_from_0072_through_registration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
