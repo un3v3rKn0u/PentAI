@@ -30,8 +30,8 @@ audit data, and the ability to keep execution disabled when bootstrap is invalid
 | Caller forges registry snapshot provenance | Provider/model provenance substitution or rollback | Registry snapshot bodies omit actor, session, digest, state, and authority claims; trusted core derives canonical digests, binds the middleware principal/session, enforces monotonic revision, and stores only inactive immutable provenance | Registry signing governance, activation, and revocation remain future work |
 | Caller forges provider-configuration snapshot provenance | Provider/model, privacy, budget, secret-reference, or activation-lineage substitution | Closed request bodies omit actor, session, digests, state, privilege, and authority; trusted core revalidates the current registry activation and configuration, derives all durable metadata, stores only the opaque reference digest, and storage-gates the exact inactive snapshot | Registry revocation, meter attestation, secret resolution, provider execution, and accounting remain future work |
 | Caller substitutes a local runtime, model, capability, or limits | Unreviewed model execution or budget widening | Trusted core fixes the exact `llama.cpp`/Qwen selection, derives the manifest from current durable configuration and registry lineage, intersects limits, and stores only a pending metadata-only ActionIntent v2 | Policy decision, grant, supervised adapter, artifact verification, execution receipt, and usage measurement remain future work |
-| Caller injects an unsupported local-model policy capability or runtime claim | Policy widening or implementation substitution | Manifest v3 accepts one closed local capability, rejects runtime-specific fields and conflicting effects, and trusted core revalidates, compiles, and signs Policy IR v2 under a separate domain; storage keeps v2 immutable and inactive | Activation, evaluation, grants, and execution remain future work |
-| Caller substitutes Policy IR v2 approval identity or lineage | Cross-policy approval or privilege escalation | Approval v2 derives exact durable Manifest v3/Policy IR v2 versions and hashes, binds the authenticated local principal, signs a separate domain, and remains unconsumed metadata with `authority: none` | Activation and approval consumption remain disabled |
+| Caller injects an unsupported local-model policy capability or runtime claim | Policy widening or implementation substitution | Manifest v3 accepts one closed local capability, rejects runtime-specific fields and conflicting effects, and trusted core revalidates, compiles, and signs Policy IR v2 under a separate domain; content remains immutable and activation requires exact Approval v2 lineage | Evaluation, grants, and execution remain future work |
+| Caller substitutes Policy IR v2 approval identity or lineage | Cross-policy activation or privilege escalation | Activation revalidates the exact current Manifest v3, Policy IR v2 and Approval v2 durable lineage and both signatures; storage permits only the exact approved inactive-to-active edge and later fail-closed revocation | Evaluation, grants, and execution remain disabled |
 | Token leaks through logs, errors, audits, URLs, or persistence | Session takeover | No access log, uniform errors, header transport, in-memory bootstrap, no audit/database storage; packaged output is checked | Platform review of crash reporting and diagnostics |
 | Process occupies or races the selected port | Core substitution or denial of service | Dynamic loopback selection plus credential-authenticated readiness; failed bind/readiness is fatal; collision smoke passed on Windows, macOS, and Ubuntu | Crash/orphan and additional platform hardening remain future work |
 | Rogue process returns fake readiness | Desktop connects to substituted core | Readiness requires the unpredictable launch credential; packaged sidecar SHA-256 is verified before spawn | Production platform signing |
@@ -65,9 +65,11 @@ audit data, and the ability to keep execution disabled when bootstrap is invalid
     implementation behavior, or execution authority; unsupported and conflicting
     capability rules deny before Policy IR v2 compilation.
 13. Policy IR v2 signatures use a version-separated domain; direct mutation, deletion,
-    approval, or activation of their inactive durable rows denies.
+    mismatched approval, or any activation outside the exact guarded lifecycle denies.
 14. Policy Activation Approval v2 cannot accept caller identity or lineage, cannot
-    outlive its policy, and cannot activate, evaluate, grant, or execute anything.
+    outlive its policy, and can activate only its exact current Policy IR v2 lineage.
+15. Active Policy IR v2 remains coordination-only; ActionIntent v2 evaluation, grants,
+    model execution, provider/plugin access, and network effects remain unavailable.
 
 ## Review gate
 

@@ -734,14 +734,17 @@ policy denies before compilation.
 
 Trusted core may persist Manifest v3 and compile and sign Policy IR v2 only from the
 current durable engagement and source lineage. V2 signatures use an independent domain;
-their rows are immutable, retained, and storage-enforced inactive. Approval, activation,
-evaluation, grant issuance, recovery activation, and execution remain unavailable.
+their content is immutable and retained. Only the exact approval-gated activation and
+later revocation lifecycle transitions are storage-permitted. Evaluation, grant
+issuance, recovery activation, and execution remain unavailable.
 
 An authenticated human may record a signed Policy Activation Approval v2 for only the
 exact current Manifest v3 and inactive Policy IR v2 lineage. Trusted core derives all
 identity, version, and hash bindings; storage verifies them against durable rows. The
-record is fixed to `authority: none` and `execution_enabled: false`, is not consumed,
-and cannot activate policy, evaluate an intent, issue a grant, or execute a model.
+record is fixed to `authority: none` and `execution_enabled: false`. Trusted core may
+consume only an exact current approved record to activate its Policy IR v2 after
+revalidating durable lineage and both signatures. The active state still cannot
+evaluate ActionIntent v2, issue a grant, or execute a model.
 
 Before every release:
 

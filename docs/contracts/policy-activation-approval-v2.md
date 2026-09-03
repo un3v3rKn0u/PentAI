@@ -11,7 +11,8 @@ binding from durable state and signs the closed document under the
 The caller supplies only the decision, an optional bounded reason and expiry, and the
 policy identifier in the authenticated route. The actor comes from the server-side
 local session. The approval is fixed to `authority: none` and
-`execution_enabled: false`; it is chronology and review evidence only.
+`execution_enabled: false`; it is chronology and review evidence and can be consumed
+only by the version-exact Policy IR v2 activation transition.
 
 ## Default deny and lifecycle
 
@@ -30,10 +31,16 @@ consume or supersede one another.
 ## Compatibility and rollback
 
 Policy IR v1 continues to use Approval v1.2 without behavioral or signature changes.
-Policy IR v2 activation, approval consumption, ActionIntent v2 evaluation, decisions,
-grants, adapter execution, and external effects remain disabled. Startup recovery never
-creates, consumes, or acts on Approval v2.
+Migration 0095 permits only an exact inactive-to-active Policy IR v2 transition backed
+by a current approved v2 document, plus later fail-closed revocation. Trusted core
+revalidates both signatures and all current durable lineage before activation. Startup
+recovery never creates, consumes, activates, or resumes policy.
+
+ActionIntent v2 evaluation, decisions, grants, adapter execution, and external effects
+remain disabled. Activation is coordination state and creates no execution authority.
 
 Migration 0094 is additive. Older application versions ignore v2 approval documents.
-Operational rollback should retain the validation trigger; removing v2 approval history
-requires a separately reviewed retention decision rather than an automatic downgrade.
+Operational rollback should retain the validation and lifecycle triggers. Before an
+older binary is used, any active Policy IR v2 must be revoked through the reviewed
+service path. Removing v2 approval history requires a separately reviewed retention
+decision rather than an automatic downgrade.

@@ -32,8 +32,11 @@ Policy Activation Approval v2 is an additive, non-authorizing prerequisite for P
 IR v2. It binds the exact Manifest v3 and Policy IR v2 identities, versions, and hashes,
 the authenticated human principal, decision, and bounded validity under a distinct
 signature domain. Migration 0094 validates those bindings on insertion into the
-existing immutable approval ledger. Policy IR v2 activation and approval consumption
-remain disabled; existing Approval v1.2 and Policy IR v1 behavior is unchanged.
+existing immutable approval ledger. Migration 0095 and trusted-core activation consume
+only an exact current approved v2 record, revalidate both signatures and durable
+lineage, and permit only the storage-guarded inactive-to-active transition. Activation
+does not enable evaluation, grants, or execution. Existing Approval v1.2 and Policy IR
+v1 behavior is unchanged.
 
 ## Stable decision codes
 
