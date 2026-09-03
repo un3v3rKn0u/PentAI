@@ -28,17 +28,21 @@ Migration 0093 makes Policy IR v2 rows immutable, retained, and storage-enforced
 inactive. Byte-equivalent compilation reuses the same deterministic bundle; changed
 manifests produce distinct history. Application rollback must first verify that no v2
 rows exist, or retain the migration guards while older code ignores those rows.
+Migration 0095 preserves content immutability and retention while permitting only the
+exact Approval v2-backed activation edge and later revocation.
 
 Policy Activation Approval v2 records an authenticated human approve or reject decision
 for one exact current Manifest v3 and inactive Policy IR v2 tuple. Its signature uses
 the `pentai-policy-activation-approval-v2` domain. Migration 0094 storage-checks its
 closed version, identity, hash, decision, actor, timestamp, and no-authority bindings
-against the durable policy and manifest rows. Approval is immutable chronology only;
-it neither activates policy nor authorizes evaluation, grants, or execution.
+against the durable policy and manifest rows. Approval is immutable chronology only.
+Trusted core may consume an exact current approved record to activate the corresponding
+Policy IR v2, but neither approval nor activation authorizes evaluation, grants, or
+execution.
 
 ## Deferred work
 
-Policy activation and Approval v2 consumption, ActionIntent v2 evaluation,
-PolicyDecision and ActionGrant versions, runtime/model artifact verification,
+ActionIntent v2 evaluation, PolicyDecision and ActionGrant versions, runtime/model
+artifact verification,
 supervised adapter execution, authenticated execution receipts, usage measurement,
 accounting, and recovery demonstrations remain deferred.

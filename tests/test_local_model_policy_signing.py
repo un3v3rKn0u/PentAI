@@ -4,9 +4,11 @@ import copy
 import json
 import sqlite3
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -122,9 +124,15 @@ def test_policy_ir_v2_is_signed_persisted_and_replayed_inactive(authorization_st
             expires_at="not-a-time",
         )
     assert malformed_expiry.value.code == "APPROVAL_EXPIRY_INVALID"
-    with pytest.raises(DomainError, match="cannot be activated") as activation:
+    activation = service.activate_policy(first["id"], actor_id="synthetic-reviewer")
+    assert activation["status"] == "active"
+    assert service.get_policy(state["engagement"]["id"], first["id"])["status"] == "active"
+    with pytest.raises(DomainError) as replay:
         service.activate_policy(first["id"], actor_id="synthetic-reviewer")
-    assert activation.value.code == "POLICY_VERSION_INACTIVE"
+    assert replay.value.code == "POLICY_ALREADY_ACTIVE"
+    with pytest.raises(DomainError) as evaluation:
+        service.evaluate_intent(state["engagement"]["id"], {})
+    assert evaluation.value.code == "POLICY_VERSION_UNSUPPORTED"
 
     changed = copy.deepcopy(candidate)
     changed["techniques"]["allowed_capabilities"] = ["network.http.get"]
@@ -154,6 +162,85 @@ def test_policy_ir_v2_approval_denies_superseded_policy_and_paused_safety(
     with pytest.raises(DomainError) as paused:
         service.approve_policy(current_bundle["id"], approver_id="synthetic-reviewer")
     assert paused.value.code == "GLOBAL_SAFETY_PAUSED"
+
+
+def test_policy_ir_v2_activation_denies_missing_rejected_and_expired_approval(
+    authorization_state,
+) -> None:
+    service, _state, _candidate, version = _stored_v3(authorization_state)
+    bundle = service.compile_policy(version["id"])
+    with pytest.raises(DomainError) as missing:
+        service.activate_policy(bundle["id"], actor_id="synthetic-reviewer")
+    assert missing.value.code == "APPROVAL_MISSING"
+
+    service.approve_policy(
+        bundle["id"], approver_id="synthetic-reviewer", decision="rejected"
+    )
+    with pytest.raises(DomainError) as rejected:
+        service.activate_policy(bundle["id"], actor_id="synthetic-reviewer")
+    assert rejected.value.code == "APPROVAL_MISSING"
+
+    instant = datetime.now(UTC)
+    with patch("pentai_core.authorization._now", return_value=instant):
+        service.approve_policy(
+            bundle["id"],
+            approver_id="synthetic-reviewer",
+            expires_at=(instant + timedelta(seconds=1)).isoformat(),
+        )
+    with patch(
+        "pentai_core.authorization._now", return_value=instant + timedelta(seconds=2)
+    ), pytest.raises(DomainError) as expired:
+        service.activate_policy(bundle["id"], actor_id="synthetic-reviewer")
+    assert expired.value.code == "APPROVAL_MISSING"
+
+
+def test_policy_ir_v2_activation_revalidates_safety_and_supports_revocation(
+    authorization_state,
+) -> None:
+    service, state, _candidate, version = _stored_v3(authorization_state)
+    bundle = service.compile_policy(version["id"])
+    service.approve_policy(bundle["id"], approver_id="synthetic-reviewer")
+    with closing(sqlite3.connect(service.database_path)) as connection, connection:
+        connection.execute(
+            "UPDATE safety_state SET global_status='paused', generation=generation+1"
+        )
+    with pytest.raises(DomainError) as paused:
+        service.activate_policy(bundle["id"], actor_id="synthetic-reviewer")
+    assert paused.value.code == "GLOBAL_SAFETY_PAUSED"
+    with closing(sqlite3.connect(service.database_path)) as connection, connection:
+        connection.execute(
+            "UPDATE safety_state SET global_status='active', generation=generation+1"
+        )
+    service.activate_policy(bundle["id"], actor_id="synthetic-reviewer")
+    with closing(sqlite3.connect(service.database_path)) as connection:
+        with pytest.raises(sqlite3.IntegrityError, match="lifecycle transition is invalid"):
+            connection.execute(
+                "UPDATE policy_bundles SET content_hash = ? WHERE id = ?",
+                ("f" * 64, bundle["id"]),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="retained"):
+            connection.execute("DELETE FROM policy_bundles WHERE id = ?", (bundle["id"],))
+    service.revoke_policy(
+        bundle["id"], actor_id="synthetic-reviewer", reason="synthetic withdrawal"
+    )
+    assert service.get_policy(state["engagement"]["id"], bundle["id"])["status"] == "revoked"
+
+
+def test_policy_ir_v2_activation_serializes_competing_requests(authorization_state) -> None:
+    service, _state, _candidate, version = _stored_v3(authorization_state)
+    bundle = service.compile_policy(version["id"])
+    service.approve_policy(bundle["id"], approver_id="synthetic-reviewer")
+
+    def activate() -> str:
+        try:
+            service.activate_policy(bundle["id"], actor_id="synthetic-reviewer")
+        except DomainError as error:
+            return error.code
+        return "ACTIVE"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: activate(), range(2)))
+    assert sorted(results) == ["ACTIVE", "POLICY_ALREADY_ACTIVE"]
 
 
 def test_policy_ir_v2_approval_storage_binding_denies_cross_scope_mutation(

@@ -693,13 +693,15 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     `ai.local.generate` capability explicitly allowable, deniable, or conditional in
     reviewed policy without selecting a runtime/model or enabling evaluation. Trusted
     core now persists Manifest v3 and signs Policy IR v2 under a version-separated
-    domain; migration 0093 keeps those bundles immutable and inactive. Existing v2/v1
+    domain; migration 0093 initially stores those bundles immutable and inactive, and
+    migration 0095 opens only the exact approval-gated lifecycle edge. Existing v2/v1
     HTTP policy remains unchanged. An authenticated human can now record a signed,
     version-exact Approval v2 decision for the current inactive Policy IR v2 and
-    Manifest v3 lineage; it grants no authority and cannot activate policy. V2
-    activation/approval consumption, ActionIntent v2 evaluation, grants, artifact
-    verification, adapter execution, and receipts remain required, so the adapter item
-    remains unchecked.
+    Manifest v3 lineage; it grants no authority. Trusted core can now consume the exact
+    current approved v2 lineage to activate Policy IR v2 as coordination state, with
+    storage-enforced lifecycle transitions and no evaluation or execution authority.
+    ActionIntent v2 evaluation, grants, artifact verification, adapter execution, and
+    receipts remain required, so the adapter item remains unchecked.
 - [ ] Add provider/model allowlists, secret references, privacy classes, and cost/token budgets.
   - A non-executing AI provider configuration v1 contract and pure deterministic
     validator now require exact provider/model allowlists, provider-bound secret

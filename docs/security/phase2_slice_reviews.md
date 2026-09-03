@@ -1,5 +1,39 @@
 # Phase 2 slice security reviews
 
+## 2026-09-03 — Policy IR v2 activation boundary
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and reviewer
+under the `GIT_WORKFLOW.md` exception. This review does not satisfy dual control.
+
+**Scope and evidence:** Trusted core consumes one exact current approved Policy
+Activation Approval v2 to activate its immutable Policy IR v2 lineage. Activation
+revalidates the current source-backed Manifest v3, policy and approval contracts and
+signatures, engagement and policy validity, latest-manifest identity, authenticated
+actor, and global safety state in one transaction. Migration 0095 replaces the v2
+deny-all update trigger with an exact approval-backed inactive-to-active predicate and
+permits only later fail-closed revocation; content mutation and deletion remain denied.
+
+**Security and compatibility decision:** Activation is policy-selection coordination
+only. Active Policy IR v2 is explicitly rejected by the v1 evaluator, so no decision,
+grant, adapter, provider/plugin, network, worker, evidence, reporting, or execution
+authority becomes reachable. Policy IR v1 approval, activation, evaluation, and grant
+behavior remains unchanged. Startup recovery cannot create or resume activation.
+
+**Validation and negative evidence:** Synthetic tests cover successful durable
+activation, replay, missing/rejected/expired approval, superseded lineage, safety pause,
+revocation, storage mutation/deletion denial, additive migration integrity, and the
+continued evaluation version fence. The complete diff, contracts, invariants, threat
+model, compatibility, migration, rollback, and local validation evidence were reviewed.
+
+**Limitations and accepted residual risk:** ActionIntent v2 evaluation, PolicyDecision
+and ActionGrant versions, artifact verification, supervised local runtime execution,
+receipts, metering, accounting, Phase 2 demonstrations, and independent review remain
+deferred. SQLite cannot cryptographically verify signatures inside a trigger; trusted
+core performs both signature checks before the storage-guarded transition. The sole
+maintainer accepts the reduced governance assurance for this local-development slice.
+
 ## 2026-09-02 — Policy IR v2 activation approval prerequisite
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

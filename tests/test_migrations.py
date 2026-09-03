@@ -112,6 +112,7 @@ class MigrationTests(unittest.TestCase):
                     "0092",
                     "0093",
                     "0094",
+                    "0095",
                 ],
             )
             self.assertEqual(migrate(database), [])
@@ -3283,6 +3284,42 @@ class MigrationTests(unittest.TestCase):
                     "policy_ir_v2_approval_document_required",
                 },
             )
+
+    def test_policy_ir_v2_activation_migration_is_additive(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migrations = root / "migrations"
+            migrations.mkdir()
+            repository_migrations = Path(__file__).parents[1] / "migrations"
+            for path in repository_migrations.glob("*.sql"):
+                if path.name >= "0095_":
+                    continue
+                (migrations / path.name).write_text(
+                    path.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            database = root / "pentai.db"
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                migrate(database)
+            migration = repository_migrations / "0095_policy_ir_v2_activation.sql"
+            (migrations / migration.name).write_text(
+                migration.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with patch("pentai_core.migrate.MIGRATIONS_DIR", migrations):
+                self.assertEqual(migrate(database), ["0095"])
+                self.assertEqual(migrate(database), [])
+            with closing(sqlite3.connect(database)) as connection:
+                self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+                self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+                triggers = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger' "
+                        "AND name LIKE 'policy_ir_v2_%'"
+                    ).fetchall()
+                }
+            self.assertNotIn("policy_ir_v2_immutable", triggers)
+            self.assertIn("policy_ir_v2_lifecycle_guard", triggers)
+            self.assertIn("policy_ir_v2_no_delete", triggers)
 
     def test_terminal_prerequisites_upgrade_from_0072_through_registration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
