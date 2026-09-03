@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/policy-decision-v2.schema.json",
+  "title": "PentAI PolicyDecision v2 — Local Model Generation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "decision_id", "intent_id", "intent_hash", "assessment_id", "plan_id", "plan_revision", "task_id", "task_revision", "policy_bundle_id", "policy_hash", "policy_epoch", "manifest_version_id", "manifest_hash", "capability_manifest_id", "capability_manifest_hash", "configuration_snapshot_id", "configuration_snapshot_digest", "capability", "outcome", "reason_code", "evaluated_rule_id", "requested_limits", "decided_at", "expires_at", "evaluator", "authority", "grant_enabled", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "decision_id": {"type": "string", "format": "uuid"},
+    "intent_id": {"type": "string", "format": "uuid"},
+    "intent_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 1},
+    "task_id": {"type": "string", "format": "uuid"},
+    "task_revision": {"type": "integer", "minimum": 1},
+    "policy_bundle_id": {"type": "string", "format": "uuid"},
+    "policy_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "policy_epoch": {"type": "integer", "minimum": 0},
+    "manifest_version_id": {"type": "string", "format": "uuid"},
+    "manifest_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "capability_manifest_id": {"type": "string", "format": "uuid"},
+    "capability_manifest_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "configuration_snapshot_id": {"type": "string", "format": "uuid"},
+    "configuration_snapshot_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "capability": {"const": "ai.local.generate"},
+    "outcome": {"enum": ["allow", "deny", "approval_required"]},
+    "reason_code": {"enum": ["EXPLICIT_ALLOW", "EXPLICIT_DENY", "APPROVAL_REQUIRED"]},
+    "evaluated_rule_id": {"type": "string", "format": "uuid"},
+    "required_approval_type": {"type": "string", "minLength": 1, "maxLength": 64},
+    "requested_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximum_input_tokens", "maximum_output_tokens", "maximum_runtime_seconds"],
+      "properties": {
+        "maximum_input_tokens": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "maximum_output_tokens": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "maximum_runtime_seconds": {"type": "integer", "minimum": 1, "maximum": 300}
+      }
+    },
+    "decided_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "evaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "canonicalization_version"],
+      "properties": {
+        "name": {"const": "pentai-local-model-policy-evaluator"},
+        "version": {"const": "1.0.0"},
+        "canonicalization_version": {"const": "1.0.0"}
+      }
+    },
+    "authority": {"const": "none"},
+    "grant_enabled": {"const": false},
+    "execution_enabled": {"const": false}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"outcome": {"const": "approval_required"}}},
+      "then": {"required": ["required_approval_type"]},
+      "else": {"not": {"required": ["required_approval_type"]}}
+    },
+    {
+      "if": {"properties": {"outcome": {"const": "allow"}}},
+      "then": {"properties": {"reason_code": {"const": "EXPLICIT_ALLOW"}}}
+    },
+    {
+      "if": {"properties": {"outcome": {"const": "deny"}}},
+      "then": {"properties": {"reason_code": {"const": "EXPLICIT_DENY"}}}
+    },
+    {
+      "if": {"properties": {"outcome": {"const": "approval_required"}}},
+      "then": {"properties": {"reason_code": {"const": "APPROVAL_REQUIRED"}}}
+    }
+  ]
+}

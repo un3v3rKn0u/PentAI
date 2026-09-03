@@ -47,8 +47,10 @@ stop producing v2 while preserving history, not to delete records.
 
 ## Deferred work
 
-Policy evaluation for `ai.local.generate`, an ActionGrant version, supervised
-`llama.cpp` process composition, model/artifact verification, prompt handling,
+Version-exact policy evaluation now produces an immutable, non-authorizing
+PolicyDecision v2 after revalidating the complete current durable lineage. Local-model
+approval consumption, an ActionGrant version, supervised `llama.cpp` process
+composition, model/artifact verification, prompt handling,
 authenticated execution receipts, request/runtime usage measurement, cancellation of
 an executing process, reconciliation, budget finalization, evidence/reporting, and
 Phase 2 demonstrations remain incomplete.

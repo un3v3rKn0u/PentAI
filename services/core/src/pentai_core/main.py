@@ -41,6 +41,7 @@ from pentai_core.evidence_store import EncryptedEvidenceStore
 from pentai_core.findings import FindingError, FindingService
 from pentai_core.gateway_runtime_composition import compose_gateway_runtime_supervisor
 from pentai_core.gateway_runtime_supervisor import RuntimeSupervisorControl
+from pentai_core.local_model_intent import LocalModelIntentError, LocalModelIntentService
 from pentai_core.migrate import migrate
 from pentai_core.network_attestation_adapters import SystemRouteProbe
 from pentai_core.network_profile_setup import (
@@ -146,6 +147,10 @@ class RevocationRequest(StrictRequest):
 class EvaluationRequest(StrictRequest):
     engagement_id: str
     intent: dict[str, Any]
+
+
+class LocalModelEvaluationRequest(StrictRequest):
+    intent_id: UUID
 
 
 class GrantRequest(StrictRequest):
@@ -509,6 +514,16 @@ def provider_configuration_snapshot_call[T](operation: Callable[[], T]) -> T:
         ) from exc
 
 
+def local_model_intent_call[T](operation: Callable[[], T]) -> T:
+    try:
+        return operation()
+    except LocalModelIntentError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+
 def report_export_call[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
@@ -612,6 +627,7 @@ def create_app(
     provider_registry_snapshots = ProviderRegistrySnapshotService(authorization)
     provider_registry_activations = ProviderRegistryActivationService(authorization)
     provider_configuration_snapshots = ProviderConfigurationSnapshotService(authorization)
+    local_model_intents = LocalModelIntentService(authorization)
     report_exports = ReportExportService(runtime.database_path)
     backups = BackupService(
         runtime.database_path,
@@ -999,6 +1015,14 @@ def create_app(
     def evaluate_policy(evaluation: EvaluationRequest) -> dict[str, Any]:
         return call(
             lambda: authorization.evaluate_intent(evaluation.engagement_id, evaluation.intent)
+        )
+
+    @app.post("/api/v1/local-model-policy-decisions")
+    def evaluate_local_model_policy(
+        evaluation: LocalModelEvaluationRequest,
+    ) -> dict[str, Any]:
+        return local_model_intent_call(
+            lambda: local_model_intents.evaluate(str(evaluation.intent_id))
         )
 
     @app.post("/api/v1/action-grants")

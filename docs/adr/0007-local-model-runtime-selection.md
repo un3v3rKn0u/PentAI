@@ -34,7 +34,8 @@ runtime seconds; token and monetary usage need separate authoritative semantics.
   versions for `ai.local.generate`. Trusted core may now persist and sign them under a
   version-separated domain. A human may record an exact signed Approval v2 decision,
   and trusted core may consume the current approved lineage to activate Policy IR v2.
-  Activation remains coordination-only: evaluation, grants, and execution are still
-  disabled.
+  Activation remains coordination-only. Trusted core may evaluate the exact pending
+  ActionIntent v2 into a non-authorizing PolicyDecision v2, but grants and execution
+  remain disabled.
 - The exact model choice is deliberately narrow. Supporting another model or runtime
   requires an additive reviewed version rather than caller-selected substitution.

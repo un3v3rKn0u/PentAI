@@ -297,6 +297,7 @@ def orchestration_approval_client(
         ("POST", "/api/v1/policies/unknown/approval"),
         ("POST", "/api/v1/policies/unknown/activate"),
         ("POST", "/api/v1/policy-decisions"),
+        ("POST", "/api/v1/local-model-policy-decisions"),
         ("POST", "/api/v1/action-grants"),
         ("POST", "/api/v1/action-grants/consume"),
         ("POST", "/api/v1/safety-state"),

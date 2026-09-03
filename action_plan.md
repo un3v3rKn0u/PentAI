@@ -700,8 +700,11 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Manifest v3 lineage; it grants no authority. Trusted core can now consume the exact
     current approved v2 lineage to activate Policy IR v2 as coordination state, with
     storage-enforced lifecycle transitions and no evaluation or execution authority.
-    ActionIntent v2 evaluation, grants, artifact verification, adapter execution, and
-    receipts remain required, so the adapter item remains unchecked.
+    A version-exact evaluator now derives one immutable, non-authorizing PolicyDecision
+    v2 from the exact current pending ActionIntent v2 and active Policy IR v2 lineage.
+    Allow, deny, and approval-required outcomes remain metadata only; ActionGrant v2,
+    artifact verification, adapter execution, and receipts remain required, so the
+    adapter item remains unchecked.
 - [ ] Add provider/model allowlists, secret references, privacy classes, and cost/token budgets.
   - A non-executing AI provider configuration v1 contract and pure deterministic
     validator now require exact provider/model allowlists, provider-bound secret

@@ -744,7 +744,14 @@ identity, version, and hash bindings; storage verifies them against durable rows
 record is fixed to `authority: none` and `execution_enabled: false`. Trusted core may
 consume only an exact current approved record to activate its Policy IR v2 after
 revalidating durable lineage and both signatures. The active state still cannot
-evaluate ActionIntent v2, issue a grant, or execute a model.
+    evaluate only the exact current ActionIntent v2 into a PolicyDecision v2 fixed to
+    no grant or execution authority. It cannot issue a grant or execute a model.
+
+PolicyDecision v2 derives its complete lineage from immutable trusted storage and
+revalidates policy signature, current policy epoch, latest manifest, safety, task,
+configuration, registry, limits, and expiry atomically. An allow outcome is not an
+ActionGrant. No v1 grant consumer accepts v2 decisions, and recovery cannot create or
+resume evaluation.
 
 Before every release:
 

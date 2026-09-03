@@ -1,5 +1,39 @@
 # Phase 2 slice security reviews
 
+## 2026-09-03 — Local-model PolicyDecision v2 evaluation
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and reviewer
+under the `GIT_WORKFLOW.md` exception. This review does not satisfy dual control.
+
+**Scope and evidence:** Trusted core evaluates one immutable pending ActionIntent v2
+for `ai.local.generate` against the exact active signed Policy IR v2. It derives the
+assessment, plan/task revisions, policy epoch, latest Manifest v3, local-model
+capability manifest, fixed runtime/model, configuration snapshot, active registry,
+limits, classification, and expiry from durable state in one immediate transaction.
+Migration 0096 stores one immutable PolicyDecision v2 per intent with no grant or
+execution authority.
+
+**Security and compatibility decision:** Closed policy effects map to allow, deny, or
+approval-required only. Even allow is metadata and has no ActionGrant consumer.
+ActionIntent v1, PolicyDecision v1, ActionGrant v1, and HTTP authorization remain
+unchanged. Startup recovery has no evaluation producer. The separate v2 table prevents
+the existing grant service from interpreting the new decision as authority.
+
+**Validation and negative evidence:** Synthetic tests cover all closed outcomes,
+contract validity, deterministic replay, concurrency, safety pause, immutable storage,
+and rejection by the v1 grant path. Migration tests cover fresh and additive upgrade,
+idempotency, integrity, and guard presence. Contracts, complete diffs, invariants,
+threats, compatibility, rollback, and validation evidence were reviewed.
+
+**Limitations and accepted residual risk:** Local-model approval consumption,
+ActionGrant v2, artifact verification, process supervision, execution receipts,
+metering, accounting, worker/runtime fencing, recovery demonstrations, and independent
+review remain deferred. SQLite cannot verify policy signatures; trusted core verifies
+the exact signed policy before the storage-guarded insert. The sole maintainer accepts
+the reduced governance assurance for this local-development slice.
+
 ## 2026-09-03 — Policy IR v2 activation boundary
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The
