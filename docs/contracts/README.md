@@ -363,6 +363,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | ActionIntent v2 | Execution Safety Lead | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
 | PolicyDecision v1 | Policy Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | Approval v1.1 | Core Security Maintainer | Contract Maintainer | Product Safety Lead, independent Security Reviewer |
+| Policy Activation Approval v2 | Core Security Maintainer | Contract Maintainer | Product Safety Lead, independent Security Reviewer |
 | ActionGrant v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | NetworkAttestation v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | NetworkProfileProposal v1 | Gateway Maintainer | Contract Maintainer | Product Safety Lead, Security Reviewer |

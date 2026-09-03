@@ -1,5 +1,32 @@
 # Phase 2 slice security reviews
 
+## 2026-09-02 — Policy IR v2 activation approval prerequisite
+
+**Review record:** Sole-maintainer security review — explicitly non-independent. The
+repository owner is also author, Product Owner, Principal Architect, Security Lead,
+AI/Agent Lead, Core Maintainer, Contract Maintainer, Data Protection Lead, and reviewer
+under the `GIT_WORKFLOW.md` exception. This review does not satisfy dual control.
+
+**Scope and evidence:** Additive Policy Activation Approval v2 records an authenticated
+human approve or reject decision for one current Manifest v3 and immutable inactive
+Policy IR v2 tuple. Trusted core revalidates durable source, manifest, policy, signature,
+lifecycle, safety, and time state. Migration 0094 checks exact row/document bindings in
+the existing immutable approval ledger. Synthetic tests cover success, rejection,
+version/signature binding, supersession, safety pause, cross-scope storage substitution,
+and continued activation denial; v1 approval behavior remains unchanged.
+
+**Security and compatibility decision:** The server-derived local principal is the only
+actor source. Policy and manifest identity, versions, hashes, and validity derive from
+current durable state. The signed record is fixed to no authority and no execution.
+Approval v1.2, Policy IR v1 activation, HTTP evaluation, and grants are unchanged.
+
+**Rollback, limitations, and residual risk:** Migration 0094 is additive. Older binaries
+ignore Approval v2 records; operational downgrade retains the guard unless an explicit
+review removes unconsumed records. Policy IR v2 activation and approval consumption,
+ActionIntent v2 evaluation, decisions, grants, artifact verification, adapter execution,
+receipts, metering, accounting, demonstrations, and independent review remain deferred.
+The sole maintainer accepts the reduced governance assurance.
+
 ## 2026-09-02 — Inactive Policy IR v2 signing and persistence
 
 **Review record:** Sole-maintainer security review — explicitly non-independent. The

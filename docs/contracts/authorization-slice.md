@@ -28,6 +28,13 @@ Activation verifies both signatures and their persisted linkage. Legacy transact
 attestations and unsigned policies remain readable as history but are ineligible for
 activation and must be recompiled and reapproved.
 
+Policy Activation Approval v2 is an additive, non-authorizing prerequisite for Policy
+IR v2. It binds the exact Manifest v3 and Policy IR v2 identities, versions, and hashes,
+the authenticated human principal, decision, and bounded validity under a distinct
+signature domain. Migration 0094 validates those bindings on insertion into the
+existing immutable approval ledger. Policy IR v2 activation and approval consumption
+remain disabled; existing Approval v1.2 and Policy IR v1 behavior is unchanged.
+
 ## Stable decision codes
 
 The slice emits `EXPLICIT_ALLOW`, `DEFAULT_DENY`, `EXPLICIT_DENY`, `POLICY_INACTIVE`,

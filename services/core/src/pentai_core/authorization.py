@@ -36,6 +36,7 @@ from pentai_core.policy_signing import (
     PolicySigner,
     PolicyVerifier,
     gateway_fixture_execution_claim_v2_payload,
+    policy_activation_approval_v2_payload,
     policy_signature_payload,
 )
 from pentai_core.source_store import EncryptedSourceStore, SourceStoreError
@@ -1146,53 +1147,175 @@ class AuthorizationService:
         if decision not in {"approved", "rejected"}:
             raise DomainError("APPROVAL_DECISION_INVALID", "decision must be approved or rejected")
         decided_at = _timestamp()
-        expiry = (
-            _timestamp(parse_time(expires_at))
-            if expires_at is not None
-            else _timestamp(_now() + timedelta(hours=8))
-        )
+        try:
+            expiry = (
+                _timestamp(parse_time(expires_at))
+                if expires_at is not None
+                else _timestamp(_now() + timedelta(hours=8))
+            )
+        except ValueError as exc:
+            raise DomainError(
+                "APPROVAL_EXPIRY_INVALID", "approval expiry is invalid"
+            ) from exc
         if parse_time(expiry) <= parse_time(decided_at):
             raise DomainError("APPROVAL_EXPIRED", "approval expiry must be in the future")
         with transaction(self.database_path) as connection:
             policy = connection.execute(
                 """
-                SELECT p.*, m.content_hash AS manifest_hash
+                SELECT p.*, m.content_hash AS manifest_hash,
+                       m.schema_version AS manifest_schema_version,
+                       m.document_json AS manifest_document_json,
+                       m.validation_status AS manifest_validation_status,
+                       m.version_number AS manifest_version_number,
+                       e.program_id, e.status AS engagement_status,
+                       e.effective_from, e.expires_at AS engagement_expires_at
                 FROM policy_bundles p
                 JOIN manifest_versions m ON m.id = p.manifest_version_id
+                JOIN engagements e ON e.id = p.engagement_id
                 WHERE p.id = ?
                 """,
                 (policy_bundle_id,),
             ).fetchone()
             if policy is None:
                 raise DomainError("POLICY_NOT_FOUND", "policy does not exist")
-            if policy["schema_version"] != "1.0.0":
-                raise DomainError(
-                    "POLICY_VERSION_INACTIVE",
-                    "this policy version cannot enter the approval lifecycle",
-                )
             if self.policy_signer is None:
                 raise DomainError("POLICY_SIGNER_UNAVAILABLE", "policy signer is unavailable")
             approval_id = str(uuid4())
-            document: dict[str, Any] = {
-                "schema_version": "1.2.0",
-                "approval_id": approval_id,
-                "approval_type": "policy_activation",
-                "subject": {"subject_type": "policy", "subject_id": policy_bundle_id},
-                "assessment_id": policy["engagement_id"],
-                "policy_hash": policy["content_hash"],
-                "constraints": {},
-                "decision": decision,
-                "approver": {"actor_type": "human", "actor_id": approver_id.strip()},
-                "decided_at": decided_at,
-                "expires_at": expiry,
-            }
+            if policy["schema_version"] == "1.0.0":
+                document: dict[str, Any] = {
+                    "schema_version": "1.2.0",
+                    "approval_id": approval_id,
+                    "approval_type": "policy_activation",
+                    "subject": {"subject_type": "policy", "subject_id": policy_bundle_id},
+                    "assessment_id": policy["engagement_id"],
+                    "policy_hash": policy["content_hash"],
+                    "constraints": {},
+                    "decision": decision,
+                    "approver": {"actor_type": "human", "actor_id": approver_id.strip()},
+                    "decided_at": decided_at,
+                    "expires_at": expiry,
+                }
+                approval_payload = canonical_json(document).encode()
+            elif policy["schema_version"] == "2.0.0":
+                instant = parse_time(decided_at)
+                try:
+                    policy_document = json.loads(policy["policy_json"])
+                except (TypeError, json.JSONDecodeError) as exc:
+                    raise DomainError(
+                        "POLICY_HASH_MISMATCH", "policy provenance is altered"
+                    ) from exc
+                if contract_issues(policy_document, "policy-ir-v2.schema.json"):
+                    raise DomainError(
+                        "POLICY_HASH_MISMATCH", "policy provenance is altered"
+                    )
+                signature = policy_document.get("signature", {})
+                unsigned_policy = {
+                    key: value
+                    for key, value in policy_document.items()
+                    if key not in {"content_hash", "signature"}
+                }
+                latest_manifest = connection.execute(
+                    """SELECT id FROM manifest_versions WHERE engagement_id = ?
+                       ORDER BY version_number DESC LIMIT 1""",
+                    (policy["engagement_id"],),
+                ).fetchone()
+                safety = connection.execute(
+                    "SELECT global_status FROM safety_state WHERE singleton_id = 1"
+                ).fetchone()
+                if safety is None or safety["global_status"] != "active":
+                    raise DomainError("GLOBAL_SAFETY_PAUSED", "global safety state is not active")
+                if policy["engagement_status"] in {"paused", "expired", "revoked"}:
+                    raise DomainError("ENGAGEMENT_INACTIVE", "engagement cannot approve policy")
+                if (
+                    policy["activated_at"] is not None
+                    or policy["revoked_at"] is not None
+                    or policy["manifest_schema_version"] != "3.0.0"
+                    or policy["manifest_validation_status"] != "valid"
+                    or latest_manifest is None
+                    or latest_manifest["id"] != policy["manifest_version_id"]
+                ):
+                    raise DomainError("POLICY_VERSION_INACTIVE", "policy is not approvable")
+                if (
+                    instant < parse_time(policy["effective_from"])
+                    or instant >= parse_time(policy["engagement_expires_at"])
+                    or instant < parse_time(policy_document["validity"]["not_before"])
+                    or instant >= parse_time(policy_document["validity"]["not_after"])
+                ):
+                    raise DomainError("POLICY_EXPIRED", "policy is outside its validity window")
+                if expires_at is None:
+                    expiry = policy_document["validity"]["not_after"]
+                if parse_time(expiry) > parse_time(policy_document["validity"]["not_after"]):
+                    raise DomainError(
+                        "APPROVAL_EXPIRY_INVALID", "approval cannot outlive the policy"
+                    )
+                manifest = json.loads(policy["manifest_document_json"])
+                sources = connection.execute(
+                    "SELECT id, content_hash FROM source_documents WHERE program_id = ?",
+                    (policy["program_id"],),
+                ).fetchall()
+                validation = validate_and_canonicalize_manifest_v3(
+                    manifest,
+                    source_hashes={item["id"]: item["content_hash"] for item in sources},
+                )
+                if not validation.valid or content_hash(manifest) != policy["manifest_hash"]:
+                    raise DomainError("MANIFEST_HASH_MISMATCH", "manifest provenance is stale")
+                if (
+                    policy_document.get("content_hash") != policy["content_hash"]
+                    or policy_document.get("manifest_hash") != policy["manifest_hash"]
+                    or content_hash(
+                        {"policy": unsigned_policy, "signer_key_id": signature.get("key_id")}
+                    )
+                    != policy["content_hash"]
+                    or signature.get("algorithm") != "Ed25519"
+                    or signature.get("value") != policy["signature"]
+                    or signature.get("key_id") != policy["signer_key_id"]
+                    or not self.policy_signer.verify(
+                        policy_signature_payload("2.0.0", policy["content_hash"]),
+                        str(policy["signature"]),
+                        str(policy["signer_key_id"]),
+                    )
+                ):
+                    raise DomainError("POLICY_HASH_MISMATCH", "policy provenance is altered")
+                document = {
+                    "schema_version": "2.0.0",
+                    "approval_id": approval_id,
+                    "approval_type": "policy_activation",
+                    "assessment_id": policy["engagement_id"],
+                    "manifest_version_id": policy["manifest_version_id"],
+                    "manifest_schema_version": "3.0.0",
+                    "manifest_hash": policy["manifest_hash"],
+                    "policy_bundle_id": policy_bundle_id,
+                    "policy_schema_version": "2.0.0",
+                    "policy_hash": policy["content_hash"],
+                    "decision": decision,
+                    "approver": {"actor_type": "human", "actor_id": approver_id.strip()},
+                    "decided_at": decided_at,
+                    "expires_at": expiry,
+                    "authority": "none",
+                    "execution_enabled": False,
+                }
+                approval_payload = policy_activation_approval_v2_payload(document)
+            else:
+                raise DomainError("POLICY_VERSION_UNSUPPORTED", "policy version is unsupported")
             if reason:
                 document["reason"] = reason
+                approval_payload = (
+                    policy_activation_approval_v2_payload(document)
+                    if document["schema_version"] == "2.0.0"
+                    else canonical_json(document).encode()
+                )
             document["signature"] = {
                 "algorithm": "Ed25519",
                 "key_id": self.policy_signer.key_id,
-                "value": self.policy_signer.sign(canonical_json(document).encode()),
+                "value": self.policy_signer.sign(approval_payload),
             }
+            approval_schema = (
+                "policy-activation-approval-v2.schema.json"
+                if document["schema_version"] == "2.0.0"
+                else "approval-v1.schema.json"
+            )
+            if contract_issues(document, approval_schema):
+                raise DomainError("APPROVAL_INVALID", "approval contract is invalid")
             connection.execute(
                 """
                 INSERT INTO approvals(
