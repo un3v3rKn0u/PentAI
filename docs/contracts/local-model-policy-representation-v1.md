@@ -42,7 +42,7 @@ execution.
 
 ## Deferred work
 
-ActionIntent v2 evaluation, PolicyDecision and ActionGrant versions, runtime/model
-artifact verification,
-supervised adapter execution, authenticated execution receipts, usage measurement,
-accounting, and recovery demonstrations remain deferred.
+PolicyDecision v2 evaluation is now available as non-authorizing metadata. Local-model
+approval consumption, ActionGrant v2, runtime/model artifact verification, supervised
+adapter execution, authenticated execution receipts, usage measurement, accounting,
+and recovery demonstrations remain deferred.

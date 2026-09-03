@@ -36,8 +36,9 @@ by a current approved v2 document, plus later fail-closed revocation. Trusted co
 revalidates both signatures and all current durable lineage before activation. Startup
 recovery never creates, consumes, activates, or resumes policy.
 
-ActionIntent v2 evaluation, decisions, grants, adapter execution, and external effects
-remain disabled. Activation is coordination state and creates no execution authority.
+PolicyDecision v2 evaluation is now available as non-authorizing metadata. Local-model
+approval consumption, grants, adapter execution, and external effects remain disabled.
+Activation is coordination state and creates no execution authority.
 
 Migration 0094 is additive. Older application versions ignore v2 approval documents.
 Operational rollback should retain the validation and lifecycle triggers. Before an

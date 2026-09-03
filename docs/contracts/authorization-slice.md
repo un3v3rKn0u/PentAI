@@ -35,8 +35,14 @@ signature domain. Migration 0094 validates those bindings on insertion into the
 existing immutable approval ledger. Migration 0095 and trusted-core activation consume
 only an exact current approved v2 record, revalidate both signatures and durable
 lineage, and permit only the storage-guarded inactive-to-active transition. Activation
-does not enable evaluation, grants, or execution. Existing Approval v1.2 and Policy IR
-v1 behavior is unchanged.
+does not itself enable evaluation, grants, or execution. Existing Approval v1.2 and
+Policy IR v1 behavior is unchanged.
+
+PolicyDecision v2 is a separate local-model-only evaluation boundary. Trusted core
+loads one immutable ActionIntent v2 and derives the exact current policy, manifest,
+task, configuration, registry, limits, epoch, and expiry lineage. Its allow, deny, or
+approval-required result remains fixed to no grant and no execution authority.
+ActionGrant v1 cannot consume the separate v2 decision record.
 
 ## Stable decision codes
 

@@ -243,6 +243,9 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `policy-ir-v1.schema.json` — deterministic compiled authorization policy.
 - `action-intent-v1.schema.json` — immutable request for an external effect.
 - `policy-decision-v1.schema.json` — deterministic decision and rule references.
+- `policy-decision-v2.schema.json` — immutable local-model policy evaluation bound to
+  exact intent, policy, manifest, configuration, task, and policy-epoch lineage, with
+  no grant or execution authority.
 - `approval-v1.schema.json` — typed human approval that satisfies policy conditions.
   Version 1.2 uses Ed25519 over the canonical document; v1.1 transactional
   attestations remain historical and cannot activate newly signed policy.
@@ -362,6 +365,7 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 | ActionIntent v1 | Execution Safety Lead | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
 | ActionIntent v2 | Execution Safety Lead | Contract Maintainer | Policy Maintainer, independent Security Reviewer |
 | PolicyDecision v1 | Policy Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
+| PolicyDecision v2 | Policy Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
 | Approval v1.1 | Core Security Maintainer | Contract Maintainer | Product Safety Lead, independent Security Reviewer |
 | Policy Activation Approval v2 | Core Security Maintainer | Contract Maintainer | Product Safety Lead, independent Security Reviewer |
 | ActionGrant v1 | Gateway Maintainer | Contract Maintainer | Execution Safety Lead, independent Security Reviewer |
