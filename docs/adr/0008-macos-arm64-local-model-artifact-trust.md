@@ -166,11 +166,14 @@ receipt only while every current lineage and file-identity check still passes.
 - Persisted verification metadata must be bounded and contain no file contents,
   unrestricted paths, prompts, responses, credentials, signed download URLs, or
   arbitrary diagnostics.
+- Local-model artifact manifest v1 now records this decision as one exact inactive
+  code-owned identity. Its no-argument resolver performs no activation, file access,
+  verification, receipt production, or execution.
 
 ## Deferred work
 
-The code-owned registry contract and compiler, artifact installation, descriptor-based
-runtime-closure and GGUF verification, immutable verification receipt, persistence,
-startup reconciliation, ActionGrant v2, approval consumption, prompt handling, model
-loading, process supervision, execution receipts, metering, accounting, and every
-platform except macOS arm64 remain separately reviewed work.
+Authenticated registry activation, artifact installation, descriptor-based runtime-
+closure and GGUF verification, immutable verification receipt, persistence, startup
+reconciliation, ActionGrant v2, approval consumption, prompt handling, model loading,
+process supervision, execution receipts, metering, accounting, and every platform
+except macOS arm64 remain separately reviewed work.
