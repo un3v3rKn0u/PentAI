@@ -246,6 +246,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
 - `policy-decision-v2.schema.json` — immutable local-model policy evaluation bound to
   exact intent, policy, manifest, configuration, task, and policy-epoch lineage, with
   no grant or execution authority.
+- `local-model-artifact-manifest-v1.schema.json` — exact inactive macOS arm64
+  `llama.cpp` runtime-closure and Qwen GGUF identity compiled only from the reviewed
+  built-in source, with activation, verification, receipts, authority, and execution
+  disabled.
 - `approval-v1.schema.json` — typed human approval that satisfies policy conditions.
   Version 1.2 uses Ed25519 over the canonical document; v1.1 transactional
   attestations remain historical and cannot activate newly signed policy.

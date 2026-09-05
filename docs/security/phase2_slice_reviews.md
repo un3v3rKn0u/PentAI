@@ -2957,6 +2957,54 @@ review reduce assurance. The sole maintainer accepts those risks only for the ap
 owned local-development identity decision; no production or distribution trust is
 claimed.
 
+## 2026-09-05 — Inactive local-model artifact manifest v1
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, author, Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer, and
+Security Reviewer. The `GIT_WORKFLOW.md` exception is used. This review is not
+independent and cannot satisfy an external independence or dual-control requirement.
+
+**Scope and evidence:** ADR 0008; the exact v1 schema and built-in manifest; pure
+compiler and no-argument resolver; focused positive, mutation, closure, immutability,
+and caller-selector tests; contract compatibility documentation; security invariant and
+threat-model updates; action-plan status; complete diff; contract validation; Python
+tests; Ruff; mypy; and repository scans. No runtime or model artifact is included.
+
+**Invariants and trust boundaries:** The built-in constant is repository-owned and
+exactly represents the approved macOS arm64 artifact identity. The public compiler
+validates but does not authenticate caller documents; only the no-argument resolver
+returns the built-in identity. The manifest is inactive with activation, verification,
+receipts, authority, and execution disabled. It is not an installed-file observation,
+verification result, approval consumption, ActionGrant, availability claim, or process
+authority.
+
+**Threat and abuse cases:** platform, release, source commit, archive, entry point,
+runtime component, alias, model, revision, GGUF, quantization, path, APFS, owner, mode,
+link, size, digest, hashing, stable-identity, lifecycle, source, state, and authority
+substitution; missing, extra, reordered, duplicated, mixed-version, path-bearing, or
+privilege-expanding fields; mutable compiled state; caller-selected resolution; replay,
+concurrency, cancellation, and recovery overclaim.
+
+**Default deny and findings:** The schema pins the entire ordered v1 document with exact
+constants. Any divergence denies with a stable malformed-manifest code. Compilation is
+deterministic and returns deeply immutable typed component state. Resolution accepts no
+input. No unresolved material finding remains in this inert boundary.
+
+**Compatibility, privacy, migration, and rollback:** Additive schema and pure module;
+no API, persistence, migration, prompt, response, credential, unrestricted path,
+artifact byte, external effect, or existing authorization behavior changes. Older code
+ignores v1. Rollback removes the resolver while retaining ADR 0008; another artifact
+identity requires a separately reviewed version or revision.
+
+**Limitations, deferred work, and accepted risk:** Registry activation and validity
+instants, installation, descriptor and filesystem verification, hashing, GGUF parsing,
+receipts, persistence, startup reconciliation, ActionGrant v2, approval consumption,
+model loading, launch, supervision, metering, execution, and non-arm64 platforms remain
+deferred. Non-independent review and the upstream provenance limitations recorded in
+ADR 0008 remain accepted only for owned local development.
+
 ## 2026-08-21 — Untrusted content envelope v1 and injection corpus
 
 **Review record:** Sole-maintainer security review — non-independent.

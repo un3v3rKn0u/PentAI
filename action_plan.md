@@ -714,6 +714,14 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     artifact is installed or verified, no receipt is produced, and ActionGrant v2,
     model loading, process launch, and execution remain deferred; the adapter item stays
     unchecked.
+  - The additive local-model artifact manifest v1 now translates ADR 0008 into one
+    closed, immutable, code-owned macOS arm64 identity. Its no-argument resolver exposes
+    only the exact approved runtime closure and Qwen GGUF metadata; altered, reordered,
+    omitted, additional, caller-selected, or privilege-bearing documents deny. The
+    manifest is inactive and cannot activate verification, issue a receipt or grant,
+    inspect files, load a model, launch a process, or create an external effect. An
+    authenticated registry-activation boundary and the verifier remain required, so
+    the adapter item stays unchecked.
 - [ ] Add provider/model allowlists, secret references, privacy classes, and cost/token budgets.
   - A non-executing AI provider configuration v1 contract and pure deterministic
     validator now require exact provider/model allowlists, provider-bound secret

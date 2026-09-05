@@ -753,6 +753,16 @@ configuration, registry, limits, and expiry atomically. An allow outcome is not 
 ActionGrant. No v1 grant consumer accepts v2 decisions, and recovery cannot create or
 resume evaluation.
 
+The local-model artifact manifest v1 is the inactive code-owned representation of ADR
+0008. Its resolver accepts no caller selector and its closed contract pins the exact
+macOS arm64 runtime dependency closure, model artifact, provenance, layout, filesystem,
+permission, hashing, and lifecycle requirements. Compilation and availability of this
+manifest are not artifact verification, activation, a receipt, a grant, or permission
+to load or execute. Startup and recovery have no producer or lifecycle transition for
+it. Any future verifier must independently authenticate active registry state and exact
+current cancellation, safety, policy epoch, fencing, artifact identity, and recovery
+lineage before producing a non-authorizing result.
+
 Before every release:
 
 1. Run all invariant-linked automated tests.
