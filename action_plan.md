@@ -705,6 +705,15 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     Allow, deny, and approval-required outcomes remain metadata only; ActionGrant v2,
     artifact verification, adapter execution, and receipts remain required, so the
     adapter item remains unchecked.
+  - ADR 0008 now approves the exact local-development artifact identity for macOS
+    Apple Silicon: the `llama.cpp` b10516 arm64 runtime closure and immutable Qwen
+    Q4_K_M GGUF revision, with exact sizes and SHA-256 digests, per-user APFS location,
+    ownership/link/permission rules, bounded descriptor hashing, 180-day review expiry,
+    revocation, replacement, rollback, and recovery semantics. This is an authoritative
+    governance source for a future code-owned registry, not runtime configuration. No
+    artifact is installed or verified, no receipt is produced, and ActionGrant v2,
+    model loading, process launch, and execution remain deferred; the adapter item stays
+    unchecked.
 - [ ] Add provider/model allowlists, secret references, privacy classes, and cost/token budgets.
   - A non-executing AI provider configuration v1 contract and pure deterministic
     validator now require exact provider/model allowlists, provider-bound secret

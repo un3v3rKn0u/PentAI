@@ -2901,6 +2901,62 @@ deferred. Provider execution remains disabled. Non-independent review reduces
 governance assurance; the sole maintainer accepts that risk only for this local-
 development non-executing slice.
 
+## 2026-09-05 — macOS arm64 local-model artifact identity
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, authorizing Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer, and
+Security Reviewer. The `GIT_WORKFLOW.md` exception is used. This review is not
+independent and cannot satisfy an external independence or dual-control requirement.
+
+**Scope and evidence:** ADR 0008; ADR 0007 and current local-model contracts; official
+`ggml-org/llama.cpp` release `b10516`, source commit, asset metadata, attestation context,
+and published archive digest; locally derived component sizes and SHA-256 values only
+after verifying that archive digest; the official Qwen Hugging Face immutable revision,
+filename, LFS size and digest; a bounded prefix read confirming GGUF version 3; the
+repository owner's explicit approval; action-plan update; and complete documentation
+diff. No runtime or model artifact is committed.
+
+**Invariants and trust boundaries:** The decision fixes one macOS arm64 development
+artifact set and its provenance, trusted platform-derived location, filesystem rules,
+resource bounds, and lifecycle. It is an authoritative source for a future code-owned
+registry, not an executable configuration, verification receipt, approval consumption,
+ActionGrant, or process authority. The existing `ActionIntent -> PolicyDecision ->
+ActionGrant -> supervised execution` boundary remains unchanged and incomplete for
+local models.
+
+**Threat and abuse cases:** floating or substituted release/model revisions; archive,
+launcher, dynamic-library, model, path, digest, size, owner, mode, platform, architecture,
+filesystem, symlink, hard-link, alias, and provenance substitution; incomplete runtime
+dependency closure; ad-hoc signature overclaim; oversized or malformed GGUF; replacement
+races; stale, expired, superseded, or revoked registry state; silent rollback; replay;
+competing verification; cancellation; and startup recovery advancement.
+
+**Default deny and findings:** Only the exact approved archive-derived closure and Qwen
+blob are representable by the decision. Unknown platforms, mutable selectors,
+caller/environment paths, unsafe filesystem state, changed metadata, and incomplete
+lineage must deny in the future verifier. The upstream runtime release is mutable and
+its binaries are ad-hoc signed; the accepted local-development trust model therefore
+requires the joint source commit, published archive digest, closed extracted-component
+manifest, and repository decision chronology. No unresolved material finding remains
+within this documentation-only scope.
+
+**Compatibility, privacy, migration, and rollback:** Documentation-only and additive;
+no schema, API, service, persistence, migration, HTTP, prompt, response, secret, or
+execution behavior changes. Upgrade requires a newly approved immutable registry
+revision. Rollback retains the decision chronology and explicitly selects only a still
+approved revision; downgrade disables unsupported verification rather than widening or
+reinterpreting authority.
+
+**Limitations, deferred work, and accepted risk:** The code-owned registry, installer,
+artifact verifier, receipts, persistence, recovery implementation, approval consumption,
+ActionGrant v2, process supervision, model loading, execution, and non-arm64 platforms
+remain deferred. GitHub release mutability, absent publisher Team ID, and non-independent
+review reduce assurance. The sole maintainer accepts those risks only for the approved
+owned local-development identity decision; no production or distribution trust is
+claimed.
+
 ## 2026-08-21 — Untrusted content envelope v1 and injection corpus
 
 **Review record:** Sole-maintainer security review — non-independent.
