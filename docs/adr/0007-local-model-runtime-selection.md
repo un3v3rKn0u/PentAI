@@ -23,6 +23,8 @@ This slice does not claim that the runtime binary or model artifact is installed
 verified. A later adapter must authenticate its exact implementation and artifact and
 may report only usage it directly observes. Initially that is request count and elapsed
 runtime seconds; token and monetary usage need separate authoritative semantics.
+ADR 0008 records the later macOS arm64 artifact-identity and trust decision without
+making verification or execution reachable.
 
 ## Consequences
 
