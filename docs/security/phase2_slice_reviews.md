@@ -2957,6 +2957,52 @@ review reduce assurance. The sole maintainer accepts those risks only for the ap
 owned local-development identity decision; no production or distribution trust is
 claimed.
 
+## 2026-09-14 — Local-model artifact registry activation prerequisite v1
+
+**Review record:** Sole-maintainer security review — non-independent.
+
+**Roles held by reviewer:** repository owner, author, Product Owner, Principal
+Architect, Security Lead, AI/Agent Lead, Core Maintainer, Contract Maintainer, and
+Security Reviewer. The `GIT_WORKFLOW.md` exception is used. This review is not
+independent and cannot satisfy an external independence or dual-control requirement.
+
+**Scope and evidence:** ADR 0008; the exact built-in artifact manifest; activation
+command/receipt v1 schemas; migration 0097 and its binding, deny-all producer,
+immutability, and no-delete triggers; focused contract and storage tests; migration
+compatibility; action-plan, contract, invariant, and threat-model updates; complete
+diff and repository scans; contract validation; Python tests; Ruff; and mypy.
+
+**Invariants and trust boundaries:** The contracts pin only the exact repository-owned
+manifest ID, revision, and digest and reserve authenticated local-human/session and
+trusted-time fields for a future producer. Storage cannot produce an activation. A
+valid document is not an authenticated decision, active registry, verification
+receipt, approval consumption, ActionGrant, availability claim, or process authority.
+
+**Threat and abuse cases:** caller-selected manifest, digest, revision, actor,
+authentication context, purpose, validity, review period, state, authority, verifier,
+revocation, grant, execution, path, artifact, prompt, or diagnostic; missing, extra,
+malformed, mixed-version, cross-scope, replayed, competing, expired, revoked,
+cancelled, fenced, or recovery-reused state; direct insert, update, and delete.
+
+**Default deny and findings:** Closed schemas reject identity or privilege changes.
+Typed storage rebinds both canonical documents and denies every insert through a
+producer-disabled trigger; update and delete are forbidden. No lifecycle operation,
+file I/O, or external effect exists. No unresolved material finding remains within
+this inert prerequisite.
+
+**Compatibility, privacy, migration, and rollback:** Additive schemas and migration;
+no existing table, row, API, HTTP route, prompt, response, credential, unrestricted
+path, artifact byte, policy, grant, or runtime behavior changes. Upgrade creates an
+empty guarded table. Application rollback cannot create rows; destructive database
+downgrade is unsupported.
+
+**Limitations, deferred work, and accepted risk:** Authenticated activation production,
+deterministic replay, concurrency, exact trusted activation/expiry derivation,
+revocation, supersession, rollback, installation, verification, receipts, recovery,
+ActionGrant v2, loading, supervision, metering, and execution remain deferred.
+Non-independent review reduces governance assurance and is accepted only for this
+owned local-development, non-executing prerequisite.
+
 ## 2026-09-05 — Inactive local-model artifact manifest v1
 
 **Review record:** Sole-maintainer security review — non-independent.

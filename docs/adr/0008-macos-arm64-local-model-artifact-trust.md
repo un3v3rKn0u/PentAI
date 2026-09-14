@@ -169,11 +169,14 @@ receipt only while every current lineage and file-identity check still passes.
 - Local-model artifact manifest v1 now records this decision as one exact inactive
   code-owned identity. Its no-argument resolver performs no activation, file access,
   verification, receipt production, or execution.
+- Activation command/receipt v1 and migration 0097 reserve the exact manifest-bound
+  lifecycle shape in empty, immutable, producer-disabled storage. They do not activate
+  the registry or establish that a future activation command is authenticated.
 
 ## Deferred work
 
-Authenticated registry activation, artifact installation, descriptor-based runtime-
-closure and GGUF verification, immutable verification receipt, persistence, startup
-reconciliation, ActionGrant v2, approval consumption, prompt handling, model loading,
-process supervision, execution receipts, metering, accounting, and every platform
-except macOS arm64 remain separately reviewed work.
+Authenticated registry activation production, artifact installation, descriptor-based
+runtime-closure and GGUF verification, immutable verification receipt, persistence,
+startup reconciliation, ActionGrant v2, approval consumption, prompt handling, model
+loading, process supervision, execution receipts, metering, accounting, and every
+platform except macOS arm64 remain separately reviewed work.

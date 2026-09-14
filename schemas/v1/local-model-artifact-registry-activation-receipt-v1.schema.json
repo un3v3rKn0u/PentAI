@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pentai.local/v1/local-model-artifact-registry-activation-receipt-v1.schema.json",
+  "title": "PentAI Local Model Artifact Registry Activation Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "activation_id", "command_id", "command_digest", "manifest_id", "manifest_revision", "manifest_digest", "requester", "authentication_context", "state", "review_period_days", "activated_at", "expires_at", "verification_enabled", "revocation_enabled", "authority", "execution_enabled"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "activation_id": {"type": "string", "format": "uuid"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "command_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "manifest_id": {"const": "macos-arm64-llama-b10516-qwen25-coder-3b-q4km"},
+    "manifest_revision": {"const": 1},
+    "manifest_digest": {"const": "sha256:20a4fe2660706615ef7db2688b6a54ecbb2644601bb5966ff54f98983f4b6e9a"},
+    "requester": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id", "session_id"],
+      "properties": {
+        "actor_type": {"const": "human"},
+        "actor_id": {"enum": ["local-desktop-session", "test-session"]},
+        "session_id": {"type": "string", "format": "uuid"}
+      }
+    },
+    "authentication_context": {"const": "local_core_authenticated_session"},
+    "state": {"const": "active"},
+    "review_period_days": {"const": 180},
+    "activated_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "verification_enabled": {"const": false},
+    "revocation_enabled": {"const": false},
+    "authority": {"const": "none"},
+    "execution_enabled": {"const": false}
+  }
+}
