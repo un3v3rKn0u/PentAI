@@ -250,6 +250,10 @@ The Phase 0 contracts are stored under `schemas/v1/` and use JSON Schema Draft 2
   `llama.cpp` runtime-closure and Qwen GGUF identity compiled only from the reviewed
   built-in source, with activation, verification, receipts, authority, and execution
   disabled.
+- `local-model-artifact-registry-activation-command-v1.schema.json` and
+  `local-model-artifact-registry-activation-receipt-v1.schema.json` — exact
+  built-in-manifest lifecycle shapes backed by deny-all immutable prerequisite
+  storage; no activation producer, verifier, grant, or execution path exists.
 - `approval-v1.schema.json` — typed human approval that satisfies policy conditions.
   Version 1.2 uses Ed25519 over the canonical document; v1.1 transactional
   attestations remain historical and cannot activate newly signed policy.

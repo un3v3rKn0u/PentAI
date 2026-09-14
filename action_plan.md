@@ -722,6 +722,12 @@ enforcement are recorded in `docs/security/phase0_status.md`.
     inspect files, load a model, launch a process, or create an external effect. An
     authenticated registry-activation boundary and the verifier remain required, so
     the adapter item stays unchecked.
+  - Additive activation command/receipt v1 contracts and migration 0097 now reserve
+    the exact authenticated lifecycle lineage for the built-in artifact manifest.
+    Storage is empty, immutable, and producer-disabled; no registry is activated and
+    verification, receipts, grants, loading, launch, and execution remain unavailable.
+    An authenticated activation producer is still required, so the adapter item stays
+    unchecked.
 - [ ] Add provider/model allowlists, secret references, privacy classes, and cost/token budgets.
   - A non-executing AI provider configuration v1 contract and pure deterministic
     validator now require exact provider/model allowlists, provider-bound secret

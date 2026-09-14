@@ -763,6 +763,14 @@ it. Any future verifier must independently authenticate active registry state an
 current cancellation, safety, policy epoch, fencing, artifact identity, and recovery
 lineage before producing a non-authorizing result.
 
+The local-model artifact registry activation prerequisite v1 pins its command and
+receipt to the exact built-in manifest identity, revision, and digest. Migration 0097
+keeps the table empty through a deny-all producer trigger and forbids mutation or
+deletion. Contract validity, a caller-supplied command, or an activation-shaped receipt
+does not authenticate a decision or activate verification. Replay, concurrency,
+expiry, revocation, cancellation, fencing, and recovery cannot advance without a
+separately reviewed trusted-core producer.
+
 Before every release:
 
 1. Run all invariant-linked automated tests.
